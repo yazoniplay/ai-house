@@ -15,15 +15,30 @@ def envfile(p):
     k,v=x.split("=",1);os.environ.setdefault(k.strip(),v.strip().strip('"').strip("'"))
 envfile(HERE/".env");envfile(ROOT/".env")
 G=os.getenv("GROQ_API_KEY","");H=os.getenv("HF_TOKEN","") or os.getenv("HUGGINGFACEHUB_API_TOKEN","");M=os.getenv("GEMINI_API_KEY","");N=os.getenv("NVIDIA_API_KEY","");T=os.getenv("TAVILY_API_KEY","")
-GM=os.getenv("GROQ_MODEL","openai/gpt-oss-120b");GFM=os.getenv("GROQ_FAST_MODEL","openai/gpt-oss-20b");HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507");NM=os.getenv("NVIDIA_MODEL","moonshotai/kimi-k3.1-pro");MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
+GM=os.getenv("GROQ_MODEL","openai/gpt-oss-120b")
+GFM=os.getenv("GROQ_FAST_MODEL","openai/gpt-oss-20b")
+# Automatically migrate retired model IDs left in existing local .env files.
+if GM in ("llama-3.3-70b-versatile","llama-3.1-8b-instant"):GM="openai/gpt-oss-120b"
+if GFM in ("llama-3.1-8b-instant","llama-3.3-70b-versatile"):GFM="openai/gpt-oss-20b"
+HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507")
+NM=os.getenv("NVIDIA_MODEL","moonshotai/kimi-k3.1-pro")
+MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","architect":"Product architect. Break the business goal into a coherent MVP architecture and acceptance criteria.","builder":"Senior engineer. Return complete functional files, not TODOs.","growth":"Ethical growth strategist. Draft truthful positioning, organic acquisition and customer feedback assets; no spam.","finance":"Bootstrapped finance analyst. Estimate pricing and unit economics transparently; label every assumption, never invent actual revenue.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness.","orchestrator":"Autonomous leader/orchestrator. Approve quality, reject unsafe actions, and return concrete improvement instructions."}
 HTTP=httpx.Client(timeout=120)
 # Provider cooldowns prevent repeated quota/rate-limit calls while the engine keeps working.
 PROVIDER_COOLDOWN={}
 def provider_cooldown_seconds(provider,error):
  msg=str(error).lower()
+ # Billing / credits errors will not heal by retrying every cycle.
+ if "402" in msg or "payment required" in msg or "pre-paid credits" in msg or "insufficient credits" in msg:
+  return int(os.getenv("AI_HOUSE_BILLING_COOLDOWN_SECONDS","86400"))
+ # Invalid model IDs and authorization errors need configuration, not rapid retries.
+ if "model_not_found" in msg or "does not exist or you do not have access" in msg or "401" in msg or "403" in msg:
+  return int(os.getenv("AI_HOUSE_CONFIG_COOLDOWN_SECONDS","3600"))
  if "429" in msg or "quota" in msg or "rate limit" in msg or "resource_exhausted" in msg:
   return int(os.getenv("AI_HOUSE_QUOTA_COOLDOWN_SECONDS","900"))
+ if "timeout" in msg or "timed out" in msg or "read operation" in msg:
+  return int(os.getenv("AI_HOUSE_TIMEOUT_COOLDOWN_SECONDS","60"))
  if "503" in msg or "502" in msg or "500" in msg or "temporarily unavailable" in msg:
   return int(os.getenv("AI_HOUSE_ERROR_COOLDOWN_SECONDS","90"))
  return 0
@@ -46,9 +61,17 @@ def set_activity(stage,message,role=None,task=None):
  except Exception:pass
  log("activity",stage=stage,message=message,role=role,task=task)
 def obj(t):
- t=t.strip().replace(chr(96)*3+"json","").replace(chr(96)*3,"").strip();a,b=t.find("{"),t.rfind("}")
- if a<0:raise ValueError("Model did not return JSON")
- return json.loads(t[a:b+1])
+ text=str(t).strip().replace(chr(96)*3+"json","").replace(chr(96)*3,"").strip()
+ decoder=json.JSONDecoder()
+ # Decode the first valid JSON object, even if the model surrounds it with prose.
+ for i,ch in enumerate(text):
+  if ch!="{":continue
+  try:
+   value,_=decoder.raw_decode(text[i:])
+   if isinstance(value,dict):return value
+  except json.JSONDecodeError:
+   continue
+ raise ValueError("Model did not return a valid JSON object")
 def raw(p,sys,ask,role):
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
  elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(GFM if role=="fast" else GM)
@@ -59,13 +82,37 @@ def raw(p,sys,ask,role):
   worker_model=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite")
   model_id=leader_model if role=="orchestrator" else worker_model
   url=f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
-  r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}]})
-  if r.status_code>=400:raise RuntimeError(r.text[:180])
-  return "".join(x.get("text","") for x in r.json()["candidates"][0]["content"]["parts"])
+  r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}]},timeout=55)
+  if r.status_code>=400:raise RuntimeError(r.text[:220])
+  try:return "".join(x.get("text","") for x in r.json()["candidates"][0]["content"]["parts"])
+  except Exception as e:raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
  if not key:raise RuntimeError(p+" key missing")
- r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},json={"model":model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192})
- if r.status_code>=400:raise RuntimeError(p+" "+str(r.status_code)+": "+r.text[:180])
- return r.json()["choices"][0]["message"].get("content","")
+ payload={"model":model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
+ if p=="groq" and role=="fast":
+  # GPT-OSS supports JSON mode; it prevents malformed summaries from breaking review triage.
+  payload["response_format"]={"type":"json_object"}
+ timeout_seconds=35 if p=="nvidia" else (45 if p=="groq" else 50)
+ candidates=[model]
+ if p=="groq" and role!="fast" and model!=GFM:
+  # If a user's main model is unavailable, try the already configured fast model before leaving Groq.
+  candidates.append(GFM)
+ last_error=None
+ for candidate in candidates:
+  payload["model"]=candidate
+  r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},json=payload,timeout=timeout_seconds)
+  if r.status_code==404 and candidate!=candidates[-1]:
+   log("groq_model_auto_fallback",unavailable_model=candidate,next_model=GFM)
+   continue
+  if r.status_code>=400:
+   last_error=RuntimeError(p+" "+str(r.status_code)+": "+r.text[:220])
+   break
+  try:
+   return r.json()["choices"][0]["message"].get("content","")
+  except Exception as e:
+   last_error=RuntimeError(p+" response could not be decoded: "+str(e)[:120])
+   break
+ if last_error:raise last_error
+ raise RuntimeError(p+" did not return a completion")
 def groq_fast_review(role,task,output,checks):
  # Groq handles lightweight triage and concise summaries; the stronger leader still makes final approval decisions.
  if not G or not provider_available("groq"):
@@ -85,7 +132,7 @@ def ask(role,prompt):
  fallback_evidence=None
  fallback_search_done=False
  # If Gemini is down, every leader/worker call gets fresh Tavily evidence before using a backup model.
- for p in ("gemini","nvidia","groq","hf"):
+ for p in ("gemini","groq","nvidia","hf"):
   if not provider_available(p):
    remaining=max(1,int(PROVIDER_COOLDOWN[p]-time.monotonic()))
    errors.append(p+":cooldown "+str(remaining)+"s")
@@ -116,7 +163,7 @@ def ask(role,prompt):
     PROVIDER_COOLDOWN[p]=time.monotonic()+cooldown
     log("provider_cooldown",provider=p,role=role,seconds=cooldown,error=str(e)[:180])
    errors.append(p+":"+str(e)[:140])
-   log("fallback",provider=p,role=role,error=str(e)[:140],next_provider={"gemini":"nvidia","nvidia":"groq","groq":"hf","hf":"none"}[p])
+   log("fallback",provider=p,role=role,error=str(e)[:140],next_provider={"gemini":"groq","groq":"nvidia","nvidia":"hf","hf":"none"}[p])
  raise RuntimeError("No available "+("leader" if role=="orchestrator" else "worker")+" provider: "+" | ".join(errors))
 def search(q):
  if not T:return []
