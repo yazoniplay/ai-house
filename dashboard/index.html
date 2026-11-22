@@ -82,6 +82,23 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 .hidden{display:none!important}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.content{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){header{height:auto;min-height:68px;padding:12px;gap:9px}.brand{font-size:15px}.pill{font-size:10px;padding:6px 8px}button{padding:8px 10px;font-size:11px}main{padding:16px 12px 40px}.hero{padding:21px 18px}.panel{padding:15px}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:21px}}
+
+.live-now-panel{margin-bottom:16px}
+.live-now-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.live-block{min-width:0;background:#0b1320;border:1px solid #26344a;border-radius:12px;padding:13px}
+.live-block.wide{grid-column:1/-1}
+.live-block h3{margin:0 0 8px;color:#aebed5;font-size:10px;text-transform:uppercase;letter-spacing:.12em}
+.live-copy,.live-list{font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere;color:#dce6f6}
+.live-list,.live-timeline{display:grid;gap:8px}
+.live-line{border-bottom:1px solid #202c40;padding:7px 0;font-size:11px;overflow-wrap:anywhere;color:#c8d5e8}
+.live-line:last-child{border-bottom:0}
+.live-task-line{padding:9px 0;border-bottom:1px solid #202c40;font-size:11px;overflow-wrap:anywhere}
+.live-task-line:last-child{border-bottom:0}
+.live-task-line strong{display:block;color:#e2eafa}
+.live-task-line small{display:block;color:var(--muted);margin-top:3px}
+@media(max-width:900px){.live-now-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.live-now-grid{grid-template-columns:1fr}.live-block.wide{grid-column:auto}}
+
 </style>
 </head>
 <body>
@@ -93,6 +110,19 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
   <button id="stop" class="stop">Stop autonomy</button>
 </header>
 <main>
+
+  <section class="panel live-now-panel" aria-live="polite">
+    <div class="panel-head"><h2>What the house is doing right now</h2><span class="subtle" id="liveUpdated">Connecting…</span></div>
+    <div class="live-now-grid">
+      <article class="live-block"><h3>Now</h3><div id="liveNow" class="live-copy">Waiting for activity…</div></article>
+      <article class="live-block"><h3>Current call</h3><div id="liveCall" class="live-copy">No active model call.</div></article>
+      <article class="live-block"><h3>Last reply</h3><div id="liveReply" class="live-copy">No agent reply yet.</div></article>
+      <article class="live-block"><h3>Fallbacks</h3><div id="liveFallbacks" class="live-list">No recent provider fallback events.</div></article>
+      <article class="live-block wide"><h3>Leader’s plan</h3><div id="livePlan" class="live-copy">No roadmap yet.</div></article>
+      <article class="live-block wide"><h3>Timeline</h3><div id="liveTimeline" class="live-timeline">No events yet.</div></article>
+    </div>
+  </section>
+
   <section class="hero">
     <div>
       <div class="eyebrow">The house is at work</div>
@@ -251,6 +281,94 @@ function formatBytes(bytes){
   if(bytes<1048576)return (bytes/1024).toFixed(1)+" KB";
   return (bytes/1048576).toFixed(1)+" MB";
 }
+
+function liveText(value,fallback="—"){return value===null||value===undefined||value===""?fallback:String(value);}
+function addLiveLine(parent,text){
+  const line=document.createElement("div");line.className="live-line";line.textContent=text;parent.append(line);
+}
+function eventRole(e){return liveText(e?.role||e?.agent_role,"Agent");}
+function eventTask(e){return liveText(e?.task_id||e?.task,"");}
+function eventProvider(e){return liveText(e?.provider,"unknown provider");}
+function timelineSentence(e){
+  const d=e||{},role=eventRole(d),provider=eventProvider(d),model=liveText(d.model||d.model_id,"model");
+  switch(d.event){
+    case "agent_request_started":return role+" asked "+provider;
+    case "model_call_ok":return role+" got a reply from "+provider+" ("+model+")";
+    case "task_completed":return "Task approved: "+liveText(d.task||d.title,"unnamed task");
+    case "task_failed":return "Task rejected: "+liveText(d.task||d.title,"unnamed task");
+    case "discovery_evidence":return "Searched "+liveText(d.query_count,0)+" queries and found "+liveText(d.source_count,0)+" sources";
+    case "opportunity_chosen":return "Chose business: "+liveText(d.name||d.business,"unnamed business");
+    case "roadmap_created":return "Leader planned "+liveText(d.tasks||d.task_count,0)+" tasks";
+    case "north_face_task_learned":return "Saved a lesson: "+liveText(d.root_cause||d.lesson,"lesson recorded");
+    default:{
+      const fields=Object.entries(d).filter(([k,v])=>!["at","event"].includes(k)&&v!==null&&v!==undefined&&v!=="").slice(0,4)
+        .map(([k,v])=>k.replace(/_/g," ")+": "+(typeof v==="string"?v:JSON.stringify(v)));
+      return liveText(d.event,"event")+(fields.length?" — "+fields.join(" · "):"");
+    }
+  }
+}
+function renderLive(data){
+  const events=Array.isArray(data.events)?data.events:[];
+  const activity=data.activity||{};
+  const nowParts=[liveText(activity.stage,"Stage unknown"),liveText(activity.message,"No activity message")];
+  if(activity.role)nowParts.push("Role: "+activity.role);
+  if(activity.task_id||activity.task)nowParts.push("Task: "+(activity.task_id||activity.task));
+  $("liveNow").textContent=nowParts.join("\n");
+
+  let activeRequest=null;
+  for(let i=events.length-1;i>=0;i--){
+    if(events[i]?.event!=="agent_request_started")continue;
+    const req=events[i],role=req.role||req.agent_role;
+    const matched=events.slice(i+1).some(e=>e?.event==="agent"&&(!role||(e.role||e.agent_role)===role)&&(!eventTask(req)||eventTask(e)===eventTask(req)));
+    if(!matched){activeRequest={event:req,index:i};break;}
+  }
+  const callBox=$("liveCall");callBox.textContent="";
+  if(activeRequest){
+    const req=activeRequest.event;
+    const modelEvent=events.slice(activeRequest.index+1).find(e=>e?.event==="model_call_ok"&&(!req.role||(e.role||e.agent_role)===req.role));
+    callBox.textContent=[eventRole(req),"Provider: "+eventProvider(req),"Model: "+liveText(modelEvent?.model||modelEvent?.model_id,"waiting for model response"),"Prompt: "+liveText(req.prompt_preview,"preview unavailable")].join("\n");
+  }else callBox.textContent="No unanswered agent request is recorded.";
+
+  const lastAgent=[...events].reverse().find(e=>e?.event==="agent");
+  $("liveReply").textContent=lastAgent?[eventRole(lastAgent),"Provider: "+eventProvider(lastAgent),"Reply: "+liveText(lastAgent.reply_preview,"reply preview unavailable")].join("\n"):"No agent reply yet.";
+
+  const fallbackEvents=events.filter(e=>["nvidia_model_failed","fallback","provider_cooldown","provider_skipped"].includes(e?.event)).slice(-5).reverse();
+  const fallbackBox=$("liveFallbacks");fallbackBox.replaceChildren();
+  if(!fallbackEvents.length)addEmpty(fallbackBox,"No recent fallback events.");
+  fallbackEvents.forEach(e=>{
+    let sentence;
+    if(e.event==="nvidia_model_failed")sentence="NVIDIA model "+liveText(e.model,"unknown model")+" failed: "+liveText(e.error,"request failed");
+    else if(e.event==="fallback")sentence="Fallback from "+liveText(e.provider,"provider")+" after "+liveText(e.error||e.reason,"an error");
+    else if(e.event==="provider_cooldown")sentence=liveText(e.provider,"Provider")+" is cooling down: "+liveText(e.reason||e.error,"temporarily unavailable");
+    else sentence=liveText(e.provider,"Provider")+" skipped: "+liveText(e.reason||e.error,"not available");
+    addLiveLine(fallbackBox,sentence);
+  });
+
+  const plan=$("livePlan");plan.replaceChildren();
+  const roadmap=data.roadmap;
+  if(!roadmap){plan.textContent="No roadmap saved yet.";}
+  else{
+    const strategy=document.createElement("div");strategy.className="live-copy";strategy.textContent="Strategy: "+liveText(roadmap.strategy)+"\nSuccess metric: "+liveText(roadmap.success_metric);plan.append(strategy);
+    const tasks=Array.isArray(roadmap.tasks)?roadmap.tasks:[];
+    if(!tasks.length)addLiveLine(plan,"The leader has not added any tasks yet.");
+    tasks.forEach(t=>{
+      const row=document.createElement("div");row.className="live-task-line";
+      const title=document.createElement("strong");title.textContent=liveText(t.title||t.id,"Untitled task")+" · "+liveText(t.status,"pending");
+      const meta=document.createElement("small");meta.textContent="Role: "+liveText(t.agent_role)+" · Attempts: "+liveText(t.attempts,0)+" · Last error: "+liveText(t.last_error,"none");
+      row.append(title,meta);plan.append(row);
+    });
+  }
+  const timeline=$("liveTimeline");timeline.replaceChildren();
+  const recent=events.slice(-40).reverse();
+  if(!recent.length)addEmpty(timeline,"No events recorded yet.");
+  recent.forEach(e=>addLiveLine(timeline,timelineSentence(e)));
+  $("liveUpdated").textContent="Updated "+new Date().toLocaleTimeString();
+}
+async function refreshLive(){
+  try{renderLive(await api("/api/live"));}
+  catch(error){$("liveUpdated").textContent="Live feed unavailable: "+error.message;}
+}
+
 function render(){
   api("/api/local/state").then(s=>{
     const tasks=s.tasks||[],files=s.artifacts||[],events=s.events||[],memory=s.memory||{};
@@ -348,7 +466,9 @@ $("resume").addEventListener("click",async()=>{
   catch(error){alert(error.message);$("resume").disabled=false;}
 });
 render();
+refreshLive();
 setInterval(render,2500);
+setInterval(refreshLive,3000);
 setInterval(()=>{if(document.querySelector("details.dev").open)refreshLog();},4000);
 document.querySelector("details.dev").addEventListener("toggle",e=>{if(e.target.open)refreshLog();});
 </script>

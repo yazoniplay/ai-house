@@ -235,6 +235,73 @@ def index():
     return send_from_directory(HERE, "index.html")
 
 
+def read_event_tail(limit=150):
+    """Read only the end of the event log and return valid JSON events."""
+    if not EVENT_FILE.exists():
+        return []
+    try:
+        with EVENT_FILE.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            position = handle.tell()
+            chunks = []
+            newline_count = 0
+            while position > 0 and newline_count <= limit:
+                size = min(8192, position)
+                position -= size
+                handle.seek(position)
+                chunk = handle.read(size)
+                chunks.insert(0, chunk)
+                newline_count += chunk.count(b"\n")
+            lines = b"".join(chunks).decode("utf-8", errors="replace").splitlines()[-limit:]
+        events = []
+        for line in lines:
+            try:
+                events.append(json.loads(line))
+            except Exception:
+                continue
+        return events
+    except Exception:
+        return []
+
+
+@app.get("/api/live")
+def live():
+    state = read_json(STATE_FILE, {})
+    raw_roadmap = state.get("roadmap")
+    roadmap = None
+    if isinstance(raw_roadmap, dict):
+        roadmap = {
+            "strategy": raw_roadmap.get("strategy"),
+            "success_metric": raw_roadmap.get("success_metric"),
+            "tasks": [
+                {
+                    "id": task.get("id"),
+                    "title": task.get("title"),
+                    "agent_role": task.get("agent_role"),
+                    "status": task.get("status"),
+                    "attempts": task.get("attempts"),
+                    "last_error": task.get("last_error"),
+                }
+                for task in (raw_roadmap.get("tasks") or [])
+                if isinstance(task, dict)
+            ],
+        }
+    business = state.get("business")
+    if isinstance(business, dict):
+        business = {
+            key: business.get(key)
+            for key in ("name", "score", "sources", "validation")
+        }
+    else:
+        business = None
+    return jsonify(
+        activity=state.get("activity"),
+        business=business,
+        roadmap=roadmap,
+        events=read_event_tail(150),
+    )
+
+
 @app.get("/api/local/state")
 def local_state():
     state = read_json(STATE_FILE, {})
