@@ -224,6 +224,8 @@ def replan(s):
  if int(s.get("roadmap_replans",0))>=3:
   for t in s["roadmap"]["tasks"]:
    if t["status"] in ("pending","retry","blocked"):t["status"]="failed"
+  s["business_completed"]=True
+  s.setdefault("history",[]).append({"business":s.get("business",{}).get("name"),"roadmap":"replan_limit_reached"})
   save(s);log("replan_limit_reached",count=3);return
  failed=[{"id":t["id"],"title":t["title"],"status":t["status"],"error":t.get("last_error",""),"review":t.get("review")} for t in s["roadmap"]["tasks"] if t["status"]!="completed"]
  create_roadmap(s,"recovery",failed)
@@ -242,8 +244,19 @@ def build(s):
  if task.get("status")=="retry" and task.get("last_error"):
   retry_task(s,task)
  else:run_roadmap_task(s,task)
+def learn_from_business(s):
+ if s.get("learning_done_for")==s.get("cycle"):return
+ history=[x for x in s.get("history",[]) if x.get("business")==s.get("business",{}).get("name")][-12:]
+ learning=leader_json("Conduct a brief postmortem as CEO. What actually completed, what failed, which assumptions remain unvalidated, and what should the next business cycle do differently? Never turn model-generated estimates into facts. Business: "+json.dumps(s.get("business",{}),ensure_ascii=False)+"\nRoadmap: "+json.dumps(s.get("roadmap",{}),ensure_ascii=False)[:9000]+"\nCycle results: "+json.dumps(history,ensure_ascii=False)+"\nExisting lessons: "+json.dumps(s.get("lessons",[]),ensure_ascii=False)+"\nReturn JSON {\"lessons\":[\"actionable reusable lesson\"],\"process_changes\":[\"specific improvement\"]}")
+ lessons=[str(x).strip() for x in learning.get("lessons",[]) if str(x).strip()]
+ changes=[str(x).strip() for x in learning.get("process_changes",[]) if str(x).strip()]
+ s["lessons"]=(s.get("lessons",[])+lessons+changes)[-20:]
+ s["learning_done_for"]=s.get("cycle");save(s)
+ (WORK/"LEADER_MEMORY.json").write_text(json.dumps({"lessons":s["lessons"],"updated_at":datetime.now(timezone.utc).isoformat()},indent=2,ensure_ascii=False),encoding="utf-8")
+ log("leader_learning_saved",lessons=len(lessons),process_changes=len(changes))
 def cycle(s):
  WORK.mkdir(parents=True,exist_ok=True)
+ if s.get("business_completed"):learn_from_business(s)
  if not s.get("business") or s.get("business_completed"):
   log("market_research_started");s["business"]=opportunity();s["iteration"]=0;s["business_completed"]=False;s["roadmap"]=None;s["roadmap_replans"]=0;s["cycle"]=int(s.get("cycle",0))+1;save(s)
   (WORK/"BUSINESS_DECISION.json").write_text(json.dumps(s["business"],indent=2,ensure_ascii=False),encoding="utf-8")
