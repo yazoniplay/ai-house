@@ -14,3 +14,7 @@ Agent house: rooms of AI agents (leader, researcher, writer, reviewer) that take
 ## Secrets
 
 Never commit keys. Gemini and Supabase keys go in `.env` (ignored by git) or environment variables.
+
+### The North Face: self-improvement is the top priority
+
+The local engine includes a persistent learning system that records task-level root causes, lessons, improvement rules, repeated mistakes, and business postmortems. The leader and worker agents receive this experience in later task context so the house can adapt instead of repeating failures. It is experience-based memory, not automatic model-weight fine-tuning.
