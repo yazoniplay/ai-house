@@ -2,9 +2,9 @@
 
 Runs in this order each pass:
 1. If there is a new goal, the leader turns it into a plan of tasks.
-2. Otherwise it claims one pending task, runs it, and has the reviewer check it.
+2. Otherwise it claims one pending task, runs it, and has the leader/orchestrator check it.
 3. If nothing is pending, it checks whether any goal has finished, and if so
-   writes a lesson for the leader.
+   writes a lesson for the leader/orchestrator.
 
 Guardrails:
 - The room must be active (rooms.active). Setting ops to inactive stops all work.
@@ -313,6 +313,13 @@ def complete(agent, system, prompt, needs_search=False, query="", task_type="gen
     notes lists every fallback step that failed, so it can be logged.
     """
     notes = []
+
+    # The leader is pinned to its configured Gemini model; do not silently
+    # substitute a different model for orchestration decisions.
+    if str(agent.get("id", "")).strip().lower() == "leader" and not needs_search:
+        text, used = gemini(agent, system, prompt)
+        return {"text": text, "used_tools": used, "provider": "gemini_leader",
+                "sources": [], "notes": notes}
 
     if not needs_search:
         try:
