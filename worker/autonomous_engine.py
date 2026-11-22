@@ -322,6 +322,7 @@ def retry_task(s,t):
  else:t["status"]="failed";t["output"]=output;t["review"]=review;t["last_error"]=str(review.get("reason","retry failed"))[:1200]
  north_face_task_learning(s,t,t["status"],review,output)
  save(s);log("task_retry_finished",task=t["id"],status=t["status"],score=review.get("score"))
+ set_activity("task_finished","Finished the correction pass for "+str(t.get("title","task"))+".",role,t.get("id"))
 def replan(s):
  if int(s.get("roadmap_replans",0))>=3:
   for t in s["roadmap"]["tasks"]:
