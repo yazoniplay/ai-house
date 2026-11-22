@@ -287,8 +287,8 @@ def quality_score(answer, task):
             notes.append("invalid task/dependency structure")
     return min(100, score), notes
 
-def run():
-    models = inventory()
+def run(models=None):
+    models = models if models is not None else inventory()
     print(f"Discovered {len(models)} unique model entries.")
     results = []
     for index, model in enumerate(models, 1):
@@ -332,7 +332,7 @@ def main():
         for i, item in enumerate(models, 1):
             print(f"{i:>3}. {item['provider']} :: {item['model']}")
     if args.run:
-        run()
+        run(models)
 
 if __name__ == "__main__":
     main()
