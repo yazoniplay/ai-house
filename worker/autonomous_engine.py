@@ -315,9 +315,8 @@ def retry_task(s,t):
  check=tests() if role=="builder" else []
  set_activity("leader_review","The CEO is re-checking the corrected deliverable.","orchestrator",t.get("id"))
  log("leader_review_started",task=t.get("id"),retry=True)
+ review=leader_json("Final re-review of the task retry. Verify every acceptance criterion using the actual revised output, files, and checks. Task: "+json.dumps(t,ensure_ascii=False)+"\nRevised output: "+json.dumps(output,ensure_ascii=False)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
  log("leader_review_completed",task=t.get("id"),decision=review.get("decision"),score=review.get("score"),retry=True)
- if str(review.get("decision","")).lower()=="approve":
-json.dumps(t,ensure_ascii=False)+"\nRevised output: "+json.dumps(output,ensure_ascii=False)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
  if str(review.get("decision","")).lower()=="approve":
   t["status"]="completed";t["output"]=output;t["review"]=review
  else:t["status"]="failed";t["output"]=output;t["review"]=review;t["last_error"]=str(review.get("reason","retry failed"))[:1200]
