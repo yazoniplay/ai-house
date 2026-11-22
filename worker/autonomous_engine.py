@@ -5,6 +5,7 @@ from datetime import datetime,timezone,timedelta
 import httpx
 from north_face import context as north_face_context, record_task as north_face_record_task, record_business as north_face_record_business
 from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit
+from publisher import run_publisher
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
 SD=WORK/".ai-house"; SF=SD/"state.json"; LF=SD/"events.jsonl"; SBF=SD/"search-budget.json"
@@ -600,6 +601,11 @@ def main():
  if recovered:
   save(s);log("interrupted_tasks_recovered",tasks=recovered)
  while True:
+  try:
+   published=run_publisher(WORK,HTTP)
+   log("publish_pass",published=published)
+  except Exception as publish_error:
+   log("publish_pass",published=0,error=str(publish_error)[:500])
   try:cycle(s);s=state()
   except KeyboardInterrupt:print("Stopped; saved.");return 0
   except Exception as e:
