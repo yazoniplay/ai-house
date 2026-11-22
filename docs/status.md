@@ -1,27 +1,23 @@
 # Status (2026-11-22)
 
-## Done
-- Schema live: rooms, agents, tasks, approvals, logs, lessons.
-- Worker functions: claim_next_task, decide_approval.
-- Review gate: pass -> done; fail/partial -> one retry -> blocked. Tested on throwaway tasks.
-- Per-agent Gemini capabilities stored in agents.capabilities.
-- Smoke test ran before the review gate; those two worker tasks have review = null.
+## Worker and autonomy
+- Worker plans goals, creates dependent tasks, calls configured model providers, writes outputs, runs a reviewer, retries once through the review gate, and records lessons.
+- Self-directed autonomy is enabled by default: when the room is active and there is no unfinished goal/task, the leader proposes its own next goal from a standing mission and recent goal/lesson history.
+- Autonomous goals are tagged `AUTONOMOUS:` in the goal text and capped at 4 per UTC day by default.
+- Set `AUTONOMY_ENABLED=false` to disable self-goal generation or `MAX_AUTONOMOUS_GOALS_PER_DAY` to change the daily limit.
+- Worker loop: `python worker.py --loop`; dashboard remains local on `127.0.0.1:8000`.
 
-## Not done
-- Worker code: nothing yet that calls Gemini or claims tasks.
-- Live Gemini test: no API key used yet.
-- Approvals and lessons are empty.
+## Current capability boundary
+- The existing worker can research, analyze, plan, write, and review text using configured model/search providers.
+- It does not yet have general-purpose file editing, shell execution, browser interaction, or a persistent computer/tool executor. Therefore self-generated goals must stay within text/research deliverables; it cannot yet independently implement code changes or operate external services.
+- The autonomy loop is intentionally serialized: it will not invent another goal while a goal is running, awaiting clarification, or waiting for approval.
 
-## Open decisions
-- Free-tier Gemini data may be used by Google to improve products. Decide what business data may go through it.
-- Leader quality: currently Flash Lite. Decide whether the leader needs a stronger model.
-- Token Harbor provider: not added.
-- Built-in tools combined with function tools in one request: Google's docs disagree. Kept off.
+## Guardrails
+- Room active switch stops work.
+- Maximum 10 tasks per goal; maximum 50 tasks per hour.
+- Risky task instructions are sent to approval rather than executed automatically.
+- Autonomous goal creation is rate-limited; no goal is created if the leader returns an empty/invalid goal.
 
-## To check
-- Security: no RLS policies exist. claim_next_task and decide_approval are SECURITY DEFINER and may be callable through the public API. Not verified; run Supabase advisors.
-
-## Next
-1. Confirm the security check.
-2. Write the worker: claim task, call Gemini with the agent's capabilities, write output, set review.
-3. Run the smoke test with real calls and record results in docs/.
+## Security follow-up
+- Review Supabase RLS and grants for SECURITY DEFINER functions before exposing the database API.
+- Keep service-role and model keys out of Git; use local environment or deployment secrets.
