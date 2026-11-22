@@ -3,90 +3,350 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI House — Autonomy</title>
+<title>AI House — Control Room</title>
 <style>
-:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2d;--panel2:#172139;--line:#263451;--text:#edf2ff;--muted:#9caaca;--accent:#9b8cff;--green:#55d6a2;--yellow:#ffd166;--red:#ff7b89}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#182343 0%,var(--bg) 55%);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
-header{position:sticky;top:0;z-index:5;background:#0b1020eF;border-bottom:1px solid var(--line);backdrop-filter:blur(12px);padding:15px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.brand{font-size:20px;font-weight:800;letter-spacing:.2px;flex:1}.brand span{color:var(--accent)}.sub{color:var(--muted);font-size:12px}
-button{border:1px solid var(--line);border-radius:10px;padding:9px 14px;background:var(--panel2);color:var(--text);font-weight:650;cursor:pointer}button.primary{background:var(--accent);border-color:var(--accent);color:#11132b}button.stop{background:#3b1e2a;border-color:#754050;color:#ffdbe1}button:disabled{opacity:.45;cursor:default}
-main{max-width:1440px;margin:0 auto;padding:22px;display:grid;gap:16px;grid-template-columns:repeat(12,minmax(0,1fr))}
-.card{background:linear-gradient(145deg,#141d32,#101729);border:1px solid var(--line);border-radius:16px;padding:18px;min-width:0;box-shadow:0 10px 30px #0002}.span12{grid-column:span 12}.span8{grid-column:span 8}.span6{grid-column:span 6}.span4{grid-column:span 4}
-h1,h2,h3,p{margin-top:0}h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#c4cce4;margin-bottom:14px}h3{font-size:15px;margin-bottom:5px}.metric{font-size:25px;font-weight:800;letter-spacing:-.5px}.muted{color:var(--muted)}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.space{justify-content:space-between}.tag{display:inline-flex;align-items:center;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:750;background:#263451;color:#cbd6f5}.tag.running,.tag.completed{background:#163a35;color:#7ff0c5}.tag.pending,.tag.retry{background:#44381e;color:#ffe09a}.tag.failed,.tag.blocked{background:#48232e;color:#ffb7c3}.gridstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.stat{background:#0d1425;border:1px solid #202d47;border-radius:12px;padding:13px}.stat .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px}.stat .value{font-size:22px;font-weight:800;margin-top:4px}
-.progress{height:8px;border-radius:99px;background:#27314a;overflow:hidden;margin:13px 0}.progress div{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));width:0}
-.list{display:grid;gap:9px}.item{padding:12px;background:#0d1425;border:1px solid #202d47;border-radius:12px}.itemtop{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}.item p{margin:6px 0 0;color:var(--muted);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.empty{color:var(--muted);padding:12px 0}.scroll{max-height:360px;overflow:auto}.event{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #202d47;font-size:12px}.event time{color:var(--muted)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d18;border:1px solid #202d47;border-radius:10px;padding:12px;max-height:340px;overflow:auto;color:#c8d4f2;font-size:12px}.small{font-size:12px}.statusdot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--red);margin-right:6px}.statusdot.on{background:var(--green);box-shadow:0 0 12px #55d6a266}
-details summary{cursor:pointer;color:#c7bfff;font-weight:650;margin-top:10px}
-@media(max-width:900px){.span8,.span6,.span4{grid-column:span 12}.gridstats{grid-template-columns:repeat(2,minmax(0,1fr))}header{padding:12px 16px}main{padding:14px}}
+:root{color-scheme:dark;--bg:#090d16;--panel:#111827;--panel2:#151f31;--line:#26344a;--text:#f3f6ff;--muted:#98a7bd;--accent:#a78bfa;--cyan:#7dd3fc;--green:#64e4b2;--yellow:#f4c96b;--red:#ff8396}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 12% 0%,#1a2340 0,transparent 34%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,a{font:inherit}
+button{border:1px solid var(--line);border-radius:11px;padding:10px 15px;background:#202b40;color:var(--text);font-weight:700;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+button.stop{background:#351e2a;border-color:#703a4a;color:#ffd9df}
+button.resume{background:#19382f;border-color:#2d785f;color:#bfffe5}
+header{height:74px;display:flex;align-items:center;gap:18px;padding:0 clamp(16px,4vw,48px);border-bottom:1px solid #202c40;background:#0b111ddd;backdrop-filter:blur(16px);position:sticky;top:0;z-index:5}
+.brand{font-size:18px;font-weight:900;letter-spacing:.08em}.brand b{color:var(--accent)}.brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:.22em;font-weight:700;margin-top:-2px}
+.header-spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:7px 11px;color:var(--muted);font-size:12px;font-weight:750;background:#121b2a}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block}
+.dot.on{background:var(--green);box-shadow:0 0 0 4px #64e4b21c,0 0 14px #64e4b277}
+main{max-width:1480px;margin:auto;padding:30px clamp(14px,3vw,38px) 60px}
+.hero{border:1px solid #344363;border-radius:22px;padding:28px 30px;background:linear-gradient(115deg,#1b2741,#151d31 62%,#1c2440);display:grid;grid-template-columns:1.3fr .7fr;gap:22px;align-items:center;box-shadow:0 22px 60px #0003;position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;width:310px;height:310px;border-radius:50%;right:12%;top:-230px;background:#a78bfa22;filter:blur(10px);pointer-events:none}
+.eyebrow{color:#c4b5fd;text-transform:uppercase;letter-spacing:.2em;font-size:10px;font-weight:850}
+h1{font-size:clamp(28px,4vw,42px);line-height:1.08;letter-spacing:-.045em;margin:9px 0 10px}
+.hero p{color:#b5c2d7;margin:0;max-width:680px}
+.live-card{position:relative;z-index:1;background:#0c1423b8;border:1px solid #3a4966;border-radius:16px;padding:18px 20px;min-height:116px}
+.live-card .live-label{font-size:10px;letter-spacing:.17em;color:var(--muted);font-weight:800;text-transform:uppercase}
+.live-name{font-size:19px;font-weight:850;margin:7px 0 2px}
+.live-task{color:#bdc9dc;font-size:12px;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0 20px}
+.stat{background:linear-gradient(145deg,#141e30,#101827);border:1px solid var(--line);border-radius:15px;padding:15px 17px}
+.stat label{display:block;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-size:9px;font-weight:850}
+.stat strong{display:block;font-size:25px;letter-spacing:-.04em;margin-top:5px}
+.content{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(310px,.72fr);gap:16px;align-items:start}
+.stack{display:grid;gap:16px;min-width:0}
+.panel{background:linear-gradient(150deg,#121b2a,#0f1725);border:1px solid var(--line);border-radius:17px;padding:19px;min-width:0}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+h2{margin:0;color:#d8e1f2;font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+.subtle{color:var(--muted);font-size:11px}
+.progress-row{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:11px;margin:0 0 9px}
+.progress{height:6px;background:#29364b;border-radius:20px;overflow:hidden;margin-bottom:15px}
+.progress span{height:100%;display:block;background:linear-gradient(90deg,var(--accent),var(--cyan));border-radius:20px;transition:width .3s}
+.task-list{display:grid;gap:9px}
+.task{padding:13px 14px;border:1px solid #27364c;background:#0c1421;border-radius:12px}
+.task.working{border-color:#5575a6;background:linear-gradient(110deg,#172840,#101b2c);box-shadow:inset 3px 0 var(--cyan)}
+.task-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.task-title{font-weight:800;line-height:1.35}
+.task-meta{color:var(--muted);font-size:10px;margin-top:5px}
+.task-objective{font-size:12px;color:#b4c1d4;margin-top:8px;overflow-wrap:anywhere}
+.badge{white-space:nowrap;border-radius:999px;padding:4px 8px;font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;background:#26344a;color:#ccd8ec}
+.badge.completed{background:#123a30;color:#92f2ca}.badge.running{background:#163750;color:#a4e3ff}.badge.retry,.badge.pending{background:#42351e;color:#ffe3a4}.badge.failed,.badge.blocked{background:#46232f;color:#ffb6c4}
+.roster{display:grid;gap:8px}
+.role{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0c1421;border:1px solid #26344a;border-radius:11px;padding:10px 12px}
+.role-name{font-weight:750;text-transform:capitalize}
+.role-meta{font-size:10px;color:var(--muted)}
+.role-count{font-size:11px;color:#c9d4e6;font-weight:750}
+.note{font-size:10px;line-height:1.5;color:var(--muted);margin:12px 0 0}
+.activity{display:grid;gap:0;max-height:520px;overflow:auto}
+.event{display:grid;grid-template-columns:66px minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid #202c40}
+.event:last-child{border-bottom:0}
+.event time{color:#8192ad;font-size:10px;padding-top:2px}
+.event strong{font-size:11px;display:block;font-weight:750;overflow-wrap:anywhere}
+.event span{color:var(--muted);font-size:10px;display:block;margin-top:2px;overflow-wrap:anywhere}
+.deliverables{display:grid;gap:8px}
+.file{display:flex;align-items:center;gap:12px;border:1px solid #26344a;background:#0c1421;border-radius:11px;padding:10px 12px;min-width:0}
+.file-icon{width:32px;height:36px;display:grid;place-items:center;background:#202b42;border-radius:8px;color:#c4b5fd;font-size:10px;font-weight:900;flex:none}
+.file-main{min-width:0;flex:1}
+.file-main a{color:#e6edfb;text-decoration:none;font-size:11px;font-weight:750;display:block;overflow-wrap:anywhere}
+.file-main a:hover{color:var(--cyan)}
+.file-main small{color:var(--muted);font-size:9px}
+.file-download{color:#9eb5d5;text-decoration:none;font-size:10px;padding:5px}
+.empty{padding:15px;border:1px dashed #33425a;border-radius:11px;color:var(--muted);font-size:11px}
+.memory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.memory-stat{padding:12px;background:#0c1421;border:1px solid #26344a;border-radius:11px}
+.memory-stat small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.1em}
+.memory-stat strong{font-size:21px;display:block;margin-top:3px}
+details.dev{margin-top:16px;border:1px solid var(--line);border-radius:14px;background:#0d1420;padding:13px 16px}
+details.dev summary{cursor:pointer;color:#abbad0;font-size:11px;font-weight:750}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px solid #202b3d;border-radius:9px;padding:13px;max-height:350px;overflow:auto;color:#b9c9e3;font-size:10px}
+.hidden{display:none!important}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.content{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){header{height:auto;min-height:68px;padding:12px;gap:9px}.brand{font-size:15px}.pill{font-size:10px;padding:6px 8px}button{padding:8px 10px;font-size:11px}main{padding:16px 12px 40px}.hero{padding:21px 18px}.panel{padding:15px}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:21px}}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">AI <span>HOUSE</span><div class="sub">LOCAL AUTONOMY • THE NORTH FACE</div></div>
-  <span id="status" class="tag"><i class="statusdot"></i>Checking</span>
-  <button id="once">Run one cycle</button>
-  <button id="start" class="primary">Start autonomy</button>
-  <button id="stop" class="stop">Stop</button>
+  <div class="brand">AI <b>HOUSE</b><small>LOCAL AUTONOMY CONTROL ROOM</small></div>
+  <div class="header-spacer"></div>
+  <div class="pill"><i id="headerDot" class="dot"></i><span id="headerStatus">Connecting</span></div>
+  <button id="resume" class="resume hidden">Resume autonomy</button>
+  <button id="stop" class="stop">Stop autonomy</button>
 </header>
 <main>
-  <section class="card span12">
-    <div class="row space"><div><h2>Autonomous operation</h2><h3 id="businessName">No business selected yet</h3><p class="muted small" id="businessInfo">The engine chooses an opportunity, creates a roadmap, executes tasks, reviews results, and learns from outcomes.</p></div><div class="tag" id="cycleTag">Cycle 0</div></div>
-    <div class="gridstats">
-      <div class="stat"><div class="label">Roadmap progress</div><div class="value" id="progressValue">0 / 0</div></div>
-      <div class="stat"><div class="label">Completed tasks</div><div class="value" id="completedValue">0</div></div>
-      <div class="stat"><div class="label">Retries / failures</div><div class="value" id="retryValue">0 / 0</div></div>
-      <div class="stat"><div class="label">Business cycle</div><div class="value" id="cycleValue">—</div></div>
+  <section class="hero">
+    <div>
+      <div class="eyebrow">The house is at work</div>
+      <h1 id="heroTitle">Your AI team, working continuously.</h1>
+      <p id="heroText">The dashboard starts the local engine automatically. Work, reviews, learning and saved files appear here as they happen.</p>
     </div>
-    <div class="progress"><div id="progressBar"></div></div>
-    <p class="muted small" id="successMetric">Success metric will appear after the leader creates a roadmap.</p>
+    <div class="live-card">
+      <div class="live-label"><i id="liveDot" class="dot"></i> Live operation</div>
+      <div class="live-name" id="activeAgent">Connecting to the house…</div>
+      <div class="live-task" id="activeTask">Checking the local worker process</div>
+    </div>
   </section>
-  <section class="card span8"><h2>Current roadmap</h2><div id="tasks" class="list"><div class="empty">No roadmap yet. Start autonomy or run one cycle.</div></div></section>
-  <section class="card span4"><h2>The North Face — learning</h2><div class="gridstats" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-    <div class="stat"><div class="label">Lessons</div><div class="value" id="memoryLessons">0</div></div>
-    <div class="stat"><div class="label">Task reviews</div><div class="value" id="memoryReviews">0</div></div>
-    <div class="stat"><div class="label">Mistake patterns</div><div class="value" id="memoryMistakes">0</div></div>
-    <div class="stat"><div class="label">Postmortems</div><div class="value" id="memoryPostmortems">0</div></div>
-  </div><p class="muted small" id="memoryUpdated">Memory updates after task reviews and business outcomes.</p>
-  <details><summary>Recent lessons</summary><div id="lessons" class="list" style="margin-top:10px"></div></details>
-  <details><summary>Repeated mistakes</summary><div id="mistakes" class="list" style="margin-top:10px"></div></details>
+
+  <section class="stats">
+    <div class="stat"><label>Business cycle</label><strong id="cycle">—</strong></div>
+    <div class="stat"><label>Tasks approved</label><strong id="completed">0</strong></div>
+    <div class="stat"><label>Deliverables saved</label><strong id="fileCount">0</strong></div>
+    <div class="stat"><label>Lessons remembered</label><strong id="lessonCount">0</strong></div>
   </section>
-  <section class="card span6"><h2>Engine activity</h2><div id="events" class="scroll"><div class="empty">No events logged yet.</div></div></section>
-  <section class="card span6"><h2>Workspace artifacts</h2><div id="artifacts" class="list"><div class="empty">Generated files will appear here.</div></div><p class="muted small" id="workspacePath"></p></section>
-  <section class="card span12"><div class="row space"><h2 style="margin:0">Engine log</h2><button id="refreshLog">Refresh log</button></div><pre id="log">No engine log yet.</pre></section>
+
+  <section class="content">
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-head"><h2>Mission board</h2><span class="subtle" id="businessName">Choosing a business</span></div>
+        <div class="progress-row"><span id="progressText">Waiting for the first roadmap</span><span id="progressPct">0%</span></div>
+        <div class="progress"><span id="progressBar" style="width:0%"></span></div>
+        <div id="tasks" class="task-list"><div class="empty">The leader is preparing the first mission.</div></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Live activity</h2><span class="subtle">Newest first · refreshes automatically</span></div>
+        <div id="events" class="activity"><div class="empty">Waiting for the first agent event…</div></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Deliverables</h2><span class="subtle" id="workspaceLabel">Saved on this PC</span></div>
+        <div id="artifacts" class="deliverables"><div class="empty">Agent-created files will appear here. Open or download each deliverable.</div></div>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-head"><h2>Agent roster</h2><span class="subtle" id="crewCount">0 roles scheduled</span></div>
+        <div id="crew" class="roster"><div class="empty">Roles appear after the CEO creates a roadmap.</div></div>
+        <p class="note">The CEO schedules specialist roles against roadmap tasks. The role marked WORKING is the one executing right now; this is not a claim that every role runs in parallel.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>The North Face</h2><span class="subtle">Persistent learning</span></div>
+        <div class="memory-grid">
+          <div class="memory-stat"><small>Lessons</small><strong id="memoryLessons">0</strong></div>
+          <div class="memory-stat"><small>Task reviews</small><strong id="memoryReviews">0</strong></div>
+          <div class="memory-stat"><small>Mistake patterns</small><strong id="memoryMistakes">0</strong></div>
+          <div class="memory-stat"><small>Postmortems</small><strong id="memoryPostmortems">0</strong></div>
+        </div>
+        <p class="note" id="memoryUpdated">Lessons are saved after reviews and business outcomes.</p>
+      </section>
+    </div>
+  </section>
+
+  <details class="dev">
+    <summary>Technical log (for troubleshooting)</summary>
+    <pre id="log">No engine log yet.</pre>
+  </details>
 </main>
+
 <script>
 const $=id=>document.getElementById(id);
-async function api(path,method="GET",body){const r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||"HTTP "+r.status);return d}
-function esc(s){return String(s??"")}
-function tag(s){const n=document.createElement("span");n.className="tag "+esc(s).toLowerCase().replace(/[^a-z_]/g,"");n.textContent=s||"unknown";return n}
-function item(title,meta,body){const n=document.createElement("div");n.className="item";const top=document.createElement("div");top.className="itemtop";const h=document.createElement("strong");h.textContent=title||"Untitled";top.append(h);if(meta)top.append(tag(meta));n.append(top);if(body){const p=document.createElement("p");p.textContent=body;n.append(p)}return n}
-function renderList(id,items,empty,mapper){const box=$(id);box.replaceChildren();if(!items||!items.length){const p=document.createElement("div");p.className="empty";p.textContent=empty;box.append(p);return}for(const x of items)box.append(mapper(x))}
-async function refresh(){
- try{
-  const s=await api("/api/local/state"),tasks=s.tasks||[],done=tasks.filter(t=>t.status==="completed").length,failed=tasks.filter(t=>t.status==="failed").length,retry=tasks.filter(t=>t.status==="retry").length,total=tasks.length;
-  $("status").innerHTML='<i class="statusdot '+(s.running?"on":"")+'"></i>'+(s.running?"Autonomy running":"Engine stopped");
-  $("start").disabled=!!s.running;$("stop").disabled=!s.running;$("once").disabled=!!s.running;
-  $("businessName").textContent=s.business?.name||"No business selected yet";
-  $("businessInfo").textContent=s.business?(s.business.validation||s.business.problem||"Opportunity selected; roadmap in progress."):"Start the local engine to let the leader select and validate an opportunity.";
-  $("cycleTag").textContent="Cycle "+(s.cycle||0);$("cycleValue").textContent=s.business_completed?"Review":"Executing";
-  $("progressValue").textContent=done+" / "+total;$("completedValue").textContent=done;$("retryValue").textContent=retry+" / "+failed;
-  $("progressBar").style.width=(total?Math.round(done/total*100):0)+"%";
-  $("successMetric").textContent=s.roadmap?.success_metric?"Success metric: "+s.roadmap.success_metric:"Success metric will appear after the leader creates a roadmap.";
-  renderList("tasks",tasks,"No roadmap yet. Start autonomy or run one cycle.",t=>item(t.title||t.id,t.status,(t.agent_role||"agent")+" • priority "+(t.priority??"—")+(t.last_error?"\nRetry note: "+t.last_error:"")+(t.output?.summary?"\n"+t.output.summary:"")));
-  const m=s.memory||{};$("memoryLessons").textContent=(m.lessons||[]).length;$("memoryReviews").textContent=(m.task_reviews||[]).length;$("memoryMistakes").textContent=(m.mistake_patterns||[]).length;$("memoryPostmortems").textContent=(m.business_postmortems||[]).length;$("memoryUpdated").textContent=m.updated_at?"Last memory update: "+new Date(m.updated_at).toLocaleString():"Memory file will be created after the first review.";
-  renderList("lessons",m.lessons||[],"No lessons saved yet.",x=>item(x.lesson||x.key,"×"+(x.count||1),x.latest_context||x.source||""));
-  renderList("mistakes",m.mistake_patterns||[],"No repeated mistake patterns yet.",x=>item(x.root_cause||x.key,"×"+(x.count||1),(x.examples||[]).join(", ")));
-  const ev=$("events");ev.replaceChildren();if(!(s.events||[]).length){ev.textContent="No events logged yet."}else for(const e of s.events){const row=document.createElement("div");row.className="event";const time=document.createElement("time");time.textContent=e.at?new Date(e.at).toLocaleTimeString():"";const msg=document.createElement("div");msg.textContent=e.event+" "+Object.entries(e).filter(([k])=>k!=="at"&&k!=="event").map(([k,v])=>k+": "+(typeof v==="string"?v:JSON.stringify(v))).join(" · ");row.append(time,msg);ev.append(row)}
-  renderList("artifacts",s.artifacts||[],"No workspace files yet.",f=>item(f,"FILE","Saved locally in the workspace folder."));
-  $("workspacePath").textContent="Workspace: "+(s.workspace||"");
- }catch(e){$("status").textContent="Dashboard error";$("businessInfo").textContent=e.message}
+async function api(path,method="GET"){
+  const response=await fetch(path,{method,headers:{"Content-Type":"application/json"}});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(data.error||("HTTP "+response.status));
+  return data;
 }
-async function action(path,msg){try{await api(path,"POST");$("businessInfo").textContent=msg;await refresh()}catch(e){alert(e.message)}}
-$("start").onclick=()=>action("/api/local/start","Autonomy started.");
-$("stop").onclick=()=>action("/api/local/stop","Autonomy stopped safely; progress is saved.");
-$("once").onclick=()=>action("/api/local/once","One engine cycle finished.");
-async function loadLog(){try{$("log").textContent=(await api("/api/local/log")).text||"No engine log yet."}catch(e){$("log").textContent=e.message}}
-$("refreshLog").onclick=loadLog;
-refresh();loadLog();setInterval(()=>{refresh();loadLog()},5000);
+function addEmpty(parent,message){
+  const node=document.createElement("div");node.className="empty";node.textContent=message;parent.append(node);
+}
+function prettyRole(role){
+  return String(role||"agent").replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+}
+function eventTitle(e){
+  const d=e||{},role=prettyRole(d.role||d.agent_role||"");
+  const map={
+    market_research_started:"The house started market research",
+    opportunity_chosen:"The CEO selected a business opportunity",
+    roadmap_created:"The CEO planned the next mission",
+    agent_task_started:role+" started a task",
+    agent_request_started:role+" is working with "+String(d.provider||"an AI model"),
+    agent:role+" received a model response",
+    fallback:"Switching provider after an error",
+    provider_cooldown:"Provider cooling down",
+    fallback_tavily_search:"Gathered fresh web evidence",
+    artifact_created:"A deliverable was saved",
+    leader_review_started:"The CEO is reviewing the work",
+    leader_review_completed:"The CEO finished the review",
+    groq_fast_review:"Groq completed a fast review",
+    groq_fast_review_error:"Groq fast review unavailable",
+    task_retry:"Task sent back for improvement",
+    task_completed:"Task approved",
+    task_failed:"Task failed review",
+    task_requeued_after_error:"Interrupted task queued for retry",
+    north_face_task_learned:"The North Face saved a lesson",
+    north_face_business_postmortem:"Business postmortem saved",
+    cycle_error:"The engine hit an error",
+    activity:"Agent activity"
+  };
+  let title=map[d.event]||String(d.event||"Engine event").replace(/_/g," ");
+  if(d.event==="artifact_created"&&d.path)title="Saved deliverable: "+d.path;
+  if(d.event==="task_completed"&&d.task)title="Approved: "+d.task;
+  if(d.event==="agent_task_started"&&d.task)title=role+" started: "+d.task;
+  if(d.event==="activity"&&d.message)title=d.message;
+  return title;
+}
+function eventDetail(e){
+  const parts=[];
+  for(const [key,value] of Object.entries(e||{})){
+    if(["at","event","message","path","task","role","provider"].includes(key))continue;
+    if(value===null||value===undefined||value==="")continue;
+    parts.push(key.replace(/_/g," ")+": "+(typeof value==="string"?value:JSON.stringify(value)));
+  }
+  if(e.path)parts.push(e.path);
+  if(e.provider)parts.push("Provider: "+e.provider);
+  if(e.task)parts.push("Task: "+e.task);
+  return parts.join(" · ");
+}
+function makeTask(t){
+  const box=document.createElement("article");box.className="task"+(t.status==="running"?" working":"");
+  const top=document.createElement("div");top.className="task-top";
+  const title=document.createElement("div");title.className="task-title";title.textContent=t.title||t.id||"Untitled task";
+  const badge=document.createElement("span");badge.className="badge "+String(t.status||"pending").toLowerCase();badge.textContent=t.status||"pending";
+  top.append(title,badge);box.append(top);
+  const meta=document.createElement("div");meta.className="task-meta";meta.textContent=prettyRole(t.agent_role)+" · priority "+(t.priority??"—")+" · attempt "+(t.attempts||0);box.append(meta);
+  if(t.objective){const objective=document.createElement("div");objective.className="task-objective";objective.textContent=t.objective;box.append(objective);}
+  if(t.last_error){const error=document.createElement("div");error.className="task-objective";error.textContent="Next fix: "+t.last_error;box.append(error);}
+  if(t.output&&t.output.summary){const summary=document.createElement("div");summary.className="task-objective";summary.textContent=String(t.output.summary).slice(0,360);box.append(summary);}
+  return box;
+}
+function makeFile(file){
+  const row=document.createElement("div");row.className="file";
+  const icon=document.createElement("div");icon.className="file-icon";icon.textContent=(file.name.split(".").pop()||"FILE").slice(0,4).toUpperCase();
+  const main=document.createElement("div");main.className="file-main";
+  const open=document.createElement("a");open.textContent=file.name;open.target="_blank";open.rel="noopener";
+  const parts=file.path.split("/").map(encodeURIComponent).join("/");
+  open.href="/api/local/artifact/"+parts;
+  const meta=document.createElement("small");meta.textContent=file.path+" · "+formatBytes(file.size);
+  main.append(open,meta);
+  const download=document.createElement("a");download.className="file-download";download.textContent="Download";download.href=open.href+"?download=1";
+  row.append(icon,main,download);return row;
+}
+function formatBytes(bytes){
+  if(!bytes)return "0 B";
+  if(bytes<1024)return bytes+" B";
+  if(bytes<1048576)return (bytes/1024).toFixed(1)+" KB";
+  return (bytes/1048576).toFixed(1)+" MB";
+}
+function render(){
+  api("/api/local/state").then(s=>{
+    const tasks=s.tasks||[],files=s.artifacts||[],events=s.events||[],memory=s.memory||{};
+    const completed=tasks.filter(t=>t.status==="completed").length;
+    const total=tasks.length,active=tasks.find(t=>t.status==="running");
+    const running=!!s.running,enabled=!!s.autonomy_enabled;
+    $("headerStatus").textContent=running?"AUTONOMY ONLINE":(enabled?"WORKER STARTING":"STOPPED BY YOU");
+    $("headerDot").className="dot"+(running?" on":"");
+    $("liveDot").className="dot"+(running?" on":"");
+    $("resume").classList.toggle("hidden",enabled||running);
+    $("stop").classList.toggle("hidden",!enabled&&!running);
+    $("stop").disabled=!running;
+    $("heroTitle").textContent=running?"Your AI team is working.":"Autonomy is paused.";
+    $("heroText").textContent=running?"Research, planning, execution, CEO reviews and learning are running locally. This page is only the control room; closing the tab does not stop the worker.":"You stopped the house. Your saved work is still in the workspace. Resume when you want the agents to continue.";
+    const activity=s.activity||{};
+    const role=active?prettyRole(active.agent_role):prettyRole(activity.role||"");
+    $("activeAgent").textContent=active?role+" · WORKING":(running?(activity.message||"Between tasks — preparing the next step"):(enabled?"Starting local worker":"Stopped by you"));
+    $("activeTask").textContent=active?(active.title||active.id):(activity.message||"The worker status will update automatically.");
+    $("cycle").textContent=s.cycle||0;
+    $("completed").textContent=completed;
+    $("fileCount").textContent=files.length;
+    $("lessonCount").textContent=(memory.lessons||[]).length;
+    $("businessName").textContent=s.business?.name||"Opportunity research in progress";
+    const percent=total?Math.round(completed/total*100):0;
+    $("progressText").textContent=total?(completed+" of "+total+" tasks approved"):"Waiting for the CEO to create the roadmap";
+    $("progressPct").textContent=percent+"%";
+    $("progressBar").style.width=percent+"%";
+
+    const tasksBox=$("tasks");tasksBox.replaceChildren();
+    if(!tasks.length)addEmpty(tasksBox,"The leader is preparing the first mission. You should see its tasks here as soon as the roadmap is saved.");
+    else tasks.forEach(t=>tasksBox.append(makeTask(t)));
+
+    const roles={};
+    tasks.forEach(t=>{
+      const key=t.agent_role||"agent";
+      if(!roles[key])roles[key]={total:0,done:0,working:0};
+      roles[key].total++;
+      if(t.status==="completed")roles[key].done++;
+      if(t.status==="running")roles[key].working++;
+    });
+    const crew=$("crew");crew.replaceChildren();
+    const roleEntries=Object.entries(roles);
+    $("crewCount").textContent=roleEntries.length+" specialist roles";
+    if(!roleEntries.length)addEmpty(crew,"The CEO will assign specialists after choosing a business.");
+    roleEntries.forEach(([name,count])=>{
+      const row=document.createElement("div");row.className="role";
+      const left=document.createElement("div");
+      const title=document.createElement("div");title.className="role-name";title.textContent=prettyRole(name);
+      const detail=document.createElement("div");detail.className="role-meta";detail.textContent=count.done+" of "+count.total+" tasks approved";
+      left.append(title,detail);
+      const right=document.createElement("div");right.className="role-count";right.textContent=count.working?"WORKING":count.done===count.total?"DONE":"QUEUED";
+      if(count.working)right.style.color="var(--cyan)";
+      row.append(left,right);crew.append(row);
+    });
+
+    const activityBox=$("events");activityBox.replaceChildren();
+    if(!events.length)addEmpty(activityBox,"The worker is starting. New activity will appear here while agents research, build and review.");
+    events.slice(0,35).forEach(e=>{
+      const row=document.createElement("div");row.className="event";
+      const time=document.createElement("time");time.textContent=e.at?new Date(e.at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"}):"";
+      const body=document.createElement("div");
+      const title=document.createElement("strong");title.textContent=eventTitle(e);
+      const detail=document.createElement("span");detail.textContent=e.message||eventDetail(e);
+      body.append(title,detail);row.append(time,body);activityBox.append(row);
+    });
+
+    const filesBox=$("artifacts");filesBox.replaceChildren();
+    if(!files.length)addEmpty(filesBox,"No files have been created in the workspace yet. Research reports and builder outputs will show up here.");
+    files.slice(0,35).forEach(file=>filesBox.append(makeFile(file)));
+    $("workspaceLabel").textContent=files.length+" files · saved locally";
+    $("memoryLessons").textContent=(memory.lessons||[]).length;
+    $("memoryReviews").textContent=(memory.task_reviews||[]).length;
+    $("memoryMistakes").textContent=(memory.mistake_patterns||[]).length;
+    $("memoryPostmortems").textContent=(memory.business_postmortems||[]).length;
+    $("memoryUpdated").textContent=memory.updated_at?"Last memory update: "+new Date(memory.updated_at).toLocaleString():"Lessons appear after the first completed review.";
+  }).catch(error=>{
+    $("headerStatus").textContent="DASHBOARD ERROR";
+    $("heroText").textContent=error.message;
+  });
+}
+async function refreshLog(){
+  try{$("log").textContent=(await api("/api/local/log")).text||"No engine log yet.";}
+  catch(error){$("log").textContent=error.message;}
+}
+$("stop").addEventListener("click",async()=>{
+  if(!confirm("Stop AI House? It will stay stopped until you press Resume autonomy."))return;
+  $("stop").disabled=true;
+  try{await api("/api/local/stop","POST");await render();}
+  catch(error){alert(error.message);$("stop").disabled=false;}
+});
+$("resume").addEventListener("click",async()=>{
+  $("resume").disabled=true;
+  try{await api("/api/local/start","POST");await render();}
+  catch(error){alert(error.message);$("resume").disabled=false;}
+});
+render();
+setInterval(render,2500);
+setInterval(()=>{if(document.querySelector("details.dev").open)refreshLog();},4000);
+document.querySelector("details.dev").addEventListener("toggle",e=>{if(e.target.open)refreshLog();});
 </script>
 </body>
 </html>
