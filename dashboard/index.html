@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent House</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f5f6f8; color: #1d1f23; }
+  header { background: #1d3557; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  main { padding: 16px 20px; display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+  section { background: #fff; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  section.wide { grid-column: 1 / -1; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #eceef2; vertical-align: top; }
+  .status { padding: 2px 6px; border-radius: 4px; background: #eceef2; white-space: nowrap; }
+  .done { background: #d8f5e1; }
+  .failed, .blocked { background: #fbd9d9; }
+  .running, .planning, .pending { background: #fff1c2; }
+  .waiting_approval, .needs_clarification { background: #ffe0b8; }
+  button { padding: 6px 12px; border: 0; border-radius: 6px; cursor: pointer; background: #1d3557; color: #fff; }
+  button.secondary { background: #6b7280; }
+  button.danger { background: #b42318; }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=text] { width: 70%; padding: 6px; }
+  .muted { color: #6b7280; font-size: 12px; }
+  pre { white-space: pre-wrap; font-size: 12px; background: #f5f6f8; padding: 8px; border-radius: 6px; max-height: 220px; overflow: auto; }
+  .pill { font-size: 12px; padding: 3px 8px; border-radius: 999px; }
+  .on { background: #d8f5e1; }
+  .off { background: #fbd9d9; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent House</h1>
+  <span id="room" class="pill off">room: ?</span>
+  <button id="toggleRoom" class="secondary">Toggle room</button>
+  <button id="step">Run one step</button>
+</header>
+
+<main>
+  <section class="wide">
+    <h2>Add a goal</h2>
+    <form id="goalForm">
+      <input type="text" id="goalText" maxlength="1000" required
+             placeholder="e.g. Find three free AI tools for writing and list their free-tier limits with sources.">
+      <button type="submit">Add goal</button>
+    </form>
+    <p class="muted" id="stepMsg"></p>
+  </section>
+
+  <section>
+    <h2>Waiting for your approval</h2>
+    <div id="approvals"></div>
+  </section>
+
+  <section>
+    <h2>Lessons learned</h2>
+    <div id="lessons"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Goals</h2>
+    <div id="goals"></div>
+  </section>
+
+  <section class="wide">
+    <h2>Recent tasks</h2>
+    <div id="tasks"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Builds elements with textContent, so model output can never run as HTML.
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) {
+    if (c == null || c === false) continue;
+    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return node;
+}
+
+function pill(status) {
+  return el("span", { class: `status ${status}` }, status);
+}
+
+function table(headers, rows) {
+  return el("table", {},
+    el("thead", {}, el("tr", {}, ...headers.map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...rows.map((r) => el("tr", {}, ...r.map((c) => el("td", {}, c))))));
+}
+
+async function api(path, method = "GET", body) {
+  const r = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+async function decide(taskId, approve) {
+  try {
+    await api(`/api/approvals/${taskId}`, "POST", { approve });
+  } catch (e) {
+    alert(e.message);
+  }
+  refresh();
+}
+
+function renderApprovals(s) {
+  const box = $("approvals");
+  box.replaceChildren();
+  if (!s.approvals.length) {
+    box.append(el("p", { class: "muted" }, "Nothing waiting."));
+    return;
+  }
+  for (const a of s.approvals) {
+    const task = s.tasks.find((t) => t.id === a.task_id);
+    box.append(el("div", { style: "margin-bottom:12px" },
+      el("div", {}, task ? task.instruction : a.reason),
+      el("div", { class: "muted" }, `task ${a.task_id}`),
+      el("div", { style: "margin-top:6px" },
+        el("button", { onclick: () => decide(a.task_id, true) }, "Approve"), " ",
+        el("button", { class: "danger", onclick: () => decide(a.task_id, false) }, "Reject"))));
+  }
+}
+
+function renderLessons(s) {
+  const box = $("lessons");
+  box.replaceChildren();
+  if (!s.lessons.length) {
+    box.append(el("p", { class: "muted" }, "No lessons yet. One is written when a goal finishes."));
+    return;
+  }
+  for (const l of s.lessons) {
+    box.append(el("div", { style: "margin-bottom:10px" },
+      el("div", {}, pill(l.outcome), " ", el("strong", {}, l.goal)),
+      el("div", { class: "muted" }, l.lesson)));
+  }
+}
+
+function renderGoals(s) {
+  const box = $("goals");
+  box.replaceChildren();
+  if (!s.goals.length) {
+    box.append(el("p", { class: "muted" }, "No goals yet. Add one above."));
+    return;
+  }
+  box.append(table(["Goal", "Status", "Note"],
+    s.goals.map((g) => [g.text, pill(g.status), g.question || ""])));
+}
+
+function renderTasks(s) {
+  const box = $("tasks");
+  box.replaceChildren();
+  if (!s.tasks.length) {
+    box.append(el("p", { class: "muted" }, "No tasks yet."));
+    return;
+  }
+  box.append(table(["Status", "Agent", "Instruction", "Provider", "Review", "Output"],
+    s.tasks.map((t) => [
+      pill(t.status),
+      t.agent_id,
+      t.instruction,
+      t.provider || "",
+      t.review ? t.review.verdict : "",
+      t.output_preview
+        ? el("details", {}, el("summary", {}, "show"), el("pre", {}, t.output_preview))
+        : (t.error ? el("span", { class: "muted" }, t.error.slice(0, 200)) : ""),
+    ])));
+}
+
+async function refresh() {
+  try {
+    const s = await api("/api/state");
+    $("room").textContent = s.room_active ? "room: on" : "room: off";
+    $("room").className = `pill ${s.room_active ? "on" : "off"}`;
+    renderApprovals(s);
+    renderLessons(s);
+    renderGoals(s);
+    renderTasks(s);
+  } catch (e) {
+    $("stepMsg").textContent = "Cannot reach the server: " + e.message;
+  }
+}
+
+$("goalForm").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const text = $("goalText").value.trim();
+  if (!text) return;
+  try {
+    await api("/api/goals", "POST", { text });
+    $("goalText").value = "";
+  } catch (e) {
+    alert(e.message);
+  }
+  refresh();
+};
+
+$("toggleRoom").onclick = async () => {
+  try {
+    const s = await api("/api/state");
+    await api("/api/room", "POST", { active: !s.room_active });
+  } catch (e) {
+    alert(e.message);
+  }
+  refresh();
+};
+
+$("step").onclick = async () => {
+  const btn = $("step");
+  btn.disabled = true;
+  $("stepMsg").textContent = "Running one step...";
+  try {
+    const r = await api("/api/step", "POST");
+    $("stepMsg").textContent = r.did_work ? "Step ran." : "Nothing to do.";
+  } catch (e) {
+    $("stepMsg").textContent = "Error: " + e.message;
+  }
+  btn.disabled = false;
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
