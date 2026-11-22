@@ -167,7 +167,7 @@ def ask(role,prompt):
  raise RuntimeError("No available "+("leader" if role=="orchestrator" else "worker")+" provider: "+" | ".join(errors))
 def search(q):
  if not T:return []
- r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":q[:300],"search_depth":"advanced","max_results":5})
+ r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":q[:300],"search_depth":"advanced","max_results":5},timeout=15)
  if r.status_code>=400:return []
  return [{"title":x.get("title",""),"url":x.get("url",""),"content":x.get("content","")[:700],"published_date":x.get("published_date") or x.get("published") or x.get("date")} for x in r.json().get("results",[])]
 def opportunity():
@@ -420,7 +420,13 @@ def replan(s):
 def build(s):
  if not s.get("roadmap"):create_roadmap(s)
  task=select_task(s)
- if task=="WAIT":log("leader_waiting_on_dependencies");return
+ if task=="WAIT":
+  failed=[t for t in s["roadmap"]["tasks"] if t.get("status") in ("failed","blocked")]
+  pending=[t for t in s["roadmap"]["tasks"] if t.get("status") in ("pending","retry")]
+  if failed and pending:
+   log("dependency_blocked_replan",failed=[x.get("id") for x in failed],pending=[x.get("id") for x in pending])
+   replan(s);return
+  log("leader_waiting_on_dependencies",tasks=[{"id":x.get("id"),"status":x.get("status"),"depends_on":x.get("depends_on",[])} for x in s["roadmap"]["tasks"]);return
  if task=="REPLAN":replan(s);return
  if task is None:
   if any(t["status"]!="completed" for t in s["roadmap"]["tasks"]):replan(s)
@@ -462,7 +468,8 @@ def cycle(s):
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
  if not any((G,H,M,N)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
- if not T:print("TAVILY_API_KEY missing: market research will be without web search.")
+ if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T))
  print("Workspace:",WORK);s=state()
  recovered=[]
  for task in (s.get("roadmap") or {}).get("tasks",[]):
