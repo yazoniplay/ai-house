@@ -174,8 +174,15 @@ def select_task(s):
  return "WAIT"
 def north_face_task_learning(s,t,status,review,output):
  prompt=("THE NORTH FACE task reflection — highest priority. Review this attempt, including retries and failures. Identify the actual root cause, not a generic slogan. What should the next agent do differently? Return JSON with root_cause, lesson, improvement_rule (an operational rule that changes future behavior), and confidence (low/medium/high). Task: "+json.dumps(t,ensure_ascii=False)+"\nStatus: "+status+"\nLeader review: "+json.dumps(review,ensure_ascii=False)+"\nActual output: "+json.dumps(output,ensure_ascii=False)[:10000])
- learning=leader_json(prompt)
- north_face_record_task(SD/"north_face.json",t,status,review,learning,str(output.get("summary",""))[:1200])
+ try:
+  learning=leader_json(prompt)
+ except Exception as e:
+  issues=review.get("issues",[])
+  if not isinstance(issues,list):issues=[str(issues)]
+  fallback="Leader reflection call failed: "+str(e)[:180]
+  learning={"root_cause":fallback,"lesson":"Preserve the task review and retry learning even if the reflection model call fails.","improvement_rule":"On reflection-call failure, persist a deterministic fallback lesson and continue; never leave the task stuck in running state.","confidence":"low"}
+ learning_status=status
+ north_face_record_task(SD/"north_face.json",t,learning_status,review,learning,str(output.get("summary",""))[:1200])
  log("north_face_task_learned",task=t.get("id"),status=status,root_cause=str(learning.get("root_cause",""))[:180])
 def run_roadmap_task(s,t):
  b=s["business"];role=t["agent_role"];attempt=int(t.get("attempts",0))+1
