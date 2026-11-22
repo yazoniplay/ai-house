@@ -13,6 +13,9 @@ Search tasks (input.needs_search = true):
   3. Ollama search results, written up by Token Harbor.
   4. Token Harbor with no search, output marked unverified.
 
+The reviewer never searches. It judges the output against the sources the
+worker retrieved.
+
 Usage:
   python worker.py          # run one task (or exit if none pending)
   python worker.py --loop   # keep running, polling every 10 seconds
@@ -308,14 +311,17 @@ def build_prompt(task, deps):
     return "\n".join(lines)
 
 
-def run_review(task, output_text, used_tools):
+def run_review(task, output_text, used_tools, sources):
     """Ask the reviewer agent for a verdict. Returns (review dict, provider)."""
     reviewer = get_agent("reviewer")
     checks = (task.get("input") or {}).get("done_when") or []
+    source_lines = "\n".join(f"- {s.get('title', '')} ({s.get('url', '')})" for s in sources) or "none"
     prompt = (
         f"Task: {task['instruction']}\n"
         f"Done when:\n" + "\n".join(f"- {c}" for c in checks) + "\n\n"
-        f"Built-in tools used for this output: {used_tools}\n\n"
+        f"Built-in tools used for this output: {used_tools}\n"
+        f"Search results were retrieved by the worker before writing. You cannot search; "
+        f"judge the output against these sources and do not ask for another search:\n{source_lines}\n\n"
         f"<task_output>\n{output_text}\n</task_output>"
     )
     result = complete(reviewer, reviewer.get("system_prompt") or "", prompt)
@@ -370,7 +376,7 @@ def run_task(task):
         "fallback_notes": result["notes"],
     })
 
-    review, review_provider = run_review(task, result["text"], result["used_tools"])
+    review, review_provider = run_review(task, result["text"], result["used_tools"], result["sources"])
     # The review_gate trigger reads this verdict and sets done, pending (retry) or blocked.
     set_task(tid, review=review)
     log(tid, "review_written", {"verdict": review["verdict"], "provider": review_provider})
