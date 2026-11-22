@@ -426,7 +426,7 @@ def build(s):
   if failed and pending:
    log("dependency_blocked_replan",failed=[x.get("id") for x in failed],pending=[x.get("id") for x in pending])
    replan(s);return
-  log("leader_waiting_on_dependencies",tasks=[{"id":x.get("id"),"status":x.get("status"),"depends_on":x.get("depends_on",[])} for x in s["roadmap"]["tasks"]);return
+  log("leader_waiting_on_dependencies",tasks=[{"id":x.get("id"),"status":x.get("status"),"depends_on":x.get("depends_on",[])} for x in s["roadmap"]["tasks"]]);return
  if task=="REPLAN":replan(s);return
  if task is None:
   if any(t["status"]!="completed" for t in s["roadmap"]["tasks"]):replan(s)
