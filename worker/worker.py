@@ -1,14 +1,18 @@
 """Worker for the agent house.
 
-Claims one pending task, runs it with the agent's Gemini config, stores the
-output, then has the reviewer agent check it. The review_gate trigger in the
-database decides retry or block from the review verdict.
+Claims one pending task, runs it with the agent's model, stores the output,
+then has the reviewer agent check it. The review_gate trigger in the database
+decides retry or block from the review verdict.
+
+Model order: Gemini first. If Gemini's quota is exhausted, Token Harbor is used
+(OpenAI-compatible, no built-in tools, outputs are marked used_tools=false).
 
 Usage:
   python worker.py          # run one task (or exit if none pending)
   python worker.py --loop   # keep running, polling every 10 seconds
 
 Needs env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY, GEMINI_API_KEY.
+Optional: TOKEN_HARBOR_KEY, TOKEN_HARBOR_MODEL (default deepseek-v4.1-flash:free).
 """
 
 import json
@@ -24,6 +28,9 @@ SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+TH_URL = "https://tokenharbor.ai/v1/chat/completions"
+TH_KEY = os.environ.get("TOKEN_HARBOR_KEY", "")
+TH_MODEL = os.environ.get("TOKEN_HARBOR_MODEL", "deepseek-v4.1-flash:free")
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 http = httpx.Client(timeout=120)
@@ -66,7 +73,8 @@ def gemini(agent, system, prompt):
     """Call Gemini with the agent's built-in tools.
 
     Returns (text, used_tools). If the tools are rejected, retries once without
-    them and returns used_tools=False so the output can be marked unverified.
+    them. A quota error (429 with 'quota' in the body) is not retried here; it
+    is raised so the caller can fall back to Token Harbor.
     """
     caps = agent.get("capabilities") or {}
     model = caps.get("model", "gemini-3.1-flash-lite")
@@ -83,6 +91,8 @@ def gemini(agent, system, prompt):
     r = None
     for attempt in range(4):
         r = http.post(GEMINI_URL.format(model=model), headers=headers, json=body)
+        if r.status_code == 429 and "quota" in r.text.lower():
+            break
         if r.status_code in RETRY_STATUS:
             time.sleep(5 * 2 ** attempt)
             continue
@@ -97,6 +107,35 @@ def gemini(agent, system, prompt):
     parts = r.json()["candidates"][0]["content"]["parts"]
     text = "".join(p["text"] for p in parts if "text" in p and not p.get("thought"))
     return text, used_tools
+
+
+def token_harbor(system, prompt):
+    """Call Token Harbor's OpenAI-compatible chat endpoint. No built-in tools."""
+    if not TH_KEY:
+        raise RuntimeError("Gemini quota exhausted and TOKEN_HARBOR_KEY is not set")
+    body = {
+        "model": TH_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    r = http.post(TH_URL, headers={"Authorization": f"Bearer {TH_KEY}",
+                                   "Content-Type": "application/json"}, json=body)
+    if r.status_code >= 400:
+        raise RuntimeError(f"Token Harbor error {r.status_code}: {r.text[:300]}")
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def complete(agent, system, prompt):
+    """Returns (text, used_tools, provider). Gemini first, Token Harbor on quota."""
+    try:
+        text, used_tools = gemini(agent, system, prompt)
+        return text, used_tools, "gemini"
+    except RuntimeError as e:
+        if "Gemini error 429" not in str(e):
+            raise
+        return token_harbor(system, prompt), False, "token_harbor"
 
 
 def parse_json(text):
@@ -123,7 +162,7 @@ def build_prompt(task, deps):
 
 
 def run_review(task, output_text, used_tools):
-    """Ask the reviewer agent for a verdict. Returns the review dict."""
+    """Ask the reviewer agent for a verdict. Returns (review dict, provider)."""
     reviewer = get_agent("reviewer")
     checks = (task.get("input") or {}).get("done_when") or []
     prompt = (
@@ -132,17 +171,17 @@ def run_review(task, output_text, used_tools):
         f"Built-in tools used for this output: {used_tools}\n\n"
         f"<task_output>\n{output_text}\n</task_output>"
     )
-    text, _ = gemini(reviewer, reviewer.get("system_prompt") or "", prompt)
+    text, _, provider = complete(reviewer, reviewer.get("system_prompt") or "", prompt)
     review = parse_json(text)
     if not review or str(review.get("verdict", "")).lower() not in ("pass", "partial", "fail"):
-        return {
+        review = {
             "verdict": "fail",
             "checks": [],
             "problems": ["reviewer reply was not valid JSON with a verdict"],
             "fix": "Produce the deliverable exactly as the task describes, with every done_when check met.",
         }
     review["verdict"] = str(review["verdict"]).lower()
-    return review
+    return review, provider
 
 
 def run_task(task):
@@ -161,14 +200,17 @@ def run_task(task):
             "id": f"in.({','.join(task['depends_on'])})",
         })
 
-    text, used_tools = gemini(agent, agent.get("system_prompt") or "", build_prompt(task, deps))
-    set_task(tid, status="done", output={"text": text, "used_tools": used_tools}, finished_at=now())
-    log(tid, "output_written", {"chars": len(text), "used_tools": used_tools})
+    text, used_tools, provider = complete(agent, agent.get("system_prompt") or "",
+                                          build_prompt(task, deps))
+    set_task(tid, status="done",
+             output={"text": text, "used_tools": used_tools, "provider": provider},
+             finished_at=now())
+    log(tid, "output_written", {"chars": len(text), "used_tools": used_tools, "provider": provider})
 
-    review = run_review(task, text, used_tools)
+    review, review_provider = run_review(task, text, used_tools)
     # The review_gate trigger reads this verdict and sets done, pending (retry) or blocked.
     set_task(tid, review=review)
-    log(tid, "review_written", {"verdict": review["verdict"]})
+    log(tid, "review_written", {"verdict": review["verdict"], "provider": review_provider})
 
 
 def run_one():
