@@ -25,6 +25,8 @@ if GFM in ("llama-3.1-8b-instant","llama-3.3-70b-versatile"):GFM="openai/gpt-oss
 HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507")
 NM=os.getenv("NVIDIA_MODEL","moonshotai/kimi-k3.1-pro")
 MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
+TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-v4.1-flash:free")
+OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
 ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","architect":"Product architect. Break the business goal into a coherent MVP architecture and acceptance criteria.","builder":"Senior engineer. Return complete functional files, not TODOs.","growth":"Ethical growth strategist. Draft truthful positioning, organic acquisition and customer feedback assets; no spam.","finance":"Bootstrapped finance analyst. Estimate pricing and unit economics transparently; label every assumption, never invent actual revenue.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness.","orchestrator":"Autonomous leader/orchestrator. Approve quality, reject unsafe actions, and return concrete improvement instructions."}
 HTTP=httpx.Client(timeout=120)
 # Provider cooldowns prevent repeated quota/rate-limit calls while the engine keeps working.
@@ -74,10 +76,28 @@ def obj(t):
   except json.JSONDecodeError:
    continue
  raise ValueError("Model did not return a valid JSON object")
+def ollama_chat(sys,ask):
+ if not OK:raise RuntimeError("OLLAMA_API_KEY missing")
+ if not OM:raise RuntimeError("OLLAMA_MODEL not configured")
+ r=HTTP.post("https://ollama.com/api/chat",headers={"Authorization":"Bearer "+OK,"Content-Type":"application/json"},json={"model":OM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"stream":False,"format":"json"},timeout=60)
+ if r.status_code>=400:raise RuntimeError("ollama "+str(r.status_code)+": "+r.text[:220])
+ try:return r.json()["message"]["content"]
+ except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
+WORKER_ROTATION=[0]
+def provider_order(role):
+ has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM)}
+ if role=="orchestrator":order=["gemini","nvidia","groq","tokenharbor","ollama","hf"]
+ else:
+  base=["nvidia","groq","tokenharbor","gemini","hf","ollama"]
+  i=WORKER_ROTATION[0]%len(base);WORKER_ROTATION[0]+=1
+  order=base[i:]+base[:i]
+ return [p for p in order if has[p]]
 def raw(p,sys,ask,role):
+ if p=="ollama":return ollama_chat(sys,ask)
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
  elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(GFM if role=="fast" else GM)
  elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",HM
+ elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",TM
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
@@ -138,7 +158,7 @@ def ask(role,prompt):
  fallback_evidence=None
  fallback_search_done=False
  # If Gemini is down, every leader/worker call gets fresh Tavily evidence before using a backup model.
- for p in ("gemini","groq","nvidia","hf"):
+ for p in provider_order(role):
   if not provider_available(p):
    remaining=max(1,int(PROVIDER_COOLDOWN[p]-time.monotonic()))
    errors.append(p+":cooldown "+str(remaining)+"s")
@@ -146,7 +166,7 @@ def ask(role,prompt):
    continue
   try:
    request_prompt=prompt
-   if p!="gemini":
+   if p!="gemini" and role=="orchestrator":
     if not fallback_search_done:
      fallback_search_done=True
      try:
@@ -169,7 +189,7 @@ def ask(role,prompt):
     PROVIDER_COOLDOWN[p]=time.monotonic()+cooldown
     log("provider_cooldown",provider=p,role=role,seconds=cooldown,error=str(e)[:180])
    errors.append(p+":"+str(e)[:140])
-   log("fallback",provider=p,role=role,error=str(e)[:140],next_provider={"gemini":"groq","groq":"nvidia","nvidia":"hf","hf":"none"}[p])
+   log("fallback",provider=p,role=role,error=str(e)[:140],next_provider="next available")
  raise RuntimeError("No available "+("leader" if role=="orchestrator" else "worker")+" provider: "+" | ".join(errors))
 def search(q):
  if not T:return []
@@ -211,13 +231,20 @@ def opportunity():
   if not evidence or not key or key in past:continue
   c["evidence"]=evidence;c["sources"]=list(dict.fromkeys(e["url"] for e in evidence));valid.append(c)
  if not valid:return None
- set_activity("opportunity_selection","Strategist is choosing among cited candidates only.","strategist")
+ set_activity("opportunity_selection","Strategist is scoring cited candidates.","strategist")
  try:
-  choice=obj(ask("strategist",'Select one candidate index from the supplied evidence-backed candidates only. Do not invent or rename a business. Return JSON {"candidate_index":0}.\n'+json.dumps(valid,ensure_ascii=False)[:14000]))
-  selected=valid[int(choice.get("candidate_index",0))]
- except Exception as e:log("discovery_selection_error",error=str(e)[:180]);return None
+  choice=obj(ask("strategist",'Score every candidate from 0 to 10 for real demand evidence, low startup cost, and buildability, using only the cited evidence. Then pick the best. Return JSON {"scores":[{"index":0,"score":0,"reason":"..."}],"candidate_index":0}.\n'+json.dumps(valid,ensure_ascii=False)[:14000]))
+  idx=int(choice.get("candidate_index",0))
+  selected=valid[idx]
+ except Exception as e:
+  log("discovery_selection_error",error=str(e)[:180]);return None
+ score=next((int(x.get("score",0)) for x in choice.get("scores",[]) if int(x.get("index",-1))==idx),0)
+ domains={re.sub(r"^https?://(www\.)?","",u).split("/")[0] for u in selected.get("sources",[]) if u}
+ if score<6 or len(domains)<2:
+  log("discovery_rejected_weak",name=selected.get("name"),score=score,domains=len(domains));return None
  key=re.sub(r"[^a-z0-9]+"," ",str(selected.get("name","")).lower()).strip()
  if not key or key in past:return None
+ selected["score"]=score
  selected["sources"]=selected["sources"][:20]
  return selected
 def filesafe(n):
@@ -511,7 +538,7 @@ def cycle(s):
  build(s)
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
- if not any((G,H,M,N)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
+ if not any((G,H,M,N,TK,OK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
  log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T))
  print("Workspace:",WORK);s=state()
