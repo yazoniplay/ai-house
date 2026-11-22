@@ -40,7 +40,7 @@ Put provider keys in `worker/.env` (copy `worker/.env.example` if needed). Never
 
 Provider order is Gemini first, Groq immediately second, NVIDIA third, and Hugging Face last. The main Groq model is `openai/gpt-oss-120b`; Groq fast reasoning and summaries use `openai/gpt-oss-20b`. If the 120B model returns unavailable/overloaded, the worker tries the 20B model before leaving Groq. Old Llama 3.3 70B / Llama 3.1 8B model IDs in an existing `.env` are automatically mapped to the current GPT-OSS model IDs. Gemini, NVIDIA, Groq, Hugging Face, and Tavily settings are configured locally.
 
-Provider errors are handled separately: Gemini quota and temporary 5xx errors receive cooldowns; NVIDIA calls have a shorter timeout; Hugging Face billing/credit errors are paused for 24 hours instead of being retried each cycle. When Gemini is unavailable, the worker runs a fresh Tavily search before using a backup model.
+Provider errors are handled separately: Gemini quota and temporary 5xx errors receive cooldowns; NVIDIA calls have a shorter timeout; Hugging Face billing/credit errors are paused for 24 hours instead of being retried each cycle. When Gemini is unavailable, the worker runs a fresh Tavily search before using a backup model. If all providers are unavailable, the current task is saved and waits without consuming its agent retry allowance; the local loop retries automatically after cooldowns.
 
 Roadmap specialists must return physical deliverable files in the `files` array. The worker writes them under `workspace/`, enforces the exact path from the task deliverable, and sends the saved file content to the CEO for review. Interrupted attempts are retried once and then marked failed instead of looping indefinitely.
 
