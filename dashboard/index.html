@@ -257,8 +257,9 @@ function render(){
     $("headerStatus").textContent=running?"AUTONOMY ONLINE":(enabled?"WORKER STARTING":"STOPPED BY YOU");
     $("headerDot").className="dot"+(running?" on":"");
     $("liveDot").className="dot"+(running?" on":"");
-    $("resume").classList.toggle("hidden",enabled||running);
-    $("stop").classList.toggle("hidden",!enabled&&!running);
+    $("resume").classList.toggle("hidden",running);
+    $("resume").textContent=enabled?"Start worker":"Resume autonomy";
+    $("stop").classList.toggle("hidden",!running);
     $("stop").disabled=!running;
     $("heroTitle").textContent=running?"Your AI team is working.":"Autonomy is paused.";
     $("heroText").textContent=running?"Research, planning, execution, CEO reviews and learning are running locally. This page is only the control room; closing the tab does not stop the worker.":"You stopped the house. Your saved work is still in the workspace. Resume when you want the agents to continue.";
