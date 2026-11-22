@@ -28,7 +28,7 @@ def state():
 def save(s):
  SD.mkdir(parents=True,exist_ok=True);tmp=SF.with_suffix(".tmp");tmp.write_text(json.dumps(s,indent=2,ensure_ascii=False),encoding="utf-8");tmp.replace(SF)
 def obj(t):
- t=t.strip().replace(chr(96)*3,"");a,b=t.find("{"),t.rfind("}")
+ t=t.strip().replace(chr(96)*3+"json","").replace(chr(96)*3,"").strip();a,b=t.find("{"),t.rfind("}")
  if a<0:raise ValueError("Model did not return JSON")
  return json.loads(t[a:b+1])
 def raw(p,sys,ask):
