@@ -1,7 +1,7 @@
 # Status (2026-11-22)
 
 ## Worker and autonomy
-- Worker plans goals, creates dependent tasks, calls configured model providers, writes outputs, runs a reviewer, retries once through the review gate, and records lessons.
+- Worker plans goals, creates dependent tasks, calls configured model providers, writes outputs, has the leader/orchestrator review them, retries once through the review gate, and records lessons.
 - Self-directed autonomy is enabled by default: when the room is active and there is no unfinished goal/task, the leader proposes its own next goal from a standing mission and recent goal/lesson history.
 - Autonomous goals are tagged `AUTONOMOUS:` in the goal text and capped at 4 per UTC day by default.
 - Set `AUTONOMY_ENABLED=false` to disable self-goal generation or `MAX_AUTONOMOUS_GOALS_PER_DAY` to change the daily limit.
@@ -9,7 +9,7 @@
 
 ## Current capability boundary
 - The Supabase worker remains a goal/task planner and text executor. It is not the local computer executor.
-- A new local engine, `worker/autonomous_engine.py`, runs on the owner's PC. It autonomously researches opportunities with Tavily (if configured), selects a business hypothesis, coordinates researcher/strategist/architect/builder/growth/finance/reviewer agents, writes files inside `workspace/`, runs recognized npm test/build/lint or pytest commands, and stores state/logs locally.
+- A new local engine, `worker/autonomous_engine.py`, runs on the owner's PC. It autonomously researches opportunities with Tavily (if configured), selects a business hypothesis, coordinates researcher/strategist/architect/builder/growth/finance agents with the orchestrator as final approver, writes files inside `workspace/`, runs recognized npm test/build/lint or pytest commands, and stores state/logs locally.
 - Local worker model order: Gemini 3.1 Flash Lite first, then Groq, then Hugging Face Inference Router. Keys are loaded from ignored `worker/.env` or environment variables.
 - Model roles: leader/orchestrator uses Gemini 3.5 Flash Lite (`GEMINI_LEADER_MODEL`, default `gemini-3.5-flash-lite`); worker agents use Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL`, default `gemini-3.1-flash-lite`). Local workers try Gemini first, then Groq/Hugging Face fallback; the leader stays on its configured Gemini model.
 - The orchestrator is now the automatic approval and improvement gate: it approves good internal work, rejects unsafe external/destructive tasks, and sends local build outputs back for up to two improvement rounds. Routine safe work no longer waits for the owner.
