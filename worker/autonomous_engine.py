@@ -82,7 +82,7 @@ def raw(p,sys,ask,role):
   worker_model=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite")
   model_id=leader_model if role=="orchestrator" else worker_model
   url=f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
-  r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}]},timeout=55)
+  r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=55)
   if r.status_code>=400:raise RuntimeError(r.text[:220])
   try:return "".join(x.get("text","") for x in r.json()["candidates"][0]["content"]["parts"])
   except Exception as e:raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
