@@ -14,8 +14,8 @@ def envfile(p):
    if x and not x.startswith("#") and "=" in x:
     k,v=x.split("=",1);os.environ.setdefault(k.strip(),v.strip().strip('"').strip("'"))
 envfile(HERE/".env");envfile(ROOT/".env")
-G=os.getenv("GROQ_API_KEY","");H=os.getenv("HF_TOKEN","") or os.getenv("HUGGINGFACEHUB_API_TOKEN","");M=os.getenv("GEMINI_API_KEY","");T=os.getenv("TAVILY_API_KEY","")
-GM=os.getenv("GROQ_MODEL","llama-3.3-70b-versatile");HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507");MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
+G=os.getenv("GROQ_API_KEY","");H=os.getenv("HF_TOKEN","") or os.getenv("HUGGINGFACEHUB_API_TOKEN","");M=os.getenv("GEMINI_API_KEY","");N=os.getenv("NVIDIA_API_KEY","");T=os.getenv("TAVILY_API_KEY","")
+GM=os.getenv("GROQ_MODEL","llama-3.3-70b-versatile");HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507");NM=os.getenv("NVIDIA_MODEL","moonshotai/kimi-k3.1-pro");MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","architect":"Product architect. Break the business goal into a coherent MVP architecture and acceptance criteria.","builder":"Senior engineer. Return complete functional files, not TODOs.","growth":"Ethical growth strategist. Draft truthful positioning, organic acquisition and customer feedback assets; no spam.","finance":"Bootstrapped finance analyst. Estimate pricing and unit economics transparently; label every assumption, never invent actual revenue.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness.","orchestrator":"Autonomous leader/orchestrator. Approve quality, reject unsafe actions, and return concrete improvement instructions."}
 HTTP=httpx.Client(timeout=120)
 # Provider cooldowns prevent repeated quota/rate-limit calls while the engine keeps working.
@@ -64,7 +64,7 @@ def ask(role,prompt):
  leader_instructions=" You are the CEO, chief of staff, architect of execution, and final quality authority. Maintain the goal and success metric; decompose work into atomic dependency-aware tasks; choose agents by skill; prioritize by impact, evidence, urgency, and unblock value; track attempts and progress; verify acceptance criteria; diagnose failures; replan rather than stall; learn from completed cycles; and keep work moving autonomously."
  errors=[]
  # Leader: Gemini first, then Groq, then Hugging Face. Workers use the same resilient order.
- for p in ("gemini","groq","hf"):
+ for p in ("gemini","nvidia","groq","hf"):
   if not provider_available(p):
    remaining=max(1,int(PROVIDER_COOLDOWN[p]-time.monotonic()))
    errors.append(p+":cooldown "+str(remaining)+"s")
@@ -80,7 +80,7 @@ def ask(role,prompt):
     PROVIDER_COOLDOWN[p]=time.monotonic()+cooldown
     log("provider_cooldown",provider=p,role=role,seconds=cooldown,error=str(e)[:180])
    errors.append(p+":"+str(e)[:140])
-   log("fallback",provider=p,role=role,error=str(e)[:140],next_provider="groq" if p=="gemini" else ("hf" if p=="groq" else "none"))
+   log("fallback",provider=p,role=role,error=str(e)[:140],next_provider={"gemini":"nvidia","nvidia":"groq","groq":"hf","hf":"none"}[p])
  raise RuntimeError("No available "+("leader" if role=="orchestrator" else "worker")+" provider: "+" | ".join(errors))
 def search(q):
  if not T:return []
@@ -312,7 +312,7 @@ def cycle(s):
  build(s)
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
- if not any((G,H,M)):print("Add GROQ_API_KEY, HF_TOKEN and/or GEMINI_API_KEY to worker/.env");return 2
+ if not any((G,H,M,N)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: market research will be without web search.")
  print("Workspace:",WORK);s=state()
  while True:
