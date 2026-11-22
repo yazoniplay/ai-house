@@ -8,9 +8,11 @@
 - Worker loop: `python worker.py --loop`; dashboard remains local on `127.0.0.1:8000`.
 
 ## Current capability boundary
-- The existing worker can research, analyze, plan, write, and review text using configured model/search providers.
-- It does not yet have general-purpose file editing, shell execution, browser interaction, or a persistent computer/tool executor. Therefore self-generated goals must stay within text/research deliverables; it cannot yet independently implement code changes or operate external services.
-- The autonomy loop is intentionally serialized: it will not invent another goal while a goal is running, awaiting clarification, or waiting for approval.
+- The Supabase worker remains a goal/task planner and text executor. It is not the local computer executor.
+- A new local engine, `worker/autonomous_engine.py`, runs on the owner's PC. It autonomously researches opportunities with Tavily (if configured), selects a business hypothesis, coordinates researcher/strategist/architect/builder/growth/finance/reviewer agents, writes files inside `workspace/`, runs recognized npm test/build/lint or pytest commands, and stores state/logs locally.
+- Local model fallback order: Groq, Hugging Face Inference Router, then Gemini. Keys are loaded from ignored `worker/.env` or environment variables.
+- Local engine loop: `python worker/autonomous_engine.py --loop`; Windows launcher: `worker/run-autonomous.ps1`.
+- Iterations and opportunity cycles are configurable. The engine can build and test local assets; it does not autonomously spend money, publish, deploy, contact customers, or change accounts. It does not guarantee revenue; customer validation and business performance still need to be measured.
 
 ## Guardrails
 - Room active switch stops work.
