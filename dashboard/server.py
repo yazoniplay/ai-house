@@ -1,119 +1,152 @@
-"""Local dashboard for the agent house. Listens on 127.0.0.1 only.
-
-Run from the dashboard folder:
-  pip install flask
-  python server.py
-Then open http://127.0.0.1:8000
-"""
-
+"""Local-first autonomy dashboard for AI House. Binds to localhost only."""
+import json
 import os
-import re
+import subprocess
 import sys
 import threading
 from pathlib import Path
-
 from flask import Flask, jsonify, request, send_from_directory
 
+ROOT = Path(__file__).resolve().parents[1]
+WORKER_DIR = ROOT / "worker"
+WORKSPACE = Path(os.getenv("AI_HOUSE_WORKSPACE", ROOT / "workspace")).resolve()
+STATE_DIR = WORKSPACE / ".ai-house"
+STATE_FILE = STATE_DIR / "state.json"
+EVENT_FILE = STATE_DIR / "events.jsonl"
+NORTH_FACE_FILE = STATE_DIR / "north_face.json"
+ENGINE = WORKER_DIR / "autonomous_engine.py"
 HERE = Path(__file__).resolve().parent
-WORKER_DIR = HERE.parent / "worker"
-UUID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
-
-
-def load_env(path):
-    """Read worker/.env into the environment, without overriding existing values."""
-    if not path.exists():
-        raise SystemExit(f"Missing {path}. Create worker/.env first.")
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if "=" not in line or line.lstrip().startswith("#"):
-            continue
-        key, value = line.split("=", 1)
-        key, value = key.strip(), value.strip()
-        if value and key not in os.environ:
-            os.environ[key] = value
-
-
-load_env(WORKER_DIR / ".env")
-sys.path.insert(0, str(WORKER_DIR))
-import worker  # noqa: E402  (reads its settings from the environment at import)
-
 app = Flask(__name__)
-step_lock = threading.Lock()
+lock = threading.Lock()
+engine_process = None
+engine_log_handle = None
 
+def read_json(path, fallback):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return fallback
+
+def read_events(limit=80):
+    if not EVENT_FILE.exists():
+        return []
+    try:
+        lines = EVENT_FILE.read_text(encoding="utf-8").splitlines()[-limit:]
+        out = []
+        for line in lines:
+            try:
+                out.append(json.loads(line))
+            except Exception:
+                pass
+        return list(reversed(out))
+    except Exception:
+        return []
+
+def process_running():
+    global engine_process
+    return engine_process is not None and engine_process.poll() is None
 
 @app.get("/")
 def index():
     return send_from_directory(HERE, "index.html")
 
-
-@app.get("/api/state")
-def state():
-    goals = worker.sb("GET", "goals", params={
-        "select": "id,text,status,question,created_at",
-        "order": "created_at.desc", "limit": "20",
-    }) or []
-    raw_tasks = worker.sb("GET", "tasks", params={
-        "select": "id,goal_id,agent_id,status,instruction,error,attempts,output,review,created_at",
-        "order": "created_at.desc", "limit": "40",
-    }) or []
-    tasks = []
-    for t in raw_tasks:
-        out = t.pop("output", None) or {}
-        t["provider"] = out.get("provider")
-        t["output_preview"] = (out.get("text") or "")[:800]
-        tasks.append(t)
-    approvals = worker.sb("GET", "approvals", params={
-        "select": "id,task_id,reason,decision,created_at",
-        "decision": "eq.pending", "order": "created_at.desc",
-    }) or []
-    lessons = worker.sb("GET", "lessons", params={
-        "select": "id,goal,outcome,lesson,created_at",
-        "order": "created_at.desc", "limit": "10",
-    }) or []
-    room = worker.sb("GET", "rooms", params={
-        "select": "active", "id": f"eq.{worker.DEFAULT_ROOM}",
-    }) or [{"active": False}]
-    return jsonify(goals=goals, tasks=tasks, approvals=approvals,
-                   lessons=lessons, room_active=room[0]["active"])
-
-
-@app.post("/api/goals")
-def add_goal():
-    text = str((request.get_json(silent=True) or {}).get("text", "")).strip()
-    if not text or len(text) > 1000:
-        return jsonify(error="goal text must be 1 to 1000 characters"), 400
-    worker.sb("POST", "goals", json={"text": text, "room_id": worker.DEFAULT_ROOM},
-              headers={"Prefer": "return=minimal"})
-    return jsonify(ok=True)
-
-
-@app.post("/api/approvals/<task_id>")
-def decide(task_id):
-    if not UUID_RE.match(task_id):
-        return jsonify(error="bad task id"), 400
-    approve = bool((request.get_json(silent=True) or {}).get("approve"))
-    worker.sb("POST", "rpc/decide_approval", json={"p_task": task_id, "p_approve": approve})
-    return jsonify(ok=True, approved=approve)
-
-
-@app.post("/api/step")
-def step():
-    if not step_lock.acquire(blocking=False):
-        return jsonify(error="a step is already running"), 409
+@app.get("/api/local/state")
+def local_state():
+    state = read_json(STATE_FILE, {})
+    memory = read_json(NORTH_FACE_FILE, {})
+    roadmap = state.get("roadmap") or {}
+    tasks = roadmap.get("tasks") or []
+    events = read_events()
     try:
-        return jsonify(did_work=worker.run_one())
-    except Exception as e:
-        return jsonify(error=str(e)[:500]), 500
-    finally:
-        step_lock.release()
+        artifacts = sorted(
+            str(p.relative_to(WORKSPACE)).replace("\\", "/")
+            for p in WORKSPACE.rglob("*") if p.is_file()
+            and not any(part in (".ai-house", ".git", "node_modules", ".venv", "venv") for part in p.parts)
+        )[:80]
+    except Exception:
+        artifacts = []
+    return jsonify(
+        running=process_running(),
+        configured=bool(os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("HF_TOKEN")),
+        cycle=state.get("cycle", 0),
+        business=state.get("business"),
+        business_completed=state.get("business_completed", False),
+        roadmap=roadmap,
+        tasks=tasks,
+        lessons=state.get("lessons", [])[-20:],
+        last_postmortem=state.get("last_business_postmortem"),
+        memory={
+            "lessons": memory.get("lessons", [])[-25:],
+            "task_reviews": memory.get("task_reviews", [])[-30:],
+            "mistake_patterns": memory.get("mistake_patterns", [])[:12],
+            "business_postmortems": memory.get("business_postmortems", [])[-10:],
+            "updated_at": memory.get("updated_at"),
+        },
+        events=events,
+        artifacts=artifacts,
+        workspace=str(WORKSPACE),
+    )
 
+@app.post("/api/local/start")
+def start_engine():
+    global engine_process, engine_log_handle
+    with lock:
+        if process_running():
+            return jsonify(ok=True, running=True, message="Autonomy is already running.")
+        if not ENGINE.exists():
+            return jsonify(error=f"Engine file not found: {ENGINE}"), 404
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        engine_log_handle = (STATE_DIR / "engine.log").open("a", encoding="utf-8")
+        engine_process = subprocess.Popen(
+            [sys.executable, str(ENGINE), "--loop"],
+            cwd=str(ROOT), stdout=engine_log_handle, stderr=subprocess.STDOUT,
+            env=os.environ.copy(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return jsonify(ok=True, running=True, pid=engine_process.pid)
 
-@app.post("/api/room")
-def room():
-    active = bool((request.get_json(silent=True) or {}).get("active"))
-    worker.sb("PATCH", "rooms", params={"id": f"eq.{worker.DEFAULT_ROOM}"},
-              json={"active": active}, headers={"Prefer": "return=minimal"})
-    return jsonify(ok=True, active=active)
+@app.post("/api/local/stop")
+def stop_engine():
+    global engine_process, engine_log_handle
+    with lock:
+        if not process_running():
+            return jsonify(ok=True, running=False, message="Autonomy is already stopped.")
+        engine_process.terminate()
+        try:
+            engine_process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            engine_process.kill()
+            engine_process.wait(timeout=5)
+        if engine_log_handle:
+            engine_log_handle.close()
+            engine_log_handle = None
+        return jsonify(ok=True, running=False)
 
+@app.post("/api/local/once")
+def run_once():
+    global engine_process, engine_log_handle
+    with lock:
+        if process_running():
+            return jsonify(error="Stop continuous autonomy before running a single cycle."), 409
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        log_handle = (STATE_DIR / "engine.log").open("a", encoding="utf-8")
+        try:
+            result = subprocess.run(
+                [sys.executable, str(ENGINE), "--once"], cwd=str(ROOT),
+                stdout=log_handle, stderr=subprocess.STDOUT, env=os.environ.copy(), timeout=900,
+            )
+            return jsonify(ok=result.returncode == 0, returncode=result.returncode)
+        except subprocess.TimeoutExpired:
+            return jsonify(error="One cycle exceeded 15 minutes. Check the engine log."), 504
+        finally:
+            log_handle.close()
+
+@app.get("/api/local/log")
+def local_log():
+    path = STATE_DIR / "engine.log"
+    try:
+        return jsonify(text="\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-160:]))
+    except Exception:
+        return jsonify(text="No engine log yet. Start autonomy or run one cycle.")
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8000, debug=False)
