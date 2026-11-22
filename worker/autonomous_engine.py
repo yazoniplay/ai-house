@@ -283,6 +283,7 @@ def run_roadmap_task(s,t):
  if decision=="improve" and attempt<=2:
   t["status"]="retry";t["last_error"]=str(review.get("fix_instruction",""))[:1200];save(s)
   log("task_retry",task=t["id"],attempt=attempt,score=review.get("score"))
+  set_activity("task_retry_queued","The CEO requested an improvement; the agent will retry it automatically.",role,t.get("id"))
   return
  if decision=="approve":
   t["status"]="completed";t["output"]=output;t["review"]=review
@@ -312,7 +313,11 @@ def retry_task(s,t):
   log("artifact_created",path=str(artifact.relative_to(WORK)).replace("\\","/"),bytes=artifact.stat().st_size,role=role,task=t.get("id"))
   output={"summary":revised[:9000],"files":[str(artifact.relative_to(WORK)).replace("\\","/")],"sources":[x.get("url","") for x in sources]}
  check=tests() if role=="builder" else []
- review=leader_json("Final re-review of the task retry. Verify every acceptance criterion using the actual revised output, files, and checks. Task: "+json.dumps(t,ensure_ascii=False)+"\nRevised output: "+json.dumps(output,ensure_ascii=False)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
+ set_activity("leader_review","The CEO is re-checking the corrected deliverable.","orchestrator",t.get("id"))
+ log("leader_review_started",task=t.get("id"),retry=True)
+ log("leader_review_completed",task=t.get("id"),decision=review.get("decision"),score=review.get("score"),retry=True)
+ if str(review.get("decision","")).lower()=="approve":
+json.dumps(t,ensure_ascii=False)+"\nRevised output: "+json.dumps(output,ensure_ascii=False)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
  if str(review.get("decision","")).lower()=="approve":
   t["status"]="completed";t["output"]=output;t["review"]=review
  else:t["status"]="failed";t["output"]=output;t["review"]=review;t["last_error"]=str(review.get("reason","retry failed"))[:1200]
@@ -362,6 +367,7 @@ def cycle(s):
   set_activity("market_research","The house is starting a fresh business cycle.")
   log("market_research_started");s["business"]=opportunity();s["iteration"]=0;s["business_completed"]=False;s["roadmap"]=None;s["roadmap_replans"]=0;s["cycle"]=int(s.get("cycle",0))+1;save(s)
   (WORK/"BUSINESS_DECISION.json").write_text(json.dumps(s["business"],indent=2,ensure_ascii=False),encoding="utf-8")
+  log("artifact_created",path="BUSINESS_DECISION.json",bytes=(WORK/"BUSINESS_DECISION.json").stat().st_size)
   log("opportunity_chosen",name=s["business"].get("name"),score=s["business"].get("score"),validation=s["business"].get("validation"))
  build(s)
 def main():
