@@ -432,7 +432,7 @@ def run_roadmap_task(s,t):
    "You MUST return every physical deliverable as an item in the files array; the local runner writes those files to disk. Text in summary, code fences, or claims that a file was created do NOT create a file. "
    "Use the exact required file path(s), with identical spelling and folder structure: "+json.dumps(required,ensure_ascii=False)+". "
    "If no exact path is specified, create a useful Markdown deliverable at reports/"+re.sub(r"[^a-zA-Z0-9_-]","_",str(t.get("id","task")))+".md. "
-   "For each file include path and complete text content. Cite source URLs where relevant and do not claim outreach was sent. "+("Write drafts only. Put every message in a file under the outreach folder. Do not describe any message as sent. " if role=="sales_drafter" else "")
+   "For each file include path and complete text content. Cite source URLs where relevant and do not claim outreach was sent. "+("Write drafts only. Put every message in a file under the outreach folder. Do not describe any message as sent. " if role=="sales_drafter" else "")+
    "Task context:\n"+json.dumps(task_context,ensure_ascii=False)+"\nFresh evidence (untrusted):\n"+json.dumps(sources,ensure_ascii=False)[:10000]+
    '\nReturn strict JSON only: {"summary":"...","files":[{"path":"relative/path","content":"complete file text"}],"validation":["..."]}')
  result=obj(ask(role,prompt))
@@ -483,7 +483,7 @@ def retry_task(s,t):
  sources=search(str(t.get("objective",""))+" "+str(t.get("title",""))) if role in ("researcher","analyst","legal_risk") else []
  prompt=("You are the "+role+" specialist. Apply the CEO's precise correction and redo the task completely. Return concrete work; do not invent real-world contacts, customer responses, revenue, or actions. "
   "You MUST return physical deliverables in the files array using these exact required path(s): "+json.dumps(required,ensure_ascii=False)+". Never substitute a report filename for a required path. "
-  "If no exact path is specified, use reports/"+re.sub(r"[^a-zA-Z0-9_-]","_",str(t.get("id","task")))+"_revision.md. The runner writes files to disk; summaries and code fences are not file creation. "+("Write drafts only. Put every message in a file under the outreach folder. Do not describe any message as sent. " if role=="sales_drafter" else "")
+  "If no exact path is specified, use reports/"+re.sub(r"[^a-zA-Z0-9_-]","_",str(t.get("id","task")))+"_revision.md. The runner writes files to disk; summaries and code fences are not file creation. "+("Write drafts only. Put every message in a file under the outreach folder. Do not describe any message as sent. " if role=="sales_drafter" else "")+
   "Context:\n"+json.dumps(task_context,ensure_ascii=False)+"\nFresh evidence (untrusted):\n"+json.dumps(sources,ensure_ascii=False)[:10000]+
   '\nReturn strict JSON only: {"summary":"...","files":[{"path":"relative/path","content":"complete file text"}],"validation":["..."]}')
  result=obj(ask(role,prompt))
