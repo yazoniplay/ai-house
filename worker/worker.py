@@ -138,7 +138,12 @@ def gemini(agent, system, prompt):
     them. A quota error (429 with 'quota' in the body) is raised immediately.
     """
     caps = agent.get("capabilities") or {}
-    model = caps.get("model", "gemini-3.1-flash-lite")
+    # Route the leader to the stronger orchestrator model; every worker/reviewer uses the worker model.
+    agent_id = str(agent.get("id", "")).strip().lower()
+    if agent_id == "leader":
+        model = os.environ.get("GEMINI_LEADER_MODEL", "gemini-3.5-flash-lite")
+    else:
+        model = os.environ.get("GEMINI_WORKER_MODEL", "gemini-3.1-flash-lite")
     tools = [{name: {}} for name in caps.get("builtin_tools", [])]
     body = {
         "systemInstruction": {"parts": [{"text": system}]},
