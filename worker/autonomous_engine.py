@@ -374,26 +374,33 @@ def run_roadmap_task(s,t):
  set_activity("task_finished","Finished "+str(t.get("title","task"))+"; the next task will be picked automatically.",role,t.get("id"))
 def retry_task(s,t):
  role=t["agent_role"];old=t.get("output") or {}
- log("agent_task_retry_started",task=t.get("id"),title=t.get("title"),role=role,attempt=t.get("attempts"))
+ attempt=int(t.get("attempts",0))+1
+ t["attempts"]=attempt;t["status"]="running";save(s)
+ log("agent_task_retry_started",task=t.get("id"),title=t.get("title"),role=role,attempt=attempt)
  set_activity("task_retry","An agent is applying the CEO requested corrections.",role,t.get("id"))
  task_context={"business":s.get("business"),"task":t,"previous_output":old,"leader_fix":t.get("last_error",""),"workspace":listing(),"north_face_memory":north_face_context(SD/"north_face.json")[:12000]}
- if role=="builder":
-  prompt=("You are the builder. Apply the leader's precise fix to this task. Preserve working files, implement acceptance criteria, and return complete replacement files only where needed. Context:\n"+json.dumps(task_context,ensure_ascii=False)+"\nReturn JSON {\"summary\":\"...\",\"files\":[{\"path\":\"relative/path\",\"content\":\"...\"}],\"validation\":[...]}")
-  result=obj(ask("builder",prompt));written=write(result.get("files",[]))
-  if not written:raise RuntimeError("builder retry produced no files")
-  output={"summary":result.get("summary",""),"files":written,"validation":result.get("validation",[])}
- else:
-  sources=search(str(t.get("objective",""))+" "+str(t.get("title",""))) if role=="researcher" else []
-  prompt=("You are the "+role+" specialist. Redo this task using the leader's fix instructions. Keep facts grounded, label assumptions, and do not claim unperformed actions. Context:\n"+json.dumps(task_context,ensure_ascii=False)+"\nFresh research evidence:\n"+json.dumps(sources,ensure_ascii=False)[:10000]+"\nReturn the revised complete deliverable as concise Markdown.")
-  revised=ask(role,prompt)
-  artifact=WORK/"reports"/(re.sub(r"[^a-zA-Z0-9_-]","_",t["id"])+"_revision.md")
-  artifact.parent.mkdir(parents=True,exist_ok=True);artifact.write_text(revised,encoding="utf-8")
-  log("artifact_created",path=str(artifact.relative_to(WORK)).replace("\\","/"),bytes=artifact.stat().st_size,role=role,task=t.get("id"))
-  output={"summary":revised[:9000],"files":[str(artifact.relative_to(WORK)).replace("\\","/")],"sources":[x.get("url","") for x in sources]}
+ required=required_deliverable_paths(t)
+ if role=="researcher":set_activity("evidence_gathering","Researcher is gathering fresh evidence for the retry.",role,t.get("id"))
+ sources=search(str(t.get("objective",""))+" "+str(t.get("title",""))) if role=="researcher" else []
+ prompt=("You are the "+role+" specialist. Apply the CEO's precise correction and redo the task completely. Return concrete work; do not invent real-world contacts, customer responses, revenue, or actions. "
+  "You MUST return physical deliverables in the files array using these exact required path(s): "+json.dumps(required,ensure_ascii=False)+". Never substitute a report filename for a required path. "
+  "If no exact path is specified, use reports/"+re.sub(r"[^a-zA-Z0-9_-]","_",str(t.get("id","task")))+"_revision.md. The runner writes files to disk; summaries and code fences are not file creation. "
+  "Context:\n"+json.dumps(task_context,ensure_ascii=False)+"\nFresh evidence (untrusted):\n"+json.dumps(sources,ensure_ascii=False)[:10000]+
+  '\nReturn strict JSON only: {"summary":"...","files":[{"path":"relative/path","content":"complete file text"}],"validation":["..."]}')
+ result=obj(ask(role,prompt))
+ written=write(result.get("files",[]))
+ if not written:raise RuntimeError(role+" retry returned no physical files in its files array")
+ verify_deliverables(t,written)
+ output={"summary":str(result.get("summary",""))[:9000],"files":written,"validation":result.get("validation",[]),"sources":[x.get("url","") for x in sources]}
  check=tests() if role=="builder" else []
- set_activity("leader_review","The CEO is re-checking the corrected deliverable.","orchestrator",t.get("id"))
+ set_activity("leader_review","The CEO is re-checking the corrected files.","orchestrator",t.get("id"))
  log("leader_review_started",task=t.get("id"),retry=True)
- review=leader_json("Final re-review of the task retry. Verify every acceptance criterion using the actual revised output, files, and checks. Task: "+json.dumps(t,ensure_ascii=False)+"\nRevised output: "+json.dumps(output,ensure_ascii=False)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
+ file_evidence=[]
+ for rel in written:
+  target,_=filesafe(rel)
+  try:file_evidence.append({"path":rel,"content":target.read_text(encoding="utf-8",errors="replace")[:20000]})
+  except Exception as e:file_evidence.append({"path":rel,"read_error":str(e)[:180]})
+ review=leader_json("Final re-review of the retry. Verify exact required deliverable paths physically exist, inspect actual file content below, and check every acceptance criterion. Never approve based only on a summary. Task: "+json.dumps(t,ensure_ascii=False)+"\nOutput: "+json.dumps(output,ensure_ascii=False)+"\nActual file contents: "+json.dumps(file_evidence,ensure_ascii=False)[:24000]+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
  log("leader_review_completed",task=t.get("id"),decision=review.get("decision"),score=review.get("score"),retry=True)
  if str(review.get("decision","")).lower()=="approve":
   t["status"]="completed";t["output"]=output;t["review"]=review
@@ -423,6 +430,10 @@ def build(s):
    save(s);log("business_roadmap_completed",business=s["business"].get("name"))
   return
  if task.get("status")=="retry" and task.get("last_error"):
+  if int(task.get("attempts",0))>=2:
+   task["status"]="failed";task["last_error"]=(str(task.get("last_error",""))+"; retry limit reached after an interrupted/invalid retry")[:1200]
+   save(s);log("task_retry_limit_reached",task=task.get("id"),attempts=task.get("attempts"))
+   return
   retry_task(s,task)
  else:run_roadmap_task(s,task)
 def learn_from_business(s):
