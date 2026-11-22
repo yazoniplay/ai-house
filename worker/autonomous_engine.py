@@ -488,14 +488,29 @@ def main():
   except KeyboardInterrupt:print("Stopped; saved.");return 0
   except Exception as e:
    error=str(e)[:800]
-   log("cycle_error",error=error)
+   provider_wait=("No available leader provider:" in error or "No available worker provider:" in error)
+   log("cycle_error",error=error,provider_wait=provider_wait)
    s=state();requeued=[]
    for task in (s.get("roadmap") or {}).get("tasks",[]):
     if task.get("status")=="running":
-     task["status"]="retry";task["last_error"]="Interrupted attempt queued again: "+error[:500];requeued.append(task.get("id"))
+     if provider_wait:
+      # Provider outages are infrastructure waits, not failed agent attempts.
+      task["attempts"]=max(0,int(task.get("attempts",0))-1)
+      if task.get("last_error"):
+       task["status"]="retry"
+      else:
+       task["status"]="pending";task["last_error"]=""
+      requeued.append(task.get("id"))
+     else:
+      task["status"]="retry";task["last_error"]="Interrupted attempt queued again: "+error[:500];requeued.append(task.get("id"))
    if requeued:
-    save(s);log("task_requeued_after_error",tasks=requeued)
-   set_activity("recovery","The worker hit an error and is recovering; unfinished work will be retried.")
+    save(s)
+    if provider_wait:log("provider_waiting_tasks",tasks=requeued)
+    else:log("task_requeued_after_error",tasks=requeued)
+   if provider_wait:
+    set_activity("provider_wait","All configured AI providers are temporarily unavailable or rate-limited. Work is saved; the house will retry automatically.")
+   else:
+    set_activity("recovery","The worker hit an error and is recovering; unfinished work will be retried.")
   if not a.loop or a.once:return 0
   time.sleep(int(os.getenv("AI_HOUSE_POLL_SECONDS","10")))
 if __name__=="__main__":raise SystemExit(main())
