@@ -123,6 +123,10 @@ def groq_fast_review(role,task,output,checks):
   log("groq_fast_review",task=task.get("id"),model=GFM)
   return {"summary":str(result.get("summary",""))[:1200],"quick_reasoning":json.dumps(result.get("concerns",[]),ensure_ascii=False)[:3000]}
  except Exception as e:
+  cooldown=provider_cooldown_seconds("groq",e)
+  if cooldown:
+   PROVIDER_COOLDOWN["groq"]=time.monotonic()+cooldown
+   log("provider_cooldown",provider="groq",role="fast",seconds=cooldown,error=str(e)[:180])
   log("groq_fast_review_error",task=task.get("id"),error=str(e)[:180])
   return {"summary":str(output.get("summary",""))[:700],"quick_reasoning":"Fast Groq triage failed; CEO should review output directly."}
 def ask(role,prompt):
