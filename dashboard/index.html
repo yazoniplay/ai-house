@@ -254,15 +254,15 @@ function render(){
     const completed=tasks.filter(t=>t.status==="completed").length;
     const total=tasks.length,active=tasks.find(t=>t.status==="running");
     const running=!!s.running,enabled=!!s.autonomy_enabled;
-    $("headerStatus").textContent=running?"AUTONOMY ONLINE":(enabled?"WORKER STARTING":"STOPPED BY YOU");
+    $("headerStatus").textContent=running?"AUTONOMY ONLINE":(!s.configured?"NEEDS API KEY":(enabled?"WORKER STARTING":"STOPPED BY YOU"));
     $("headerDot").className="dot"+(running?" on":"");
     $("liveDot").className="dot"+(running?" on":"");
     $("resume").classList.toggle("hidden",running);
     $("resume").textContent=enabled?"Start worker":"Resume autonomy";
     $("stop").classList.toggle("hidden",!running);
     $("stop").disabled=!running;
-    $("heroTitle").textContent=running?"Your AI team is working.":"Autonomy is paused.";
-    $("heroText").textContent=running?"Research, planning, execution, CEO reviews and learning are running locally. This page is only the control room; closing the tab does not stop the worker.":"You stopped the house. Your saved work is still in the workspace. Resume when you want the agents to continue.";
+    $("heroTitle").textContent=running?"Your AI team is working.":(!s.configured?"Add a provider key to start.":"Autonomy is paused.");
+    $("heroText").textContent=running?"Research, planning, execution, CEO reviews and learning are running locally. This page is only the control room; closing the tab does not stop the worker.":(!s.configured?"Add at least one model key to worker/.env (Gemini, Groq, NVIDIA or Hugging Face). The dashboard will start autonomy automatically once it is configured.":(enabled?"The worker is starting or recovering. Your saved work is safe.":"You stopped the house. Your saved work is still in the workspace. Resume when you want the agents to continue."));
     const activity=s.activity||{};
     const role=active?prettyRole(active.agent_role):prettyRole(activity.role||"");
     $("activeAgent").textContent=active?role+" · WORKING":(running?(activity.message||"Between tasks — preparing the next step"):(enabled?"Starting local worker":"Stopped by you"));
