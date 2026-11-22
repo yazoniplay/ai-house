@@ -11,6 +11,8 @@
 - The Supabase worker remains a goal/task planner and text executor. It is not the local computer executor.
 - A new local engine, `worker/autonomous_engine.py`, runs on the owner's PC. It autonomously researches opportunities with Tavily (if configured), selects a business hypothesis, coordinates researcher/strategist/architect/builder/growth/finance/reviewer agents, writes files inside `workspace/`, runs recognized npm test/build/lint or pytest commands, and stores state/logs locally.
 - Local model fallback order: Groq, Hugging Face Inference Router, then Gemini. Keys are loaded from ignored `worker/.env` or environment variables.
+- Model roles: leader/orchestrator uses Gemini 3.5 Flash Lite (`GEMINI_LEADER_MODEL`, default `gemini-3.5-flash-lite)); worker agents use Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL`, default `gemini-3.1-flash-lite)). Local workers try Gemini first, then Groq/Hugging Face fallback; the leader stays on its configured Gemini model.
+- The orchestrator is now the automatic approval and improvement gate: it approves good internal work, rejects unsafe external/destructive tasks, and sends local build outputs back for up to two improvement rounds. Routine safe work no longer waits for the owner.
 - Local engine loop: `python worker/autonomous_engine.py --loop`; Windows launcher: `worker/run-autonomous.ps1`.
 - Iterations and opportunity cycles are configurable. The engine can build and test local assets; it does not autonomously spend money, publish, deploy, contact customers, or change accounts. It does not guarantee revenue; customer validation and business performance still need to be measured.
 
