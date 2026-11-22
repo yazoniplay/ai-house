@@ -88,8 +88,8 @@ def raw(p,sys,ask,role):
   except Exception as e:raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
  if not key:raise RuntimeError(p+" key missing")
  payload={"model":model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
- if p=="groq" and role=="fast":
-  # GPT-OSS supports JSON mode; it prevents malformed summaries from breaking review triage.
+ if p=="groq":
+  # Both GPT-OSS models support JSON mode; all Groq completions in this worker expect structured JSON.
   payload["response_format"]={"type":"json_object"}
  timeout_seconds=35 if p=="nvidia" else (45 if p=="groq" else 50)
  candidates=[model]
