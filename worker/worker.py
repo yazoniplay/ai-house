@@ -621,8 +621,8 @@ def build_prompt(task, deps):
 
 
 def run_review(task, output_text, used_tools, sources):
-    """Ask the reviewer agent for a verdict. Returns (review dict, provider)."""
-    reviewer = get_agent("reviewer")
+    """Ask the leader/orchestrator to approve or return actionable fixes."""
+    reviewer = get_agent("leader")  # leader/orchestrator is the approval and improvement authority
     checks = (task.get("input") or {}).get("done_when") or []
     source_lines = "\n".join(f"- {s.get('title', '')} ({s.get('url', '')})" for s in sources) or "none"
     prompt = (
