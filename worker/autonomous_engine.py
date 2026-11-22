@@ -100,8 +100,8 @@ def raw(p,sys,ask,role):
  for candidate in candidates:
   payload["model"]=candidate
   r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},json=payload,timeout=timeout_seconds)
-  if r.status_code==404 and candidate!=candidates[-1]:
-   log("groq_model_auto_fallback",unavailable_model=candidate,next_model=GFM)
+  if r.status_code in (404,429,503) and candidate!=candidates[-1]:
+   log("groq_model_auto_fallback",unavailable_model=candidate,next_model=GFM,status=r.status_code)
    continue
   if r.status_code>=400:
    last_error=RuntimeError(p+" "+str(r.status_code)+": "+r.text[:220])
