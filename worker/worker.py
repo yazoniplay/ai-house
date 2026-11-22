@@ -1,23 +1,20 @@
 """Worker for the agent house.
 
-Claims one pending task and runs it. Then the reviewer agent checks the output,
-and the review_gate trigger in the database decides retry or block.
+Runs in this order each pass:
+1. If there is a new goal, the leader turns it into a plan of tasks.
+2. Otherwise it claims one pending task, runs it, and has the reviewer check it.
+3. If nothing is pending, it checks whether any goal has finished, and if so
+   writes a lesson for the leader.
 
-Model order for normal tasks:
-- coding (input.task_type = "coding"): Gemini, NVIDIA coding models, Token Harbor.
-- everything else: Gemini, Token Harbor, NVIDIA general models.
-
-Search tasks (input.needs_search = true):
-  1. Gemini with built-in Google Search.
-  2. Tavily search results, written up by Token Harbor.
-  3. Ollama search results, written up by Token Harbor.
-  4. Token Harbor with no search, output marked unverified.
-
-The reviewer never searches. It judges the output against the sources the
-worker retrieved.
+Guardrails:
+- The room must be active (rooms.active). Setting ops to inactive stops all work.
+- A plan can have at most 10 tasks, and the house can add at most 50 tasks an hour.
+- Any task that spends, publishes, sends, or contacts anyone waits for approval
+  (approvals table). The dashboard has Approve and Reject buttons for these.
+- Search and research use Gemini first, then Tavily, Ollama, and Token Harbor.
 
 Usage:
-  python worker.py          # run one task (or exit if none pending)
+  python worker.py          # one pass
   python worker.py --loop   # keep running, polling every 10 seconds
 
 Needs env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY, GEMINI_API_KEY.
@@ -30,7 +27,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -49,21 +46,32 @@ TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
 TAVILY_URL = "https://api.tavily.com/search"
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
-# NVIDIA model IDs, tried in order. Only the first two are confirmed against the
-# catalog; the others are inferred and are skipped automatically if they fail.
+DEFAULT_ROOM = "ops"
+MAX_TASKS_PER_GOAL = 10
+MAX_TASKS_PER_HOUR = 50
+ALLOWED_ROLES = {"researcher", "writer", "reviewer"}
+RISKY = re.compile(
+    r"\b(publish|post|upload|send|email|buy|purchase|pay|spend|contact|deploy|install|subscribe)\b",
+    re.I,
+)
+CODING = re.compile(r"\b(python|code|function|script|javascript|typescript|program|bug|unit test)\b", re.I)
+
+# NVIDIA model IDs, tried in order. Taken from the live /v1/models list for this key.
 CODING_MODELS = [
-    "qwen/qwen3-coder-480b-a35b-instruct",
-    "mistralai/devstral-2-123b-instruct-2512",
-    "deepseek-ai/deepseek-v3.2",
+    "moonshotai/kimi-k3.1-pro",
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    "bigcode/starcoder2-15b",
 ]
 GENERAL_MODELS = [
-    "deepseek-ai/deepseek-v3.2",
-    "meta/llama-3.3-70b-instruct",
-    "nvidia/nemotron-3-super-120b-a12b",
+    "moonshotai/kimi-k3.1-pro",
+    "z-ai/glm-5.3-flash",
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
 ]
 
 http = httpx.Client(timeout=120)
 
+
+# ---------- Supabase helpers ----------
 
 def sb(method, path, **kwargs):
     """Call the Supabase REST API with the service role key."""
@@ -91,12 +99,37 @@ def set_task(task_id, **fields):
        headers={"Prefer": "return=minimal"})
 
 
+def set_goal(goal_id, **fields):
+    fields["updated_at"] = now()
+    sb("PATCH", "goals", params={"id": f"eq.{goal_id}"}, json=fields,
+       headers={"Prefer": "return=minimal"})
+
+
 def get_agent(agent_id):
     rows = sb("GET", "agents", params={"select": "*", "id": f"eq.{agent_id}"})
     if not rows:
         raise RuntimeError(f"agent '{agent_id}' not found")
     return rows[0]
 
+
+def room_active(room_id):
+    rows = sb("GET", "rooms", params={"select": "active", "id": f"eq.{room_id}"})
+    return bool(rows and rows[0]["active"])
+
+
+def tasks_last_hour():
+    since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    rows = sb("GET", "tasks", params={"select": "id", "created_at": f"gte.{since}"})
+    return len(rows or [])
+
+
+def is_approved(task_id):
+    rows = sb("GET", "approvals", params={"select": "id", "task_id": f"eq.{task_id}",
+                                          "decision": "eq.approved"})
+    return bool(rows)
+
+
+# ---------- Model calls ----------
 
 def gemini(agent, system, prompt):
     """Call Gemini with the agent's built-in tools.
@@ -273,8 +306,10 @@ def complete(agent, system, prompt, needs_search=False, query="", task_type="gen
             grounded_prompt = (
                 prompt
                 + "\n\n<search_results>\n" + format_sources(results) + "\n</search_results>\n"
-                + "Use these results for any current facts. Cite the URLs you rely on. "
-                  "Do not invent sources beyond these."
+                + "These search results were retrieved for you by this system, so you do have "
+                  "current information. Do not say you lack web access or search. Use the results "
+                  "for any current facts, cite the URLs you rely on, and do not invent sources "
+                  "beyond them."
             )
             text = token_harbor(system, grounded_prompt)
             return {"text": text, "used_tools": False, "provider": f"token_harbor+{name}_search",
@@ -298,6 +333,156 @@ def parse_json(text):
     except json.JSONDecodeError:
         return None
 
+
+# ---------- Goals: planning and lessons ----------
+
+def claim_new_goal():
+    rows = sb("GET", "goals", params={"select": "*", "status": "eq.new",
+                                      "order": "created_at", "limit": "1"})
+    if not rows:
+        return None
+    goal = rows[0]
+    set_goal(goal["id"], status="planning")
+    return goal
+
+
+def validate_plan(tasks):
+    """Returns an error string, or None if the plan is acceptable."""
+    if not tasks:
+        return "no tasks"
+    if len(tasks) > MAX_TASKS_PER_GOAL:
+        return f"{len(tasks)} tasks, maximum is {MAX_TASKS_PER_GOAL}"
+    seen = set()
+    for t in tasks:
+        tid = t.get("id")
+        if not tid or tid in seen:
+            return f"missing or duplicate task id {tid}"
+        role = str(t.get("agent_role", "")).strip().lower()
+        if role not in ALLOWED_ROLES:
+            return f"task {tid} has unknown agent_role {t.get('agent_role')}"
+        if not t.get("instruction"):
+            return f"task {tid} has no instruction"
+        if not t.get("done_when"):
+            return f"task {tid} has no done_when checks"
+        for d in t.get("depends_on") or []:
+            if d not in seen:
+                return f"task {tid} depends on {d}, which is not earlier in the plan"
+        seen.add(tid)
+    return None
+
+
+def plan_goal(goal):
+    gid = goal["id"]
+    room = goal.get("room_id") or DEFAULT_ROOM
+    if not room_active(room):
+        set_goal(gid, status="failed", question=f"room '{room}' is not active")
+        return
+
+    leader = get_agent("leader")
+    prompt = (
+        f"Goal: {goal['text']}\n"
+        f"Room: {room}\n"
+        "Agents you may assign as agent_role: RESEARCHER, WRITER, REVIEWER.\n"
+        "Reply with the Plan or Clarification JSON only."
+    )
+    result = complete(leader, leader.get("system_prompt") or "", prompt)
+    plan = parse_json(result["text"])
+    if not plan:
+        set_goal(gid, status="failed", question="leader reply was not valid JSON")
+        return
+
+    status = plan.get("status")
+    if status == "needs_clarification":
+        set_goal(gid, status="needs_clarification", question=str(plan.get("question", ""))[:500])
+        return
+    if status != "plan":
+        set_goal(gid, status="failed", question=f"leader returned status {status}", plan=plan)
+        return
+
+    tasks = plan.get("tasks") or []
+    error = validate_plan(tasks)
+    if error:
+        set_goal(gid, status="failed", question=f"plan rejected: {error}", plan=plan)
+        return
+    if tasks_last_hour() + len(tasks) > MAX_TASKS_PER_HOUR:
+        set_goal(gid, status="failed", question="hourly task limit reached", plan=plan)
+        return
+
+    try:
+        ids = {}
+        for t in tasks:
+            instruction = t["instruction"]
+            role = t["agent_role"].strip().lower()
+            needs_approval = bool(t.get("needs_approval")) or bool(RISKY.search(instruction))
+            task_input = {
+                "done_when": t.get("done_when") or [],
+                "needs_approval": needs_approval,
+                "needs_search": role == "researcher",
+                "task_type": "coding" if CODING.search(instruction) else "general",
+                "risk": t.get("risk", "low"),
+                "plan_id": t["id"],
+            }
+            depends = [ids[d] for d in (t.get("depends_on") or [])]
+            row = sb("POST", "tasks", json={
+                "goal": goal["text"],
+                "goal_id": gid,
+                "room_id": room,
+                "agent_id": role,
+                "status": "pending",
+                "instruction": instruction,
+                "depends_on": depends,
+                "input": task_input,
+            }, headers={"Prefer": "return=representation"})
+            ids[t["id"]] = row[0]["id"]
+        set_goal(gid, status="running", plan=plan)
+        log(None, "goal_planned", {"goal_id": gid, "tasks": len(tasks)})
+    except Exception as e:
+        set_goal(gid, status="failed", question=f"could not create tasks: {str(e)[:300]}", plan=plan)
+
+
+def finish_goals():
+    """Mark finished goals done or failed, and write one lesson for each."""
+    for goal in sb("GET", "goals", params={"select": "*", "status": "eq.running"}) or []:
+        tasks = sb("GET", "tasks", params={"select": "status", "goal_id": f"eq.{goal['id']}"}) or []
+        if not tasks:
+            continue
+        states = {t["status"] for t in tasks}
+        if states - {"done", "blocked", "failed"}:
+            continue  # still pending, running, or waiting for approval
+        if states == {"done"}:
+            outcome = "success"
+        elif "done" in states:
+            outcome = "partial"
+        else:
+            outcome = "failed"
+        set_goal(goal["id"], status="done" if outcome == "success" else "failed")
+        write_lesson(goal, outcome, sorted(states))
+
+
+def write_lesson(goal, outcome, states):
+    try:
+        leader = get_agent("leader")
+        prompt = (
+            f"Goal: {goal['text']}\n"
+            f"Outcome: {outcome}\n"
+            f"Final task states: {', '.join(states)}\n\n"
+            "Write one lesson for future plans: what to do differently. "
+            "3 sentences maximum, no filler. Reply with JSON only: {\"lesson\": \"...\"}"
+        )
+        result = complete(leader, leader.get("system_prompt") or "", prompt)
+        lesson = str((parse_json(result["text"]) or {}).get("lesson", "")).strip()
+        if lesson:
+            sb("POST", "lessons", json={
+                "goal": goal["text"],
+                "room_id": goal.get("room_id"),
+                "outcome": outcome,
+                "lesson": lesson[:1000],
+            })
+    except Exception as e:
+        log(None, "lesson_failed", {"goal_id": goal["id"], "error": str(e)[:300]})
+
+
+# ---------- Tasks ----------
 
 def build_prompt(task, deps):
     checks = (task.get("input") or {}).get("done_when") or []
@@ -340,9 +525,10 @@ def run_review(task, output_text, used_tools, sources):
 def run_task(task):
     tid = task["id"]
     task_input = task.get("input") or {}
-    if task_input.get("needs_approval"):
+    if task_input.get("needs_approval") and not is_approved(tid):
         set_task(tid, status="waiting_approval")
-        sb("POST", "approvals", json={"task_id": tid, "reason": task["instruction"][:500]})
+        if not sb("GET", "approvals", params={"select": "id", "task_id": f"eq.{tid}"}):
+            sb("POST", "approvals", json={"task_id": tid, "reason": task["instruction"][:500]})
         log(tid, "waiting_approval")
         return
 
@@ -382,10 +568,29 @@ def run_task(task):
     log(tid, "review_written", {"verdict": review["verdict"], "provider": review_provider})
 
 
+# ---------- Main loop ----------
+
 def run_one():
+    """One pass: plan a new goal, or run one task, or record finished goals.
+
+    Returns True if it did something, False if there was nothing to do.
+    """
+    if not room_active(DEFAULT_ROOM):
+        return False
+
+    goal = claim_new_goal()
+    if goal:
+        try:
+            plan_goal(goal)
+        except Exception as e:
+            set_goal(goal["id"], status="failed", question=str(e)[:500])
+        return True
+
     rows = sb("POST", "rpc/claim_next_task", json={})
     if not rows:
+        finish_goals()
         return False
+
     task = rows[0]
     try:
         run_task(task)
