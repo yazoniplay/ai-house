@@ -15,12 +15,12 @@
 
 ## Current capability boundary
 - The Supabase worker remains a goal/task planner and text executor. It is not the local computer executor.
-- A new local engine, `worker/autonomous_engine.py`, runs on the owner's PC. It autonomously researches opportunities with Tavily (if configured), selects a business hypothesis, coordinates researcher/strategist/architect/builder/growth/finance agents with the orchestrator as final approver, writes files inside `workspace/`, runs recognized npm test/build/lint or pytest commands, and stores state/logs locally.
+- A new local engine, `worker/autonomous_engine.py`, runs on the owner's PC. Its leader/CEO creates a 4–8 task dependency-aware roadmap, defines a success metric, prioritizes ready work, assigns specialist roles, tracks task status/attempts/outputs/reviews, verifies acceptance criteria, retries weak tasks, and creates up to three recovery roadmaps when work is blocked. It stores progress and postmortem lessons locally, writes artifacts inside `workspace/`, and runs recognized npm test/build/lint or pytest commands.
 - Local worker model order: Gemini 3.1 Flash Lite first, then Groq, then Hugging Face Inference Router. Keys are loaded from ignored `worker/.env` or environment variables.
 - Model roles: leader/orchestrator uses Gemini 3.5 Flash Lite (`GEMINI_LEADER_MODEL`, default `gemini-3.5-flash-lite`); worker agents use Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL`, default `gemini-3.1-flash-lite`). Local workers try Gemini first, then Groq/Hugging Face fallback; the leader stays on its configured Gemini model.
 - The orchestrator is the automatic approval and improvement gate: it approves routine goal-aligned publishing, relevant outreach, and deployment after quality/compliance checks; it sends weak local build outputs back for up to two improvement rounds. Routine business execution does not wait for the owner. Spending/transfers, secret exposure, irreversible important-data deletion, and account/permission changes remain owner-controlled.
 - Local engine loop: `python worker/autonomous_engine.py --loop`; Windows launcher: `worker/run-autonomous.ps1`.
-- Iterations and opportunity cycles are configurable. The engine currently builds and tests local assets. Publishing, outreach, and deployment action adapters are planned but not yet implemented in the local engine. It does not guarantee revenue; customer validation and business performance still need to be measured.
+- Roadmaps and task progress are resumable from local state. After a business cycle, the leader runs a postmortem and saves reusable lessons/process changes in `LEADER_MEMORY.json`. The engine currently builds and tests local assets. Publishing, outreach, and deployment action adapters are planned but not yet implemented in the local engine. It does not guarantee revenue; customer validation and business performance still need to be measured.
 
 ## Guardrails
 - Room active switch stops work.
