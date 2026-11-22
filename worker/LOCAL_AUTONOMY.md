@@ -1,26 +1,16 @@
-# Local autonomous business engine
+# Local autonomous business lab
 
-This engine runs on your PC and uses your configured model APIs. It researches a business idea, saves a decision record, builds a local MVP in the workspace, runs recognized tests/build scripts, and has a reviewer agent critique the result. It repeats for a limited number of iterations before researching a new idea.
+Run this on your PC from the repository root. The local engine researches business opportunities, builds a local MVP, runs recognized tests/build scripts, and lets the leader/orchestrator approve or request improvements automatically.
 
 ## Setup
 
 1. Install Python 3.10+.
-2. From the repository root, install the existing dependency:
+2. Copy `worker/.env.example` to `worker/.env` and fill in the actual API key values locally. Do not commit `worker/.env` or paste secret values into chat.
+3. Install the Python dependency:
 
    ```powershell
    python -m pip install -r worker/requirements.txt
    ```
-
-3. Add your keys to `worker/.env` (this file is ignored by Git):
-
-   ```dotenv
-   GROQ_API_KEY=your_groq_key
-   HF_TOKEN=your_huggingface_token
-   GEMINI_API_KEY=your_gemini_key
-   TAVILY_API_KEY=your_tavily_key
-   ```
-
-   The leader/orchestrator uses Gemini 3.5 Flash Lite (`GEMINI_LEADER_MODEL`) and is the final approver. Worker agents use Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL`) first, with Groq and Hugging Face as worker fallbacks if Gemini fails. Tavily enables current web research; without it, market research is not live.
 
 4. Run one iteration:
 
@@ -34,19 +24,36 @@ This engine runs on your PC and uses your configured model APIs. It researches a
    python worker/autonomous_engine.py --loop
    ```
 
-Press Ctrl+C to stop. Progress and memory are saved under `workspace/.ai-house/`; generated project files are placed in `workspace/`.
+Or use the Windows launcher:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File worker/run-autonomous.ps1
+```
+
+Press Ctrl+C to stop. State and logs are saved under `workspace/.ai-house/`; generated business files are placed in `workspace/`.
+
+## Model roles
+
+- Leader/orchestrator: Gemini 3.5 Flash Lite (`GEMINI_LEADER_MODEL=gemini-3.5-flash-lite`). The leader is pinned to this Gemini model for approval decisions; it does not silently switch to another provider.
+- Worker agents: Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL=gemini-3.1-flash-lite`) first. Groq and Hugging Face are fallback providers if Gemini fails.
+- Tavily supplies live market research when `TAVILY_API_KEY` is set.
+
+The leader automatically approves good internal work and sends weak work back to the builder for up to two improvement rounds. External or destructive actions such as spending, public publishing, messaging, deployment, account changes, and deleting important data are rejected by policy rather than waiting for owner approval.
 
 ## Configuration
 
-Optional environment variables:
+Optional:
 
-- `AI_HOUSE_WORKSPACE`: workspace folder path.
-- `AI_HOUSE_MAX_ITERATIONS`: iterations per business before researching a new idea (default 5).
-- `AI_HOUSE_MAX_FILES_PER_BUILD`: maximum generated files per iteration (default 12).
-- `AI_HOUSE_MAX_FILE_BYTES`: per-file size limit (default 120000).
-- `AI_HOUSE_POLL_SECONDS`: delay between iterations in loop mode (default 30).
-- `GROQ_MODEL`, `HF_MODEL`, `GEMINI_LEADER_MODEL`, `GEMINI_WORKER_MODEL`: override model names.
+- `AI_HOUSE_WORKSPACE`: workspace path.
+- `AI_HOUSE_MAX_ITERATIONS`: iterations per business hypothesis (default 5).
+- `AI_HOUSE_POLL_SECONDS`: delay between loop iterations (default 30).
+- `AI_HOUSE_MAX_FILES_PER_BUILD`: generated file limit (default 12).
+- `AI_HOUSE_MAX_FILE_BYTES`: per-file byte limit (default 120000).
+- `GROQ_MODEL`, `HF_MODEL`: fallback model overrides.
+- `GEMINI_LEADER_MODEL`, `GEMINI_WORKER_MODEL`: requested model role overrides.
+
+The same `worker/.env` template also includes the existing Supabase worker's Supabase, Token Harbor, NVIDIA, and Ollama variables. The local business engine itself does not use the Supabase service-role key.
 
 ## Local safety boundary
 
-The engine can create and overwrite files inside its workspace and run recognized project checks (npm test/build/lint or pytest) without a shell. The orchestrator automatically approves good work and sends weak work back to the builder for up to two improvements. It does not install packages automatically, access your personal folders, use Supabase service credentials, spend money, publish, deploy, message people, or change external accounts; unsafe external/destructive actions are rejected by the orchestrator instead of being sent to you for routine approval. Review generated code before running or releasing it. It is an autonomous builder and validator, not a guarantee of customers or revenue.
+The engine writes only inside its workspace and runs recognized test/build scripts without a shell. It does not install dependencies automatically, access your personal folders, spend money, publish, deploy, message people, or change external accounts. Review generated code before running or releasing it. Autonomous building and validation do not guarantee customers or revenue.
