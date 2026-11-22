@@ -174,13 +174,13 @@ def select_task(s):
  return "WAIT"
 def north_face_task_learning(s,t,status,review,output):
  prompt=("THE NORTH FACE task reflection — highest priority. Review this attempt, including retries and failures. Identify the actual root cause, not a generic slogan. What should the next agent do differently? Return JSON with root_cause, lesson, improvement_rule (an operational rule that changes future behavior), and confidence (low/medium/high). Task: "+json.dumps(t,ensure_ascii=False)+"\nStatus: "+status+"\nLeader review: "+json.dumps(review,ensure_ascii=False)+"\nActual output: "+json.dumps(output,ensure_ascii=False)[:10000])
- try:
-  learning=leader_json(prompt)
- except Exception as e:
-  issues=review.get("issues",[])
-  if not isinstance(issues,list):issues=[str(issues)]
-  fallback="Leader reflection call failed: "+str(e)[:180]
-  learning={"root_cause":fallback,"lesson":"Preserve the task review and retry learning even if the reflection model call fails.","improvement_rule":"On reflection-call failure, persist a deterministic fallback lesson and continue; never leave the task stuck in running state.","confidence":"low"}
+ learning=review.get("learning") if isinstance(review.get("learning"),dict) else None
+ if not learning:
+  try:
+   learning=leader_json(prompt)
+  except Exception as e:
+   fallback="Leader reflection call failed: "+str(e)[:180]
+   learning={"root_cause":fallback,"lesson":"Preserve the task review and retry learning even if the reflection model call fails.","improvement_rule":"On reflection-call failure, persist a deterministic fallback lesson and continue; never leave the task stuck in running state.","confidence":"low"}
  learning_status=status
  north_face_record_task(SD/"north_face.json",t,learning_status,review,learning,str(output.get("summary",""))[:1200])
  log("north_face_task_learned",task=t.get("id"),status=status,root_cause=str(learning.get("root_cause",""))[:180])
@@ -238,7 +238,7 @@ def retry_task(s,t):
   artifact.parent.mkdir(parents=True,exist_ok=True);artifact.write_text(revised,encoding="utf-8")
   output={"summary":revised[:9000],"files":[str(artifact.relative_to(WORK))],"sources":[x.get("url","") for x in sources]}
  check=tests() if role=="builder" else []
- review=leader_json("Final re-review of the task retry. Verify every acceptance criterion using the actual revised output, files, and checks. Task: "+json.dumps(t,ensure_ascii=False)+"\nRevised output: "+json.dumps(output,ensure_ascii=False)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"..."}')
+ review=leader_json("Final re-review of the task retry. Verify every acceptance criterion using the actual revised output, files, and checks. Task: "+json.dumps(t,ensure_ascii=False)+"\nRevised output: "+json.dumps(output,ensure_ascii=False)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
  if str(review.get("decision","")).lower()=="approve":
   t["status"]="completed";t["output"]=output;t["review"]=review
  else:t["status"]="failed";t["output"]=output;t["review"]=review;t["last_error"]=str(review.get("reason","retry failed"))[:1200]
