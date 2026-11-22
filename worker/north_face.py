@@ -15,6 +15,13 @@ def _now():
 def _key(text):
     return re.sub(r"[^a-z0-9]+", " ", str(text).lower()).strip()[:180]
 
+def _list(value, limit=12):
+    if isinstance(value, list):
+        return value[:limit]
+    if value is None or value == "":
+        return []
+    return [str(value)[:700]]
+
 def load(path):
     p=Path(path)
     try:
@@ -43,7 +50,7 @@ def record_task(path, task, status, review, learning, output_summary=""):
     item={
         "at":_now(),"task_id":task_id,"title":str(task.get("title",""))[:300],
         "role":str(task.get("agent_role","")),"status":str(status),
-        "score":review.get("score"),"issues":review.get("issues",[])[:8],
+        "score":review.get("score"),"issues":_list(review.get("issues",[]),8),
         "root_cause":str(learning.get("root_cause",""))[:700],
         "lesson":str(learning.get("lesson",""))[:700],
         "improvement_rule":str(learning.get("improvement_rule",""))[:700],
@@ -84,13 +91,13 @@ def record_business(path, business, outcome, postmortem):
         "at":_now(),"business":str(business.get("name","unknown"))[:300],
         "outcome":str(outcome.get("decision","unknown")),
         "metric":str(outcome.get("metric",""))[:500],
-        "evidence":outcome.get("evidence",[])[:8],
-        "failure_reasons":outcome.get("failure_reasons",[])[:8],
-        "what_worked":postmortem.get("what_worked",[])[:8],
-        "what_failed":postmortem.get("what_failed",[])[:8],
-        "root_causes":postmortem.get("root_causes",[])[:8],
-        "lessons":postmortem.get("lessons",[])[:12],
-        "next_changes":postmortem.get("next_changes",[])[:12],
+        "evidence":_list(outcome.get("evidence",[]),8),
+        "failure_reasons":_list(outcome.get("failure_reasons",[]),8),
+        "what_worked":_list(postmortem.get("what_worked",[]),8),
+        "what_failed":_list(postmortem.get("what_failed",[]),8),
+        "root_causes":_list(postmortem.get("root_causes",[]),8),
+        "lessons":_list(postmortem.get("lessons",[]),12),
+        "next_changes":_list(postmortem.get("next_changes",[]),12),
     }
     data["business_postmortems"].append(item)
     data["business_postmortems"]=data["business_postmortems"][-100:]
