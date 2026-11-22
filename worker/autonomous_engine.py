@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime,timezone,timedelta
 import httpx
 from north_face import context as north_face_context, record_task as north_face_record_task, record_business as north_face_record_business
-from guards import search_allowed, record_search, clean_env, run_pytest, SEARCH_DAILY_LIMIT
+from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
 SD=WORK/".ai-house"; SF=SD/"state.json"; LF=SD/"events.jsonl"; SBF=SD/"search-budget.json"
@@ -27,6 +27,7 @@ NM=os.getenv("NVIDIA_MODEL","moonshotai/kimi-k3.1-pro")
 MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-v4.1-flash:free")
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
+OR=os.getenv("OPENROUTER_API_KEY","");ORM=os.getenv("OPENROUTER_MODEL","openrouter/free")
 ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","architect":"Product architect. Break the business goal into a coherent MVP architecture and acceptance criteria.","builder":"Senior engineer. Return complete functional files, not TODOs.","growth":"Ethical growth strategist. Draft truthful positioning, organic acquisition and customer feedback assets; no spam.","finance":"Bootstrapped finance analyst. Estimate pricing and unit economics transparently; label every assumption, never invent actual revenue.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness.","orchestrator":"Autonomous leader/orchestrator. Approve quality, reject unsafe actions, and return concrete improvement instructions."}
 HTTP=httpx.Client(timeout=120)
 # Provider cooldowns prevent repeated quota/rate-limit calls while the engine keeps working.
@@ -85,14 +86,21 @@ def ollama_chat(sys,ask):
  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
 WORKER_ROTATION=[0]
 def provider_order(role):
- has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM)}
- if role=="orchestrator":order=["gemini","nvidia","groq","tokenharbor","ollama","hf"]
+ has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR)}
+ if role=="orchestrator":order=["gemini","nvidia","groq","tokenharbor","openrouter","hf"]
  else:
-  base=["nvidia","groq","tokenharbor","gemini","hf","ollama"]
+  base=["nvidia","groq","tokenharbor","gemini","hf","openrouter"]
   i=WORKER_ROTATION[0]%len(base);WORKER_ROTATION[0]+=1
   order=base[i:]+base[:i]
  return [p for p in order if has[p]]
+def openrouter_chat(sys,ask):
+ if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
+ r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":ORM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
+ if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
+ try:return r.json()["choices"][0]["message"].get("content") or ""
+ except Exception as e:raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
 def raw(p,sys,ask,role):
+ if p=="openrouter":return openrouter_chat(sys,ask)
  if p=="ollama":return ollama_chat(sys,ask)
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
  elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(GFM if role=="fast" else GM)
@@ -196,7 +204,7 @@ def search(q):
  if not T:return []
  cost=2 if SEARCH_DEPTH=="advanced" else 1
  if not search_allowed(SBF):
-  log("search_budget_reached",daily_limit=SEARCH_DAILY_LIMIT,query=str(q)[:240]);return []
+  log("search_budget_reached",daily_limit=search_daily_limit(),query=str(q)[:240]);return []
  for _ in range(cost):record_search(SBF)
  try:
   r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":str(q)[:300],"search_depth":SEARCH_DEPTH,"max_results":5},timeout=30)
@@ -540,7 +548,7 @@ def cycle(s):
  build(s)
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
- if not any((G,H,M,N,TK,OK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
+ if not any((G,H,M,N,TK,OK,OR)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
  log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T))
  print("Workspace:",WORK);s=state()

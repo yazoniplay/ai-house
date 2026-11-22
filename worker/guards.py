@@ -11,7 +11,8 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-SEARCH_DAILY_LIMIT = int(os.getenv("AI_HOUSE_SEARCH_DAILY_LIMIT", "25"))
+def search_daily_limit():
+    return int(os.getenv("AI_HOUSE_SEARCH_DAILY_LIMIT", "25"))
 SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 
 
@@ -31,7 +32,7 @@ def _read_budget(path: Path):
 
 def search_allowed(budget_file: Path) -> bool:
     """True if today's search count is still under the daily limit."""
-    return _read_budget(budget_file)["count"] < SEARCH_DAILY_LIMIT
+    return _read_budget(budget_file)["count"] < search_daily_limit()
 
 
 def record_search(budget_file: Path):
