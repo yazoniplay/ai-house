@@ -68,7 +68,7 @@ MAX_TASKS_PER_GOAL = 10
 MAX_TASKS_PER_HOUR = 50
 ALLOWED_ROLES = {"researcher", "writer", "reviewer"}
 RISKY = re.compile(
-    r"\b(publish|post|upload|send|email|buy|purchase|pay|spend|contact|deploy|install|subscribe)\b",
+    r"\b(publish|post|upload|send|email|buy|purchase|pay|spend|contact|deploy|install|subscribe|delete|destroy|transfer|change permissions|access credentials)\b",
     re.I,
 )
 CODING = re.compile(r"\b(python|code|function|script|javascript|typescript|program|bug|unit test)\b", re.I)
