@@ -107,20 +107,24 @@ def stored_pid():
 
 
 def process_running():
-    global engine_process
-    if engine_process is not None:
-        if engine_process.poll() is None:
+    global engine_process, engine_log_handle
+    with lock:
+        if engine_process is not None:
+            if engine_process.poll() is None:
+                return True
+            engine_process = None
+            if engine_log_handle:
+                engine_log_handle.close()
+                engine_log_handle = None
+        pid = stored_pid()
+        if pid and pid_is_running(pid):
             return True
-        engine_process = None
-    pid = stored_pid()
-    if pid and pid_is_running(pid):
-        return True
-    if PID_FILE.exists():
-        try:
-            PID_FILE.unlink()
-        except OSError:
-            pass
-    return False
+        if PID_FILE.exists():
+            try:
+                PID_FILE.unlink()
+            except OSError:
+                pass
+        return False
 
 
 def launch_engine():
