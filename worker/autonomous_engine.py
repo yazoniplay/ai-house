@@ -182,19 +182,40 @@ def opportunity():
  '\nScore demand, competition, buildability, validation and risks. No invented stats. JSON {"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","score":0,"evidence":["..."],"risks":["..."],"mvp":"..."}'))
  b["sources"]=[x["url"] for x in src if x.get("url")][:20];return b
 def filesafe(n):
- p=Path(str(n))
+ p=Path(str(n).replace("\\","/"))
  if p.is_absolute() or ".." in p.parts or not p.parts or p.parts[0] in (".ai-house",".git","node_modules",".venv","venv") or p.name.lower() in (".env","credentials.json","secrets.json"):raise ValueError("blocked path")
  d=(WORK/p).resolve()
  if WORK not in d.parents:raise ValueError("path escaped workspace")
  return d,p
 def write(fs):
  out=[]
+ if not isinstance(fs,list):raise ValueError("files must be a list")
  for f in fs[:12]:
-  d,p=filesafe(f.get("path",""));c=f.get("content")
-  if not isinstance(c,str) or len(c.encode())>120000:raise ValueError("invalid or oversized file")
-  d.parent.mkdir(parents=True,exist_ok=True);d.write_text(c,encoding="utf-8");out.append(str(p))
+  if not isinstance(f,dict):raise ValueError("each files item must be an object")
+  d,p=filesafe(f.get("path",""));content=f.get("content")
+  if not isinstance(content,str):raise ValueError("invalid file content for "+str(f.get("path","<missing path>"))+": expected text, got "+type(content).__name__)
+  size=len(content.encode("utf-8"))
+  if size>300000:raise ValueError("file too large: "+str(f.get("path","<missing path>"))+" ("+str(size)+" bytes; limit 300000)")
+  d.parent.mkdir(parents=True,exist_ok=True);d.write_text(content,encoding="utf-8");out.append(str(p).replace("\\","/"))
   log("artifact_created",path=str(p).replace("\\","/"),bytes=d.stat().st_size)
  return out
+def required_deliverable_paths(task):
+ raw=str(task.get("deliverable","")).strip()
+ if not raw:raw=str(task.get("objective",""))
+ matches=re.findall(r"(?<![A-Za-z0-9_-])(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.(?:json|md|csv|html|txt|ya?ml|py|js|ts|tsx|css|sql|xml|pdf)",raw,flags=re.IGNORECASE)
+ paths=[]
+ for value in matches:
+  value=value.replace("\\","/")
+  if value not in paths:paths.append(value)
+ return paths
+def verify_deliverables(task,written):
+ expected=required_deliverable_paths(task)
+ actual={str(path).replace("\\","/") for path in written}
+ missing=[path for path in expected if path not in actual]
+ if missing:raise RuntimeError("Agent did not write the exact required deliverable path(s): "+", ".join(missing))
+ for path in expected:
+  target,_=filesafe(path)
+  if not target.is_file():raise RuntimeError("Required deliverable is missing from disk: "+path)
 def listing():
  return "\n".join(str(p.relative_to(WORK)) for p in WORK.rglob("*") if p.is_file() and not any(x in (".ai-house",".git","node_modules",".venv") for x in p.parts))[:6000] or "(empty)"
 def tests():
