@@ -9,8 +9,9 @@ Runs in this order each pass:
 Guardrails:
 - The room must be active (rooms.active). Setting ops to inactive stops all work.
 - A plan can have at most 10 tasks, and the house can add at most 50 tasks an hour.
-- Any task that spends, publishes, sends, or contacts anyone waits for approval
-  (approvals table). The dashboard has Approve and Reject buttons for these.
+- The leader/orchestrator automatically approves safe internal tasks and rejects
+  external side effects (spending, publishing, messaging, deploying, destructive actions).
+  The owner is not the routine approval bottleneck.
 - Search and research use Gemini first, then Tavily, Ollama, and Token Harbor.
 
 Usage:
@@ -18,8 +19,9 @@ Usage:
   python worker.py --loop   # keep running, polling every 10 seconds
 
 Needs env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY, GEMINI_API_KEY.
-Optional: TOKEN_HARBOR_KEY, TOKEN_HARBOR_MODEL, NVIDIA_API_KEY,
-          OLLAMA_API_KEY, TAVILY_API_KEY.
+Optional: GEMINI_LEADER_MODEL (default gemini-3.5-flash-lite),
+          GEMINI_WORKER_MODEL (default gemini-3.1-flash-lite), TOKEN_HARBOR_KEY,
+          TOKEN_HARBOR_MODEL, NVIDIA_API_KEY, OLLAMA_API_KEY, TAVILY_API_KEY.
 """
 
 import json
