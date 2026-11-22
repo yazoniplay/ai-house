@@ -44,7 +44,8 @@ def obj(t):
  if a<0:raise ValueError("Model did not return JSON")
  return json.loads(t[a:b+1])
 def raw(p,sys,ask,role):
- if p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",GM
+ if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
+ elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",GM
  elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",HM
  else:
   if not M:raise RuntimeError("Gemini key missing")
