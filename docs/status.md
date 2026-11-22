@@ -31,3 +31,11 @@
 ## Security follow-up
 - Review Supabase RLS and grants for SECURITY DEFINER functions before exposing the database API.
 - Keep service-role and model keys out of Git; use local environment or deployment secrets.
+
+
+### The North Face — self-improvement priority
+- Added local persistent learning ledger `worker/north_face.py`.
+- Records every roadmap task's review, root cause, lesson, improvement rule, and recurring mistake frequency.
+- Injects accumulated lessons into leader and specialist task context so prior experience can alter future behavior.
+- Runs a business postmortem after each cycle, distinguishing completed tasks from evidence of actual business success/failure, and stores lessons for the next cycle.
+- Memory is experience/prompt/behavior based; it does not fine-tune Gemini model weights.
