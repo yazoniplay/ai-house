@@ -38,7 +38,7 @@ Press Ctrl+C to stop. State and logs are saved under `workspace/.ai-house/`; gen
 - Worker agents: Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL=gemini-3.1-flash-lite`) first. Groq and Hugging Face are fallback providers if Gemini fails.
 - Tavily supplies live market research when `TAVILY_API_KEY` is set.
 
-The leader automatically approves good internal work and sends weak work back to the builder for up to two improvement rounds. The orchestrator can approve routine business execution—including publishing, relevant outreach, and deployment—when it is goal-aligned, truthful, scoped, reviewed, and platform-compliant. The system must not spend/transfer money, expose secrets, irreversibly delete important data, or change account permissions without explicit owner authorization.
+The leader acts as CEO/chief of staff: creates a 4–8 step dependency-aware roadmap, sets a success metric, prioritizes tasks by impact and unblock value, assigns specialist roles, tracks attempts and acceptance criteria, reviews actual outputs, retries weak work, and replans blocked work (up to three recovery plans). It saves postmortem lessons and process improvements in local state and `LEADER_MEMORY.json`. Each loop advances one task so progress is visible and resumable. The orchestrator can approve routine business execution—including publishing, relevant outreach, and deployment—when it is goal-aligned, truthful, scoped, reviewed, and platform-compliant. The system must not spend/transfer money, expose secrets, irreversibly delete important data, or change account permissions without explicit owner authorization.
 
 ## Configuration
 
