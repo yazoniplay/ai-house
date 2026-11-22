@@ -64,7 +64,7 @@ def groq_fast_review(role,task,output,checks):
  # Groq handles lightweight triage and concise summaries; the stronger leader still makes final approval decisions.
  if not G or not provider_available("groq"):
   return {"summary":str(output.get("summary",""))[:700],"quick_reasoning":"Groq unavailable; skipped fast triage."}
- prompt=("Give a fast, lightweight task summary and flag likely acceptance gaps for the CEO to verify. Do not approve the task or claim checks passed. Return strict JSON {\\"summary\\":\\"...\\",\\"concerns\\":[\\"...\\"]}. Task role: "+role+"\\nTask: "+json.dumps(task,ensure_ascii=False)+"\\nOutput: "+json.dumps(output,ensure_ascii=False)[:9000]+"\\nChecks: "+json.dumps(checks,ensure_ascii=False)[:4000])
+ prompt=("Give a fast, lightweight task summary and flag likely acceptance gaps for the CEO to verify. Do not approve the task or claim checks passed. Return JSON with keys summary and concerns. Task role: "+role+"\nTask: "+json.dumps(task,ensure_ascii=False)+"\nOutput: "+json.dumps(output,ensure_ascii=False)[:9000]+"\nChecks: "+json.dumps(checks,ensure_ascii=False)[:4000])
  try:
   result=obj(raw("groq","You are AI House's fast reasoning and summarization assistant. Be concise, grounded only in the supplied material, and flag uncertainty.",prompt,"fast"))
   log("groq_fast_review",task=task.get("id"),model=GFM)
