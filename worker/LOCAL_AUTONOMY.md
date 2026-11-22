@@ -1,6 +1,6 @@
 # Local autonomous business lab
 
-Run this on your PC from the repository root. The local engine researches business opportunities, builds a local MVP, runs recognized tests/build scripts, and lets the leader/orchestrator approve or request improvements automatically.
+**Local-first is the primary development and testing path.** Run this on your PC from the repository root before relying on the cloud worker or Supabase execution. The local engine researches, builds into a local workspace, runs recognized tests/build scripts, and lets the leader/orchestrator approve or request improvements automatically. Supabase is an optional later control-plane/sync path; it is not required to test the local engine.
 
 ## Setup
 
@@ -38,7 +38,7 @@ Press Ctrl+C to stop. State and logs are saved under `workspace/.ai-house/`; gen
 - Worker agents: Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL=gemini-3.1-flash-lite`) first. Groq and Hugging Face are fallback providers if Gemini fails.
 - Tavily supplies live market research when `TAVILY_API_KEY` is set.
 
-The leader automatically approves good internal work and sends weak work back to the builder for up to two improvement rounds. External or destructive actions such as spending, public publishing, messaging, deployment, account changes, and deleting important data are rejected by policy rather than waiting for owner approval.
+The leader automatically approves good internal work and sends weak work back to the builder for up to two improvement rounds. The orchestrator can approve routine business execution—including publishing, relevant outreach, and deployment—when it is goal-aligned, truthful, scoped, reviewed, and platform-compliant. The system must not spend/transfer money, expose secrets, irreversibly delete important data, or change account permissions without explicit owner authorization.
 
 ## Configuration
 
@@ -56,4 +56,4 @@ The same `worker/.env` template also includes the existing Supabase worker's Sup
 
 ## Local safety boundary
 
-The engine writes only inside its workspace and runs recognized test/build scripts without a shell. It does not install dependencies automatically, access your personal folders, spend money, publish, deploy, message people, or change external accounts. Review generated code before running or releasing it. Autonomous building and validation do not guarantee customers or revenue.
+For local testing, the engine writes inside its workspace and runs recognized test/build scripts without a shell. It does not install dependencies automatically or access your personal folders. Publishing, outreach, and deployment are intended autonomous capabilities after their connectors/action adapters are implemented and orchestrator-reviewed; they are not currently implemented by this local engine. Money movement, secret exposure, irreversible deletion, and account/permission changes remain owner-controlled. Review generated code before running or releasing it. Autonomous building and validation do not guarantee customers or revenue.
