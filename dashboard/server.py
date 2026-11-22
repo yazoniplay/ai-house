@@ -177,6 +177,27 @@ def stop_engine_process():
             pass
 
 
+def supervisor_loop():
+    # Keep autonomy alive while enabled. A deliberate Stop turns this supervisor off.
+    last_launch = 0.0
+    while True:
+        time.sleep(6)
+        if not autonomy_enabled() or not configured() or process_running():
+            continue
+        if time.monotonic() - last_launch < 25:
+            continue
+        last_launch = time.monotonic()
+        try:
+            launch_engine()
+        except Exception as exc:
+            try:
+                STATE_DIR.mkdir(parents=True, exist_ok=True)
+                with ENGINE_LOG.open("a", encoding="utf-8") as handle:
+                    handle.write("dashboard_supervisor_error: " + str(exc)[:400] + "\\n")
+            except Exception:
+                pass
+
+
 def collect_artifacts():
     if not WORKSPACE.exists():
         return []
@@ -305,4 +326,5 @@ if __name__ == "__main__":
             launch_engine()
         except Exception as exc:
             print("AI House auto-start failed:", exc, file=sys.stderr)
+    threading.Thread(target=supervisor_loop, name="ai-house-supervisor", daemon=True).start()
     app.run(host="127.0.0.1", port=8000, debug=False, threaded=True)
