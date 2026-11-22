@@ -20,7 +20,7 @@ This engine runs on your PC and uses your configured model APIs. It researches a
    TAVILY_API_KEY=your_tavily_key
    ```
 
-   At least one model key is required. Groq is tried first, then Hugging Face, then Gemini. Missing or failing providers are skipped automatically. Tavily enables current web research; without it the engine can still build, but market research is not live.
+   The leader/orchestrator uses Gemini 3.5 Flash Lite (`GEMINI_LEADER_MODEL`) and is the final approver. Worker agents use Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL`) first, with Groq and Hugging Face as worker fallbacks if Gemini fails. Tavily enables current web research; without it, market research is not live.
 
 4. Run one iteration:
 
@@ -45,8 +45,8 @@ Optional environment variables:
 - `AI_HOUSE_MAX_FILES_PER_BUILD`: maximum generated files per iteration (default 12).
 - `AI_HOUSE_MAX_FILE_BYTES`: per-file size limit (default 120000).
 - `AI_HOUSE_POLL_SECONDS`: delay between iterations in loop mode (default 30).
-- `GROQ_MODEL`, `HF_MODEL`, `GEMINI_MODEL`: override model names.
+- `GROQ_MODEL`, `HF_MODEL`, `GEMINI_LEADER_MODEL`, `GEMINI_WORKER_MODEL`: override model names.
 
 ## Local safety boundary
 
-The engine can create and overwrite files inside its workspace and run recognized project checks (npm test/build/lint or pytest) without a shell. It does not install packages automatically, access your personal folders, use Supabase service credentials, spend money, publish, deploy, message people, or change external accounts. Review generated code before running or releasing it. It is an autonomous builder and validator, not a guarantee of customers or revenue.
+The engine can create and overwrite files inside its workspace and run recognized project checks (npm test/build/lint or pytest) without a shell. The orchestrator automatically approves good work and sends weak work back to the builder for up to two improvements. It does not install packages automatically, access your personal folders, use Supabase service credentials, spend money, publish, deploy, message people, or change external accounts; unsafe external/destructive actions are rejected by the orchestrator instead of being sent to you for routine approval. Review generated code before running or releasing it. It is an autonomous builder and validator, not a guarantee of customers or revenue.
