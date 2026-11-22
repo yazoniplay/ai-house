@@ -101,8 +101,10 @@ def inventory():
     ]
     for provider, env, base, url in providers:
         token = key(env)
+        auth_env = env
         if not token and provider == "huggingface":
             token = key("HUGGINGFACEHUB_API_TOKEN")
+            auth_env = "HUGGINGFACEHUB_API_TOKEN"
         if not token:
             continue
         try:
@@ -110,7 +112,7 @@ def inventory():
             rows = data.get("data", data.get("models", [])) if isinstance(data, dict) else []
             for row in rows:
                 model = row.get("id") or row.get("name")
-                add(provider, model, "openai", base, env)
+                add(provider, model, "openai", base, auth_env)
         except Exception as e:
             print("Inventory warning", provider + ":", str(e)[:180])
     # Ollama Cloud catalogue and optional local Ollama.
