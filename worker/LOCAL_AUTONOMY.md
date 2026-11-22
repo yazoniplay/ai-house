@@ -38,6 +38,18 @@ Press Ctrl+C to stop. State and logs are saved under `workspace/.ai-house/`; gen
 - Worker agents: Gemini 3.1 Flash Lite (`GEMINI_WORKER_MODEL=gemini-3.1-flash-lite`) first. Groq and Hugging Face are fallback providers if Gemini fails.
 - Tavily supplies live market research when `TAVILY_API_KEY` is set.
 
+## The North Face — self-improvement is the top priority
+
+The North Face is the house's persistent self-improvement system. It is not a decorative reflection or just a chat memory: it records task reviews, root causes, lessons, operational improvement rules, recurring mistake patterns, and business postmortems in `workspace/.ai-house/north_face.json`.
+
+- **After every task:** the leader examines what happened, why the result was approved/retried/failed, and writes a specific behavior-changing rule.
+- **Before future tasks:** The North Face memory is included in the leader's planning/review context and in the specialist agent's task context, so agents can apply past lessons rather than repeat known mistakes.
+- **After every business cycle:** the leader distinguishes completed work from actual business success, evaluates evidence and failed assumptions, records what worked/failed, and changes the next cycle's approach.
+- **Recurring mistakes:** similar root causes are counted and surfaced prominently, helping the leader notice repeated failure patterns.
+- **Priority:** self-improvement is explicitly the highest operating priority; speed or task completion must not replace learning and better decisions.
+
+This is persistent experience-based learning, not automatic model-weight training or guaranteed human-like intelligence. The system improves its prompts, plans, and agent behavior using saved experience; it does not fine-tune Gemini itself.
+ 
 The leader acts as CEO/chief of staff: creates a 4–8 step dependency-aware roadmap, sets a success metric, prioritizes tasks by impact and unblock value, assigns specialist roles, tracks attempts and acceptance criteria, reviews actual outputs, retries weak work, and replans blocked work (up to three recovery plans). It saves postmortem lessons and process improvements in local state and `LEADER_MEMORY.json`. Each loop advances one task so progress is visible and resumable. The orchestrator can approve routine business execution—including publishing, relevant outreach, and deployment—when it is goal-aligned, truthful, scoped, reviewed, and platform-compliant. The system must not spend/transfer money, expose secrets, irreversibly delete important data, or change account permissions without explicit owner authorization.
 
 ## Configuration
