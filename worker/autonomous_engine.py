@@ -15,7 +15,7 @@ def envfile(p):
 envfile(HERE/".env");envfile(ROOT/".env")
 G=os.getenv("GROQ_API_KEY","");H=os.getenv("HF_TOKEN","") or os.getenv("HUGGINGFACEHUB_API_TOKEN","");M=os.getenv("GEMINI_API_KEY","");T=os.getenv("TAVILY_API_KEY","")
 GM=os.getenv("GROQ_MODEL","llama-3.3-70b-versatile");HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507");MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
-ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","builder":"Senior engineer. Return complete functional files, not TODOs.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness."}
+ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","architect":"Product architect. Break the business goal into a coherent MVP architecture and acceptance criteria.","builder":"Senior engineer. Return complete functional files, not TODOs.","growth":"Ethical growth strategist. Draft truthful positioning, organic acquisition and customer feedback assets; no spam.","finance":"Bootstrapped finance analyst. Estimate pricing and unit economics transparently; label every assumption, never invent actual revenue.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness."}
 HTTP=httpx.Client(timeout=120)
 def log(e,**d):
  SD.mkdir(parents=True,exist_ok=True)
@@ -97,12 +97,17 @@ def tests():
  return out or [{"cmd":"auto","exit":0,"output":"No known tests/build scripts; no command run."}]
 def build(s):
  b=s["business"];n=s["iteration"]+1
- prompt="Business: "+json.dumps(b,ensure_ascii=False)+"\nIteration "+str(n)+"\nExisting files:\n"+listing()+"\nBuild next functional MVP deliverable. Prefer browser-native app/tool, helpful landing page or real content asset. Include README and tests for code; no new dependencies, fake reviews, fake payment success or fake analytics. Return complete files JSON "+'{"deliverable":"...","files":[{"path":"relative/path","content":"..."}],"validation":["..."],"next":["..."]}'
+ architecture=obj(ask("architect","Design the next concrete MVP increment for this business. Existing files:\n"+listing()+"\nBusiness:\n"+json.dumps(b,ensure_ascii=False)+'\nReturn JSON {"deliverable":"...","architecture":["..."],"acceptance":["..."],"risks":["..."]}'))
+ prompt="Business: "+json.dumps(b,ensure_ascii=False)+"\nArchitecture: "+json.dumps(architecture,ensure_ascii=False)+"\nIteration "+str(n)+"\nExisting files:\n"+listing()+"\nBuild this functional deliverable. Prefer browser-native app/tool, helpful landing page or useful content asset. Include README and tests for code; no new dependencies, fake reviews, fake payment success or fake analytics. Return complete files JSON "+'{"deliverable":"...","files":[{"path":"relative/path","content":"..."}],"validation":["..."],"next":["..."]}'
  r=obj(ask("builder",prompt));written=write(r.get("files",[]))
  if not written:raise RuntimeError("Builder returned no files")
+ marketing=obj(ask("growth","Create honest, low-cost customer acquisition assets for this business and MVP. No spam, fake urgency, fake testimonials or unsupported claims. Business: "+json.dumps(b,ensure_ascii=False)+"\nDeliverable: "+str(r.get("deliverable"))+'\nReturn JSON {"positioning":"...","target_channels":["..."],"landing_copy":"...","outreach_template":"...","feedback_questions":["..."],"first_week_experiment":"..."}'))
+ finance=obj(ask("finance","Create a transparent bootstrap pricing and measurement plan. Label assumptions and do not claim actual sales or revenue. Business: "+json.dumps(b,ensure_ascii=False)+"\nDeliverable: "+str(r.get("deliverable"))+'\nReturn JSON {"pricing_options":["..."],"unit_economics_assumptions":["..."],"metrics":["..."],"validation_gate":"...","cost_risks":["..."]}'))
+ (WORK/"MARKETING_PLAN.json").write_text(json.dumps(marketing,indent=2,ensure_ascii=False),encoding="utf-8")
+ (WORK/"BUSINESS_MODEL.json").write_text(json.dumps(finance,indent=2,ensure_ascii=False),encoding="utf-8")
  check=tests()
- review=obj(ask("reviewer","Review honestly. Business: "+json.dumps(b)+"\nDeliverable: "+str(r.get("deliverable"))+"\nFiles: "+json.dumps(written)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+"\nWorkspace: "+listing()+'\nJSON {"verdict":"pass|revise|blocked","score":0,"issues":["..."],"improvements":["..."],"next_action":"..."}'))
- result={"iteration":n,"deliverable":r.get("deliverable"),"files":written,"checks":check,"review":review,"validation":r.get("validation",[]),"next":r.get("next",[])}
+ review=obj(ask("reviewer","Review honestly. Business: "+json.dumps(b)+"\nArchitecture: "+json.dumps(architecture,ensure_ascii=False)+"\nDeliverable: "+str(r.get("deliverable"))+"\nFiles: "+json.dumps(written)+"\nChecks: "+json.dumps(check,ensure_ascii=False)+"\nWorkspace: "+listing()+'\nJSON {"verdict":"pass|revise|blocked","score":0,"issues":["..."],"improvements":["..."],"next_action":"..."}'))
+ result={"iteration":n,"deliverable":r.get("deliverable"),"files":written,"architecture":architecture,"marketing":marketing,"finance":finance,"checks":check,"review":review,"validation":r.get("validation",[]),"next":r.get("next",[])}
  s["iteration"]=n;s["last_result"]=result;s.setdefault("history",[]).append({"business":b.get("name"),"iteration":n,"verdict":review.get("verdict")});save(s)
  log("iteration_done",iteration=n,verdict=review.get("verdict"),score=review.get("score"),files=written)
 def cycle(s):
