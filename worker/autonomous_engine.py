@@ -3,8 +3,11 @@ import argparse,json,os,re,shlex,subprocess,time
 from pathlib import Path
 from datetime import datetime,timezone,timedelta
 import httpx
+import sys
+try:sys.stdout.reconfigure(errors="replace")
+except Exception:pass
 from north_face import context as north_face_context, record_task as north_face_record_task, record_business as north_face_record_business
-from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit
+from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit, search_monthly_limit, next_utc_midnight
 from publisher import run_publisher
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
@@ -207,7 +210,7 @@ def ask(role,prompt):
      fallback_search_done=True
      try:
       query=("Latest 2026 market trends, current facts and recent changes relevant to this "+role+" task: "+re.sub(r"\s+"," ",prompt)[:240])
-      fallback_evidence=search(query)
+      fallback_evidence=search(query,depth="basic")
       log("fallback_tavily_search",role=role,provider=p,results=len(fallback_evidence),query=query[:220])
      except Exception as search_error:
       fallback_evidence=[]
@@ -228,14 +231,34 @@ def ask(role,prompt):
    log("fallback",provider=p,role=role,error=str(e)[:140],next_provider="next available")
  raise RuntimeError("No available "+("leader" if role=="orchestrator" else "worker")+" provider: "+" | ".join(errors))
 SEARCH_DEPTH=os.getenv("AI_HOUSE_SEARCH_DEPTH","advanced").lower()
-def search(q):
+SEARCH_ADVANCED_RESERVE=int(os.getenv("AI_HOUSE_ADVANCED_RESERVE","10"))
+def search_credits_left():
+ today=datetime.now(timezone.utc).date().isoformat();month=today[:7]
+ try:data=json.loads(SBF.read_text(encoding="utf-8"))
+ except Exception:data={}
+ used_day=int(data.get("count",0)) if data.get("date")==today else 0
+ used_month=int(data.get("month_count",0)) if data.get("month")==month else 0
+ day_left=int(search_daily_limit())-used_day
+ month_left=int(search_monthly_limit())-used_month
+ return max(0,min(day_left,month_left))
+SEARCH_ROLES=("researcher","analyst","legal_risk","platform_rules")
+def task_search_depth(t,role):
+ if role not in SEARCH_ROLES:return "none"
+ chosen=str(t.get("search","basic")).lower()
+ if chosen not in ("none","basic","advanced"):chosen="basic"
+ if chosen=="advanced" and search_credits_left()-2<SEARCH_ADVANCED_RESERVE:
+  log("search_downgraded",task=t.get("id"),reason="advanced_reserve_protected");chosen="basic"
+ return chosen
+def search(q,depth=None):
  if not T:return []
- cost=2 if SEARCH_DEPTH=="advanced" else 1
+ depth=(depth or SEARCH_DEPTH).lower()
+ if depth not in ("basic","advanced"):depth="basic"
+ cost=2 if depth=="advanced" else 1
  if not search_allowed(SBF):
-  log("search_budget_reached",daily_limit=search_daily_limit(),query=str(q)[:240]);return []
+  log("search_budget_reached",daily_limit=search_daily_limit(),monthly_limit=search_monthly_limit(),query=str(q)[:240]);return []
  for _ in range(cost):record_search(SBF)
  try:
-  r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":str(q)[:300],"search_depth":SEARCH_DEPTH,"max_results":5},timeout=30)
+  r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":str(q)[:300],"search_depth":depth,"max_results":5},timeout=30)
   if r.status_code>=400:
    log("tavily_error",query=str(q)[:240],status=r.status_code,error=r.text[:180]);return []
   return [{"title":x.get("title",""),"url":x.get("url",""),"content":x.get("content","")[:700],"published_date":x.get("published_date") or x.get("published") or x.get("date")} for x in r.json().get("results",[]) if x.get("url")]
@@ -247,11 +270,11 @@ def opportunity():
  queries=list(DISCOVERY_QUERIES)
  try:
   planned=obj(ask("researcher",'Write up to 4 focused Tavily search queries about current customer problems and market demand. Do not suggest businesses or business ideas. Return JSON {"queries":["..."]}.'))
-  queries.extend(str(q).strip()[:250] for q in planned.get("queries",[])[:4] if str(q).strip())
+  queries.extend(str(q).strip()[:250] for q in planned.get("queries",[])[:2] if str(q).strip())
  except Exception as e:log("discovery_query_planning_error",error=str(e)[:180])
  results=[];seen=set();counts=[]
  for q in queries:
-  items=search(q);counts.append({"query":q,"source_count":len(items)})
+  items=search(q,depth="basic");counts.append({"query":q,"source_count":len(items)})
   for item in items:
    url=str(item.get("url","")).strip()
    if url and url not in seen:seen.add(url);results.append(item)
@@ -343,7 +366,7 @@ def roadmap_prompt(s,mode="initial",failed=None):
  "\nRecent results:\n"+json.dumps(history,ensure_ascii=False)[:7000]+
  "\nLessons learned:\n"+json.dumps(lessons,ensure_ascii=False)[:5000]+
  "\nFailure context:\n"+json.dumps(failed or {},ensure_ascii=False)[:5000]+
- "\nCreate a practical roadmap of 4-8 atomic tasks. Focus first on validating demand and the smallest useful product, then build, verify, and prepare honest distribution. Use legal_risk before any task that publishes, sells, or collects customer data. Use sales_drafter only to draft outreach as files; never plan a task that sends messages. Each task must have id (short unique slug), title, objective, agent_role (researcher|strategist|architect|builder|growth|finance|copywriter|designer|qa_tester|sales_drafter|analyst|legal_risk), priority (1-100), depends_on (list of task ids), acceptance (2-5 observable checks), and deliverable (specific artifact/output). Include a measurable business success_metric and a short strategy. Avoid vague tasks like 'research more'. No new business suggestions to the owner; decide and execute internally. Do not include tasks outside this business or the user's excluded existing projects. Return JSON: {\"strategy\":\"...\",\"success_metric\":\"...\",\"tasks\":[...]}")
+ "\nCreate a practical roadmap of 4-8 atomic tasks. Focus first on validating demand and the smallest useful product, then build, verify, and prepare honest distribution. Use legal_risk before any task that publishes, sells, or collects customer data. Use sales_drafter only to draft outreach as files; never plan a task that sends messages. Search budget left today: `"+str(search_credits_left())+"` credits. For each task that needs live web facts, set "search" to "basic" (1 credit, for quick facts, current names, or prices) or "advanced" (2 credits, for deep research on evidence that matters most). Use "none" when the task needs no live facts. Prefer basic. Use at most one advanced search per roadmap. Each task must have id (short unique slug), title, objective, agent_role (researcher|strategist|architect|builder|growth|finance|copywriter|designer|qa_tester|sales_drafter|analyst|legal_risk), priority (1-100), depends_on (list of task ids), acceptance (2-5 observable checks), and deliverable (specific artifact/output), search (none|basic|advanced). Include a measurable business success_metric and a short strategy. Avoid vague tasks like 'research more'. No new business suggestions to the owner; decide and execute internally. Do not include tasks outside this business or the user's excluded existing projects. Return JSON: {\"strategy\":\"...\",\"success_metric\":\"...\",\"tasks\":[...]}")
 def validate_roadmap(tasks):
  if not isinstance(tasks,list) or not 4<=len(tasks)<=8:return "roadmap must contain 4 to 8 tasks"
  ids=set()
@@ -380,6 +403,16 @@ def create_roadmap(s,mode="initial",failed=None):
    "\nReturn corrected JSON with strategy, success_metric, and 4-8 valid tasks using the required schema.")
   tasks=plan.get("tasks",[]);error=validate_roadmap(tasks)
  if error:raise RuntimeError("leader produced invalid roadmap: "+error)
+ adjusted=0;advanced_seen=False
+ for t in tasks:
+  choice=str(t.get("search","basic")).lower()
+  if choice not in ("none","basic","advanced"):
+   t["search"]="basic";adjusted+=1;choice="basic"
+  if choice=="advanced":
+   if advanced_seen:
+    t["search"]="basic";adjusted+=1
+   else:advanced_seen=True
+ if adjusted:log("search_choices_adjusted",count=adjusted)
  for t in tasks:
   t.update({"status":"pending","attempts":0,"last_error":"","output":None})
  s["roadmap"]={"strategy":plan.get("strategy",""),"success_metric":plan.get("success_metric",""),"tasks":tasks,"created_at":datetime.now(timezone.utc).isoformat()}
@@ -420,7 +453,8 @@ def run_roadmap_task(s,t):
  task_context={"business":b,"roadmap_strategy":s["roadmap"]["strategy"],"success_metric":s["roadmap"]["success_metric"],"task":t,"workspace":listing()+"\nAll paths are relative to this business's folder.","prior_task_outputs":[{"id":x["id"],"title":x["title"],"output":x.get("output")} for x in s["roadmap"]["tasks"] if x["status"]=="completed"],"north_face_memory":north_face_context(SD/"north_face.json")[:12000]}
  required=required_deliverable_paths(t)
  if role in ("researcher","analyst","legal_risk"):set_activity("evidence_gathering",role.capitalize()+" is gathering fresh evidence for this task.",role,t.get("id"))
- sources=search(str(t.get("objective",""))+" "+str(t.get("title",""))) if role in ("researcher","analyst","legal_risk") else []
+ search_depth=task_search_depth(t,role)
+ sources=search(str(t.get("objective",""))+" "+str(t.get("title","")),depth=search_depth) if search_depth!="none" else []
  if role=="builder":
   prompt=("You are a senior product engineer. Execute ONLY this assigned task, preserve working files, build complete usable artifacts, avoid unnecessary dependencies, and include meaningful validation. "
    "Return every physical deliverable in the files array using the exact required path(s): "+json.dumps(required,ensure_ascii=False)+". Do not merely mention file contents in the summary. "
@@ -480,7 +514,8 @@ def retry_task(s,t):
  task_context={"business":s.get("business"),"task":t,"previous_output":old,"leader_fix":t.get("last_error",""),"workspace":listing()+"\nAll paths are relative to this business's folder.","north_face_memory":north_face_context(SD/"north_face.json")[:12000]}
  required=required_deliverable_paths(t)
  if role in ("researcher","analyst","legal_risk"):set_activity("evidence_gathering",role.capitalize()+" is gathering fresh evidence for the retry.",role,t.get("id"))
- sources=search(str(t.get("objective",""))+" "+str(t.get("title",""))) if role in ("researcher","analyst","legal_risk") else []
+ search_depth=task_search_depth(t,role)
+ sources=search(str(t.get("objective",""))+" "+str(t.get("title","")),depth=search_depth) if search_depth!="none" else []
  prompt=("You are the "+role+" specialist. Apply the CEO's precise correction and redo the task completely. Return concrete work; do not invent real-world contacts, customer responses, revenue, or actions. "
   "You MUST return physical deliverables in the files array using these exact required path(s): "+json.dumps(required,ensure_ascii=False)+". Never substitute a report filename for a required path. "
   "If no exact path is specified, use reports/"+re.sub(r"[^a-zA-Z0-9_-]","_",str(t.get("id","task")))+"_revision.md. The runner writes files to disk; summaries and code fences are not file creation. "+("Write drafts only. Put every message in a file under the outreach folder. Do not describe any message as sent. " if role=="sales_drafter" else "")+
@@ -569,7 +604,8 @@ def cycle(s):
   log("market_research_started")
   business=opportunity()
   if business is None:
-   s["discovery_retry_after"]=(datetime.now(timezone.utc)+timedelta(minutes=30)).isoformat()
+   retry_at=next_utc_midnight() if not search_allowed(SBF) else datetime.now(timezone.utc)+timedelta(minutes=30)
+   s["discovery_retry_after"]=retry_at.isoformat()
    s["activity"]={"stage":"discovery_wait","message":"Insufficient source-backed opportunities; retrying discovery in 30 minutes.","role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
    save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
   s["business"]=business

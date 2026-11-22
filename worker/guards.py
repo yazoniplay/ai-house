@@ -8,11 +8,15 @@
 import json
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 def search_daily_limit():
-    return int(os.getenv("AI_HOUSE_SEARCH_DAILY_LIMIT", "25"))
+    return int(os.getenv("AI_HOUSE_SEARCH_DAILY_LIMIT", "33"))
+
+def search_monthly_limit():
+    return int(os.getenv("AI_HOUSE_SEARCH_MONTHLY_LIMIT", "950"))
+
 SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 
 
@@ -25,22 +29,35 @@ def _read_budget(path: Path):
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         data = {}
-    if data.get("date") != _today():
-        data = {"date": _today(), "count": 0}
+    today = _today()
+    month = today[:7]
+    if data.get("date") != today:
+        data["date"] = today
+        data["count"] = 0
+    if data.get("month") != month:
+        data["month"] = month
+        data["month_count"] = 0
+    data.setdefault("count", 0)
+    data.setdefault("month_count", 0)
     return data
 
 
 def search_allowed(budget_file: Path) -> bool:
-    """True if today's search count is still under the daily limit."""
-    return _read_budget(budget_file)["count"] < search_daily_limit()
+    data = _read_budget(budget_file)
+    return data["count"] < search_daily_limit() and data["month_count"] < search_monthly_limit()
 
 
 def record_search(budget_file: Path):
-    """Count one search against today's budget."""
     data = _read_budget(budget_file)
     data["count"] += 1
+    data["month_count"] += 1
     budget_file.parent.mkdir(parents=True, exist_ok=True)
     budget_file.write_text(json.dumps(data), encoding="utf-8")
+
+
+def next_utc_midnight():
+    now = datetime.now(timezone.utc)
+    return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def clean_env():

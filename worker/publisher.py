@@ -166,11 +166,16 @@ def run_publisher(workspace: Path, http) -> int:
             ps = {"consecutive_failures": 0, "auto_paused": False}
             platform_state[platform] = ps
 
-        # Auto-pause is cleared only by an explicit config edit to paused:false.
-        if ps.get("auto_paused") and pc.get("paused") is False:
-            ps["auto_paused"] = False
-            ps["consecutive_failures"] = 0
-            _event(meta, "publish_resumed", platform=platform, reason="owner_unpaused_in_config")
+        if ps.get("auto_paused"):
+            try:
+                config_mtime = config_path.stat().st_mtime
+            except Exception:
+                config_mtime = 0
+            if pc.get("paused") is not True and config_mtime > ps.get("paused_at_mtime", 0):
+                ps["auto_paused"] = False
+                ps["consecutive_failures"] = 0
+                ps.pop("paused_at_mtime", None)
+                _event(meta, "publish_resumed", platform=platform, reason="owner_edited_config_after_pause")
         if pc.get("paused") is True or ps.get("auto_paused"):
             continue
 
@@ -220,11 +225,17 @@ def run_publisher(workspace: Path, http) -> int:
             ps["auto_paused"] = False
             published += 1
             _event(meta, "publish_succeeded", platform=platform, item=item.get("id"), url=url, content_hash=content_hash)
+        except FileExistsError:
+            _event(meta, "publish_skipped", platform=platform, item=item.get("id"), reason="file_exists")
         except Exception as exc:
             ps["consecutive_failures"] = int(ps.get("consecutive_failures", 0)) + 1
             _event(meta, "publish_failed", platform=platform, item=item.get("id"), failures=ps["consecutive_failures"], error=str(exc)[:400])
             if ps["consecutive_failures"] >= 3 and not ps.get("auto_paused"):
                 ps["auto_paused"] = True
+                try:
+                    ps["paused_at_mtime"] = config_path.stat().st_mtime
+                except Exception:
+                    ps["paused_at_mtime"] = 0
                 _event(meta, "publish_paused", platform=platform, failures=ps["consecutive_failures"], reason="three_consecutive_failures")
 
     # Persist queue and failure/pause state atomically.
