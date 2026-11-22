@@ -206,7 +206,7 @@ def run_roadmap_task(s,t):
  check=tests() if role=="builder" else []
  review=leader_json("Review this task as the accountable CEO. Verify each acceptance criterion from the actual output and checks. Approve only if complete and useful. If incomplete, give a precise fix that can be done in one retry. Distinguish missing test infrastructure from passing tests. Task:\n"+
   json.dumps(t,ensure_ascii=False)+"\nOutput:\n"+json.dumps(output,ensure_ascii=False)+"\nAutomated checks:\n"+json.dumps(check,ensure_ascii=False)+
-  '\nReturn JSON {\"decision\":\"approve|improve|block\",\"score\":0-100,\"criteria_results\":[{\"criterion\":\"...\",\"passed\":true,\"evidence\":\"...\"}],\"issues\":[\"...\"],\"fix_instruction\":\"...\",\"reason\":\"...\"}')
+  '\nReturn JSON {\"decision\":\"approve|improve|block\",\"score\":0-100,\"criteria_results\":[{\"criterion\":\"...\",\"passed\":true,\"evidence\":\"...\"}],\"issues\":[\"...\"],\"fix_instruction\":\"...\",\"reason\":\"...\",\"learning\":{\"root_cause\":\"...\",\"lesson\":\"...\",\"improvement_rule\":\"...\",\"confidence\":\"low|medium|high\"}}')
  decision=str(review.get("decision","block")).lower()
  learning_status="completed" if decision=="approve" else ("retry" if decision=="improve" and attempt<=2 else "failed")
  north_face_task_learning(s,t,learning_status,review,output)
