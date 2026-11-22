@@ -191,13 +191,15 @@ def ask(role,prompt):
    errors.append(p+":"+str(e)[:140])
    log("fallback",provider=p,role=role,error=str(e)[:140],next_provider="next available")
  raise RuntimeError("No available "+("leader" if role=="orchestrator" else "worker")+" provider: "+" | ".join(errors))
+SEARCH_DEPTH=os.getenv("AI_HOUSE_SEARCH_DEPTH","advanced").lower()
 def search(q):
  if not T:return []
+ cost=2 if SEARCH_DEPTH=="advanced" else 1
  if not search_allowed(SBF):
   log("search_budget_reached",daily_limit=SEARCH_DAILY_LIMIT,query=str(q)[:240]);return []
- record_search(SBF)
+ for _ in range(cost):record_search(SBF)
  try:
-  r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":str(q)[:300],"search_depth":"basic","max_results":5},timeout=15)
+  r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":str(q)[:300],"search_depth":SEARCH_DEPTH,"max_results":5},timeout=30)
   if r.status_code>=400:
    log("tavily_error",query=str(q)[:240],status=r.status_code,error=r.text[:180]);return []
   return [{"title":x.get("title",""),"url":x.get("url",""),"content":x.get("content","")[:700],"published_date":x.get("published_date") or x.get("published") or x.get("date")} for x in r.json().get("results",[]) if x.get("url")]
