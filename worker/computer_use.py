@@ -11,10 +11,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-try:
-    from worker.approvals import create_request, get_answer, list_requests
-except ModuleNotFoundError:
-    from approvals import create_request, get_answer, list_requests
+WORKER_PATH = Path(__file__).resolve().parent
+if str(WORKER_PATH) not in sys.path:
+    sys.path.insert(0, str(WORKER_PATH))
+from approvals import create_request, get_answer, list_requests
 
 SAFE_HOTKEYS = {
     ("ctrl", "c"), ("ctrl", "v"), ("ctrl", "x"), ("ctrl", "a"),
