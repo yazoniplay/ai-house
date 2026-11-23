@@ -616,7 +616,7 @@ def validate_roadmap(tasks):
  for t in tasks:
   if isinstance(t,dict):
    usage_text=" ".join(str(t.get(k,"")) for k in ("title","objective","success_metric","acceptance")).lower()
-   if any(term in usage_text for term in ("10 users","ten users","user adoption verification","verify product usage","verify usage","usage verification")):
+   if any(term in usage_text for term in ("10 users","ten users","user adoption verification","verify product usage","verify usage","usage verification","adoption verification","verify adoption")):
     t.setdefault("verification_target_users",10)
     t.setdefault("usage_events_path","reports/product-usage-events.jsonl")
  for t in tasks:
@@ -812,8 +812,9 @@ def run_roadmap_task(s,t):
   log("video_produced",task=t.get("id"),video=video_result.get("video"),duration=video_result.get("duration_seconds"),scenes=video_result.get("scene_count"))
  verify_deliverables(t,written)
  usage_gate=None
- try:usage_target=max(0,int(t.get("verification_target_users",0) or 0))
+ try:usage_target=int(t.get("verification_target_users",0) or 0)
  except (TypeError,ValueError):usage_target=0
+ usage_target=max(10,usage_target) if usage_target>0 else 0
  if usage_target>=10:
   usage_rel=str(t.get("usage_events_path") or "reports/product-usage-events.jsonl")
   usage_file=None
@@ -843,11 +844,11 @@ def run_roadmap_task(s,t):
   json.dumps(t,ensure_ascii=False)+"\nOutput metadata:\n"+json.dumps(output,ensure_ascii=False)+"\nActual file contents:\n"+json.dumps(file_evidence,ensure_ascii=False)[:24000]+"\nAutomated checks:\n"+json.dumps(check,ensure_ascii=False)+"\nDeterministic 10-user production validation (must not be overridden):\n"+json.dumps(usage_gate,ensure_ascii=False)+
   '\nReturn JSON {"decision":"approve|improve|block","score":0-100,"criteria_results":[{"criterion":"...","passed":true,"evidence":"..."}],"issues":["..."],"fix_instruction":"...","reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
  decision=str(review.get("decision","block")).lower()
- if usage_gate and usage_gate.get("status")!="verified" and decision=="approve":
+ if usage_gate and usage_gate.get("status")!="verified":
   decision="improve" if attempt<=2 else "block"
   review.setdefault("issues",[]).append("10-user milestone not verified: "+str(usage_gate.get("distinct_production_users",0))+"/"+str(usage_target)+" distinct production users. Do not claim success.")
   review["fix_instruction"]="Continue authorized product activation and distribution, obtain a real production analytics export at "+str(usage_rel)+", then rerun verification. Never fabricate or count owner/test/bot/page-view events."
-  review["reason"]="The deterministic production usage gate remains pending."
+  review["reason"]="The deterministic production usage gate remains pending; keep the adoption milestone open."
  review["usage_verification"]=usage_gate
  log("leader_review_completed",task=t.get("id"),decision=decision,score=review.get("score"),usage_status=(usage_gate or {}).get("status"))
  learning_status="completed" if decision=="approve" else ("retry" if decision=="improve" and attempt<=2 else "failed")
