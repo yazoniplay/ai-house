@@ -285,7 +285,7 @@ def provider_model_catalog(provider):
    if response.status_code>=400:raise RuntimeError("OpenRouter model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
    OPENROUTER_FREE_MODELS[:]=openrouter_free_model_ids(rows)
-   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id")}
+   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
   else:
    return None
   if not ids:raise RuntimeError(provider+" returned an empty model catalog")
