@@ -352,7 +352,9 @@ def model_candidates(provider,role):
   "gemini":["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.1-flash-lite"],
   "groq":["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
  }
- candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))\n log("model_pool_ready",provider=provider,role=role,model_count=len(candidates),models=candidates[:12])\n return candidates
+ candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
+ log("model_pool_ready",provider=provider,role=role,model_count=len(candidates),models=candidates[:12])
+ return candidates
 def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
