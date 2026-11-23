@@ -912,6 +912,9 @@ def validate_roadmap(tasks):
 def create_roadmap(s,mode="initial",failed=None):
  set_activity("roadmap_planning","The CEO is turning the opportunity into an execution plan.","orchestrator")
  plan=leader_json(roadmap_prompt(s,mode,failed))
+ business_seed=s.get("business") if isinstance(s.get("business"),dict) else {}
+ if not str(plan.get("strategy","")).strip():plan["strategy"]="Evidence-first execution: validate the customer problem, build the smallest useful solution, then measure real outcomes."
+ if not str(plan.get("success_metric","")).strip():plan["success_metric"]=str(business_seed.get("owner_success_metric") or "Validate the target customer problem with real evidence and complete a usable, tested MVP.")
  tasks=plan.get("tasks",[])
  error=validate_roadmap(tasks)
  if error:
