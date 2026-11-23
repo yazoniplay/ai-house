@@ -1,5 +1,5 @@
 import unittest
-from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool
+from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool, provider_chat_model_pool
 
 class ProviderRouterTests(unittest.TestCase):
     def test_provider_rotation_spreads_calls_across_available_providers(self):
@@ -59,6 +59,22 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertIn("gemini-2.5-pro",pool)
         self.assertFalse(any(any(token in model for token in ("embedding","transcribe","live","image")) for model in pool))
         self.assertEqual(len(pool),6)
+
+    def test_provider_chat_catalog_expands_and_prioritizes_free_and_fast_models(self):
+        catalog=["meta/llama-70b","meta/llama-8b","meta/llama-embedding","nvidia/nemotron-fast","nvidia/nemotron-120b","nvidia/whisper-large"]
+        groq=provider_chat_model_pool("groq",catalog,["meta/llama-70b"])
+        self.assertEqual(groq[0],"meta/llama-70b")
+        self.assertIn("meta/llama-8b",groq)
+        self.assertIn("nvidia/nemotron-fast",groq)
+        self.assertNotIn("meta/llama-embedding",groq)
+        self.assertNotIn("nvidia/whisper-large",groq)
+
+    def test_openrouter_free_models_are_first_then_paid_catalog_fallbacks(self):
+        catalog=["paid/model-large","free/llama:free","paid/model-mini","free/gemma:free"]
+        pool=provider_chat_model_pool("openrouter",catalog,["paid/model-mini"],["free/llama:free","free/gemma:free"])
+        self.assertEqual(pool[:2],["free/llama:free","free/gemma:free"])
+        self.assertIn("paid/model-mini",pool)
+        self.assertIn("paid/model-large",pool)
 
     def test_openrouter_catalog_finds_free_and_zero_priced_models(self):
         rows=[

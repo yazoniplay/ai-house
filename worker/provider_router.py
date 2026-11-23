@@ -37,6 +37,25 @@ def gemini_chat_model_pool(catalog_ids, preferred=()):
         return (4,name)
     return preferred_order+sorted(rest,key=rank)
 
+def provider_chat_model_pool(provider, catalog_ids, preferred=(), free_ids=()):
+    """Build a broad, text-chat-only provider pool from live catalog IDs."""
+    excluded=("embedding", "embed-", "-embed", "rerank", "whisper", "transcription", "transcribe", "tts", "text-to-speech", "speech", "audio", "image-generation", "text-to-image", "video-generation", "text-to-video", "moderation-only")
+    available=list(dict.fromkeys(str(x).strip() for x in catalog_ids if str(x).strip()))
+    available=[x for x in available if not any(token in x.lower() for token in excluded)]
+    available_set=set(available)
+    free=[x for x in dict.fromkeys(free_ids or ()) if x in available_set]
+    preferred_order=[x for x in model_pool("", ",".join(preferred)) if x in available_set and x not in free]
+    remaining=[x for x in available if x not in free and x not in preferred_order]
+    def rank(model):
+        name=model.lower()
+        if any(token in name for token in ("flash-lite","flash_lite","-mini","_mini","-small","_small","-fast","_fast")):return (0,name)
+        if any(token in name for token in ("8b","9b","12b","14b","20b","24b","32b")):return (1,name)
+        if any(token in name for token in ("70b","72b","110b","120b","405b","550b")):return (3,name)
+        return (2,name)
+    remaining.sort(key=rank)
+    if provider=="openrouter":return free+preferred_order+remaining
+    return preferred_order+remaining
+
 def is_model_specific_error(error):
     message=str(error).lower()
     return any(token in message for token in (

@@ -15,7 +15,7 @@ from briefs import create_brief, get_brief_answer, answer_brief, list_briefs
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
-from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool
+from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool, provider_chat_model_pool
 from user_validation import verify_usage_events, load_usage_events
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
 from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
@@ -446,10 +446,12 @@ def model_candidates(provider,role):
    candidates=gemini_chat_model_pool(catalog,candidates)
    log("gemini_dynamic_fallback_pool",role=role,preferred_count=len(configured),catalog_text_model_count=len(candidates),models=candidates[:20])
   if provider=="openrouter":
-   # OpenRouter's free/auto router aliases are valid even though they are not
-   # regular model IDs in /models; all concrete model slugs must be catalog-listed.
+   # Keep router aliases, then exhaust explicitly free text models before any
+   # configured or paid catalog models. Paid slugs remain available as fallbacks.
    aliases={"openrouter/free","openrouter/auto"}
-   candidates=[x for x in candidates if x in aliases]+filter_model_pool([x for x in candidates if x not in aliases],catalog)
+   candidates=[x for x in candidates if x in aliases]+provider_chat_model_pool(provider,catalog,candidates,OPENROUTER_FREE_MODELS)
+  elif provider in ("nvidia","groq"):
+   candidates=provider_chat_model_pool(provider,catalog,candidates)
   else:
    candidates=filter_model_pool(candidates,catalog)
  now=time.monotonic()
@@ -461,13 +463,16 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  if p=="gemini":max_attempts=max(1,min(50,int(os.getenv("AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","20"))))
+  defaults={"gemini":20,"nvidia":20,"openrouter":20,"groq":16}
+  env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS"}
+  if p in defaults:max_attempts=max(1,min(50,int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(12,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","8"))))
- except Exception:max_attempts=20 if p=="gemini" else 8
- if p=="gemini" and len(candidates)>max_attempts:
-  # Rotate the attempt window so a large catalog is covered across calls, not
-  # permanently truncated to the same first few models.
-  rotation_key="gemini_attempt_offset:"+str(role)
+ except Exception:max_attempts={"gemini":20,"nvidia":20,"openrouter":20,"groq":16}.get(p,8)
+ if p in ("gemini","nvidia","openrouter","groq") and len(candidates)>max_attempts:
+  # Walk a rotating window across the complete live catalog. The preferred
+  # models stay at the front of the ordering, but repeated calls eventually
+  # reach every eligible model instead of always truncating to the same prefix.
+  rotation_key="catalog_attempt_offset:"+p+":"+str(role)
   offset=MODEL_ROTATION.get(rotation_key,0)%len(candidates)
   candidates=candidates[offset:]+candidates[:offset]
   MODEL_ROTATION[rotation_key]=(offset+max_attempts)%len(candidates)
@@ -536,6 +541,10 @@ def ask(role,prompt):
    return out
   except Exception as e:
    cooldown=provider_cooldown_seconds(p,e)
+   if p=="openrouter" and is_openrouter_credit_model_error(p,e):
+    # A low OpenRouter balance must not put its free-model fallback on a
+    # 24-hour provider cooldown; briefly yield and let other providers run.
+    cooldown=min(cooldown or 120,120)
    if cooldown:
     PROVIDER_COOLDOWN[p]=time.monotonic()+cooldown
     log("provider_cooldown",provider=p,role=role,seconds=cooldown,error=str(e)[:180])
