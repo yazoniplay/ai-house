@@ -11,7 +11,7 @@ from guards import search_allowed, record_search, clean_env, run_pytest, search_
 from publisher import run_publisher
 from approvals import create_request, get_answer
 from approvals import answer, list_requests
-from briefs import create_brief, get_brief_answer
+from briefs import create_brief, get_brief_answer, answer_brief, list_briefs
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
@@ -1182,6 +1182,21 @@ def discord_command(text):
   return "House running: "+("yes" if house_running() else "no")+"\nActive now: "+("yes" if active_now() else "no")+"\nPending approvals: "+str(pending)
  if command=="!pending-json":
   return json.dumps(list_requests(WORK,True),ensure_ascii=False)
+ if command=="!brief-json":
+  if len(parts)!=2:return "{}"
+  brief=next((x for x in list_briefs(WORK,True) if str(x.get("id"))==parts[1]),None)
+  return json.dumps(brief or {},ensure_ascii=False)
+ if command=="!discord-pending-json":
+  items=[dict(x,answer_command="!answer") for x in list_requests(WORK,True)]
+  items.extend(dict(x,answer_command="!brief-answer") for x in list_briefs(WORK,True))
+  return json.dumps(items,ensure_ascii=False)
+ if command=="!brief-answer":
+  if len(parts)!=3:return "Usage: !brief-answer <id> <option-number>"
+  try:
+   item=answer_brief(WORK,parts[1],str(int(parts[2])+1))
+   log("discord_brief_answer",brief_id=item.get("id"),choice=str(item.get("choice",""))[:160])
+   return "Answered "+str(item.get("id"))+": "+str(item.get("choice",""))
+  except Exception as e:return str(e)
  if command=="!pending":
   requests=list_requests(WORK,True)
   if not requests:return "No pending approvals."
@@ -1225,6 +1240,8 @@ def chat_with_leader(text):
   rooms=[]
   pending=list_requests(WORK,True)
   answered_recent=[{"id":x.get("id"),"room":x.get("room"),"kind":x.get("kind"),"question":str(x.get("question",""))[:400],"choice":str(x.get("choice",""))[:160],"status":x.get("status")} for x in list_requests(WORK,False) if x.get("status")=="answered"][-8:]
+  answered_recent.extend([{"id":x.get("id"),"room":x.get("room"),"kind":"owner_brief","question":str(x.get("question",""))[:400],"choice":str(x.get("choice",""))[:160],"status":x.get("status")} for x in list_briefs(WORK,False) if x.get("status")=="answered"][-8:])
+  answered_recent=answered_recent[-12:]
   for room in registry.get("rooms",[]):
    rid=str(room.get("id",""))
    try:data=json.loads(Path(room.get("state_file",SF)).read_text(encoding="utf-8"))
