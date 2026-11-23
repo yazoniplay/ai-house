@@ -6,7 +6,7 @@ def is_usage_verification_task(task):
     Do not infer an adoption gate from generic references to users in an analyst,
     research, instrumentation, or analytics-framework task.
     """
-    if not isinstance(task, dict):
+    if not isinstance(task, dict) or task.get("agent_role") != "customer_success":
         return False
     text = " ".join(
         str(task.get(key, "") or "")
