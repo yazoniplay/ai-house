@@ -391,6 +391,10 @@ button:not(:disabled):active{transform:translateY(0)}
             <div class="nf-insight-head"><strong>Recurring mistakes</strong><span id="nfMistakeCount">0 patterns</span></div>
             <div id="nfMistakes" class="nf-list"><div class="empty">Repeated root causes will appear here.</div></div>
           </section>
+          <section class="nf-insight">
+            <div class="nf-insight-head"><strong>Recent task reviews</strong><span id="nfTaskReviewCount">0 reviews</span></div>
+            <div id="nfTaskReviews" class="nf-list"><div class="empty">Task review evidence will appear here.</div></div>
+          </section>
         </div>
         <div class="decision-audit-head"><strong>Decision audit trail</strong><span id="decisionAuditCount">0 reviews</span></div>
         <div id="decisionAudit" class="decision-audit"><div class="empty">Roadmap and business decisions will appear here with their evidence-based reviews.</div></div>
@@ -808,12 +812,13 @@ async function refreshProviderUsage(){
 
 
 function renderNorthFace(memory){
- const lessonsBox=$("nfLessons"),experimentsBox=$("nfExperiments"),postBox=$("nfPostmortems"),mistakesBox=$("nfMistakes");
+ const lessonsBox=$("nfLessons"),experimentsBox=$("nfExperiments"),postBox=$("nfPostmortems"),mistakesBox=$("nfMistakes"),reviewsBox=$("nfTaskReviews");
  if(!lessonsBox)return;
  const lessons=Array.isArray(memory?.lessons)?memory.lessons:[];
  const experiments=Array.isArray(memory?.experiments)?memory.experiments:[];
  const posts=Array.isArray(memory?.business_postmortems)?memory.business_postmortems:[];
  const mistakes=Array.isArray(memory?.mistake_patterns)?memory.mistake_patterns:[];
+ const taskReviews=Array.isArray(memory?.task_reviews)?memory.task_reviews:[];
  $("nfExperimentCount").textContent=experiments.length+" registered";
  $("nfPostmortemCount").textContent=posts.length+" recorded";
  $("nfMistakeCount").textContent=mistakes.length+" patterns";
@@ -831,7 +836,7 @@ function renderNorthFace(memory){
  lessonsBox.replaceChildren();
  const sorted=lessons.slice().sort((a,b)=>(a.state==="confirmed"?0:1)-(b.state==="confirmed"?0:1));
  if(!sorted.length)addEmpty(lessonsBox,"No lessons recorded yet. North Face adds candidates from reviewed tasks and business outcomes.");
- sorted.slice(-8).reverse().forEach(x=>{
+ sorted.slice(0,8).reverse().forEach(x=>{
   const outcomes=x.outcomes||{};
   makeItem(lessonsBox,x.improvement_rule||x.lesson,x.state||"candidate",x.root_cause?"Root cause: "+x.root_cause:"",String(x.role_scope||["all"]).replace(/,/g,", ")+" · "+Number(x.count||1)+" observations · "+String(x.confidence||"low")+" confidence",["Applied "+Number(x.times_applied||0),"Positive "+Number(outcomes.positive||0),"Negative "+Number(outcomes.negative||0)]);
  });
@@ -851,6 +856,7 @@ function renderNorthFace(memory){
  mistakesBox.replaceChildren();
  if(!mistakes.length)addEmpty(mistakesBox,"No repeated root causes recorded.");
  mistakes.slice(0,6).forEach(x=>makeItem(mistakesBox,x.root_cause||x.key,"pattern", "Recorded "+Number(x.count||1)+" times",String(x.role_scope||["all"]).replace(/,/g,", "),Array.isArray(x.examples)?x.examples.slice(-3):[]));
+ if(reviewsBox){$("nfTaskReviewCount").textContent=taskReviews.length+" reviews";reviewsBox.replaceChildren();if(!taskReviews.length)addEmpty(reviewsBox,"No task reviews recorded yet.");taskReviews.slice(-6).reverse().forEach(x=>makeItem(reviewsBox,x.title||x.task_id,x.status||"review",x.root_cause||"No root cause noted",String(x.role||"agent")+" · score "+(x.score??"—"),[x.lesson||x.improvement_rule||"No lesson extracted"].filter(Boolean)));}
 }
 
 function renderDecisionAudit(memory){
