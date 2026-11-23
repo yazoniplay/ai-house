@@ -886,7 +886,7 @@ async function refreshProviderUsage(){
   const total=$("providerTotalCalls");if(total)total.textContent=Number(data.total_calls||0).toLocaleString();
   const cost=$("providerTotalCost");if(cost)cost.textContent="$"+Number(data.estimated_cost_usd||0).toFixed(4);
   const count=$("providerCount");if(count)count.textContent=String((data.providers||[]).length);
-  const updated=$("providerUpdated");if(updated)updated.textContent="Updated "+new Date().toLocaleTimeString();
+  const updated=$("providerUpdated");if(updated)updated.textContent="Updated "+new Date().toLocaleTimeString()+(data.history_truncated?" · recent log window only":"");
   const grid=$("providerGrid");if(!grid)return;grid.replaceChildren();
   const providers=data.providers||[];
   if(!providers.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="No provider calls have been recorded yet.";grid.append(empty);return;}
