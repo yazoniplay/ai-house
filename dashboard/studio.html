@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI House — Studio</title>
+<style>
+:root{color-scheme:dark;--bg:#090d16;--panel:#111827;--panel2:#151f31;--line:#26344a;--text:#f3f6ff;--muted:#98a7bd;--accent:#a78bfa;--cyan:#7dd3fc;--green:#64e4b2;--red:#ff8396}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,Segoe UI,sans-serif}
+header{padding:22px clamp(16px,4vw,48px);border-bottom:1px solid var(--line);display:flex;gap:20px;align-items:center;flex-wrap:wrap;background:#0b111d}
+.brand{font-weight:900;letter-spacing:.1em}.brand b{color:var(--accent)}nav{display:flex;gap:8px;margin-left:auto}button,a{font:inherit}button{border:1px solid var(--line);border-radius:10px;background:#202b40;color:var(--text);padding:9px 13px;font-weight:750;cursor:pointer}button.primary{background:#342c55;border-color:#6654a2}button.good{background:#19382f;border-color:#2d785f;color:#bfffe5}button.danger{background:#351e2a;border-color:#703a4a;color:#ffd9df}button:disabled{opacity:.5;cursor:default}a{color:var(--cyan);text-decoration:none}
+main{max-width:1240px;margin:auto;padding:28px clamp(14px,3vw,34px) 60px}.intro{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px}.eyebrow{font-size:10px;letter-spacing:.2em;color:#c4b5fd;font-weight:850;text-transform:uppercase}h1{font-size:clamp(28px,4vw,40px);letter-spacing:-.04em;margin:6px 0}p{color:var(--muted);margin:4px 0}.tabs{display:flex;gap:8px;margin:18px 0}.tab[aria-selected=true]{background:#342c55;border-color:#6654a2}.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;min-width:0}.panel h2{margin:0 0 14px;font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:#d8e1f2}.cards{display:grid;gap:10px}.card{background:#0c1421;border:1px solid #27364c;border-radius:13px;padding:15px}.card-head{display:flex;gap:12px;justify-content:space-between;align-items:flex-start}.title{font-weight:850;font-size:15px;overflow-wrap:anywhere}.tag{font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:#26344a;padding:5px 8px;border-radius:99px;color:#d4def0;white-space:nowrap}.stage{color:var(--cyan);font-size:11px;font-weight:800;margin-top:7px}.brief{font-size:12px;color:#b4c1d4;margin:10px 0;white-space:pre-wrap;overflow-wrap:anywhere}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.small{font-size:11px;color:var(--muted)}form{display:grid;gap:10px}input,textarea,select{width:100%;border:1px solid var(--line);border-radius:10px;background:#0b1320;color:var(--text);padding:11px;font:inherit}textarea{min-height:110px;resize:vertical}.empty{padding:16px;border:1px dashed #33425a;border-radius:12px;color:var(--muted);font-size:12px}.approval{border:1px solid #594b2b;background:#211d14;border-radius:12px;padding:12px;margin-bottom:9px}.approval strong{display:block}.approval .actions{margin-top:9px}.notice{font-size:11px;color:var(--muted);margin-top:12px}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1d2b40;border:1px solid var(--line);padding:10px 16px;border-radius:12px;display:none;max-width:90vw}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.intro{align-items:flex-start;flex-direction:column}nav{margin-left:0}} 
+</style>
+</head>
+<body>
+<header><div class="brand">AI <b>HOUSE</b> / STUDIO</div><nav><a href="/">Control Room</a><button id="refresh">Refresh</button></nav></header>
+<main>
+<section class="intro"><div><div class="eyebrow">Production & growth workspace</div><h1>Studio Room</h1><p>Build YouTube content and marketing campaigns with visible stages and owner-controlled approvals.</p></div></section>
+<div class="tabs" role="tablist"><button class="tab" data-kind="youtube" aria-selected="true">YouTube Room</button><button class="tab" data-kind="marketing" aria-selected="false">Marketing Room</button></div>
+<div class="layout">
+<section class="panel"><h2 id="boardTitle">YouTube production pipeline</h2><div id="projects" class="cards"><div class="empty">Loading Studio projects…</div></div><p class="notice">Studio tracks the workflow and files. It does not currently render video or upload/publish to external platforms automatically.</p></section>
+<aside class="panel"><h2>Start a project</h2><form id="createForm"><input id="title" maxlength="180" placeholder="Project title" required><textarea id="brief" maxlength="12000" placeholder="Goal, audience, key message, constraints…"></textarea><button class="primary" type="submit">Create project</button></form><div style="height:22px"></div><h2>Owner approvals</h2><div id="approvals"><div class="empty">Loading approvals…</div></div></aside>
+</div>
+</main><div id="toast" class="toast"></div>
+<script>
+const $=id=>document.getElementById(id);let kind="youtube";const stageNames={youtube:["idea","research","script","storyboard","assets","editing","review","approval_pending","approved","published"],marketing:["brief","research","strategy","content_drafts","campaign_review","approval_pending","approved","published","analysis"]};
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function toast(msg){const t=$("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>t.style.display="none",2600);}
+async function api(url,opts={}){const r=await fetch(url,{...opts,headers:{"Content-Type":"application/json",...(opts.headers||{})}});const d=await r.json();if(!r.ok)throw Error(d.error||"Request failed");return d;}
+function stageLabel(s){return s.replaceAll("_"," ");}
+async function load(){try{const [p,a]=await Promise.all([api("/api/studio/projects?kind="+kind),api("/api/studio/approvals")]);renderProjects(p.projects);renderApprovals(a.approvals.filter(x=>x.status==="pending"));}catch(e){toast(e.message);}}
+function renderProjects(items){const box=$("projects");if(!items.length){box.innerHTML='<div class="empty">No projects yet. Start one here to create its production or campaign workflow.</div>';return;}
+box.innerHTML=items.map(p=>{const stages=stageNames[p.kind],i=stages.indexOf(p.stage),next=stages[i+1];const waiting=p.stage==="approval_pending";const approved=p.stage==="approved";return '<article class="card"><div class="card-head"><div class="title">'+esc(p.title)+'</div><span class="tag">'+esc(p.kind)+'</span></div><div class="stage">Stage: '+esc(stageLabel(p.stage))+'</div><div class="brief">'+esc(p.brief||"No brief added yet.")+'</div><div class="small">Owner: '+esc(p.owner)+' · Updated '+esc((p.updated_at||"").slice(0,16).replace("T"," "))+'</div>'+(p.artifacts?.length?'<div class="small" style="margin-top:8px">Files: '+p.artifacts.map(x=>esc(x.label||x.path)).join(" · ")+'</div>':"")+'<div class="actions">'+(next&&!waiting&&!approved?'<button data-next="'+esc(p.id)+'" data-stage="'+esc(next)+'">Advance to '+esc(stageLabel(next))+'</button>':"")+(approved?'<button data-next="'+esc(p.id)+'" data-stage="published">Mark published externally</button>':"")+'</div></article>';}).join("");
+box.querySelectorAll("[data-next]").forEach(b=>b.onclick=async()=>{try{await api("/api/studio/projects/"+b.dataset.next+"/stage",{method:"POST",body:JSON.stringify({stage:b.dataset.stage})});toast("Workflow updated");load();}catch(e){toast(e.message);}});
+}
+function renderApprovals(items){const box=$("approvals");if(!items.length){box.innerHTML='<div class="empty">No pending approvals.</div>';return;}
+box.innerHTML=items.map(a=>'<div class="approval"><strong>'+esc(a.project_title)+'</strong><div class="small">'+esc(a.kind)+' · '+esc(a.requested_action)+' · Owner decision required</div><div class="actions"><button class="good" data-decision="approve" data-id="'+esc(a.id)+'">Approve</button><button class="danger" data-decision="reject" data-id="'+esc(a.id)+'">Request changes</button></div></div>').join("");
+box.querySelectorAll("[data-decision]").forEach(b=>b.onclick=async()=>{const note=prompt("Decision note (optional):")||"";try{await api("/api/studio/approvals/"+b.dataset.id,{method:"POST",body:JSON.stringify({decision:b.dataset.decision,note})});toast("Decision recorded");load();}catch(e){toast(e.message);}});
+}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{kind=b.dataset.kind;document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",String(x===b)));$("boardTitle").textContent=kind==="youtube"?"YouTube production pipeline":"Marketing campaign pipeline";$("title").placeholder=kind==="youtube"?"Video title":"Campaign name";load();});
+$("createForm").onsubmit=async e=>{e.preventDefault();try{await api("/api/studio/projects",{method:"POST",body:JSON.stringify({kind,title:$("title").value,brief:$("brief").value,owner:"owner"})});$("title").value="";$("brief").value="";toast("Project created");load();}catch(err){toast(err.message);}};
+$("refresh").onclick=load;load();
+</script>
+</body>
+</html>
