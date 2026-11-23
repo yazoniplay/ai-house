@@ -46,4 +46,4 @@ def clear_directives(workspace):
 def context(workspace,limit=12):
  items=list_directives(workspace,True,limit)
  if not items:return "No active owner directives."
- return "\\n".join("- ["+str(x.get("id",""))+"] "+str(x.get("text","")) for x in items)
+ return "\n".join("- ["+str(x.get("id",""))+"] "+str(x.get("text","")) for x in items)
