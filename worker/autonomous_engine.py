@@ -656,6 +656,36 @@ def opportunity():
    log("validation_number_mismatch",name=c.get("name"),action="keep_hypothesis")
    c["validation"]="Generated validation included unsupported numeric claims. Treat this as an unvalidated hypothesis; verify customer demand before spending or publishing."
   c["evidence"]=evidence;c["sources"]=list(dict.fromkeys(e["url"] for e in evidence));valid.append(c)
+ if not valid:
+  log("discovery_candidate_retry",reason="all_extracted_candidates_failed_source_validation")
+  set_activity("market_research_retry","Candidates did not survive source checks; researcher is searching again with fresh queries and re-extracting.","researcher")
+  try:
+   fresh=obj(ask("researcher",'The prior candidate extraction failed source validation. Generate 3 new searches for concrete customer pain, user complaints, workarounds, or active demand in '+str(datetime.now(timezone.utc).year)+'. Avoid prior queries: '+json.dumps(queries[:10],ensure_ascii=False)+'. Return JSON {"queries":["..."]}.'))
+   fresh_queries=[str(q).strip()[:250] for q in fresh.get("queries",[])[:3] if str(q).strip()]
+  except Exception as fresh_error:
+   log("discovery_candidate_retry_plan_error",error=str(fresh_error)[:160])
+   fresh_queries=["customer complaints recurring small business admin pain","freelancers seeking tools to automate repetitive tasks","small business owners unhappy with current workflow software"]
+  for fresh_query in fresh_queries:
+   for fresh_item in search(fresh_query,depth="basic"):
+    fresh_url=str(fresh_item.get("url","")).strip()
+    if fresh_url and fresh_url not in seen:seen.add(fresh_url);results.append(fresh_item)
+  source_urls={x.get("url") for x in results};by_url={x.get("url"):x for x in results}
+  try:
+   fresh_extracted=obj(ask("researcher",'Re-extract viable hypotheses from these accumulated search results. Each must include a complete customer/problem/solution, exact source URLs, and claims supported by the source text. Do not invent numeric demand. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","evidence":[{"url":"exact URL","claim":"..."}],"risks":[],"mvp":"..."}]}\\n'+json.dumps(results,ensure_ascii=False)[:24000]))
+   for candidate in fresh_extracted.get("candidates",[]):
+    if not isinstance(candidate,dict):continue
+    raw_evidence=[e for e in candidate.get("evidence",[]) if isinstance(e,dict) and e.get("url") in source_urls]
+    evidence=[e for e in raw_evidence if numbers_supported(e.get("claim",""),str(by_url.get(e.get("url"),{}).get("content","")))]
+    key=re.sub(r"[^a-z0-9]+"," ",str(candidate.get("name","")).lower()).strip()
+    if not evidence or not key or key in past or not all(str(candidate.get(k,"")).strip() for k in ("customer","problem","solution")):continue
+    validation_sources=" ".join(str(by_url.get(e.get("url"),{}).get("content","")) for e in evidence)
+    validation=str(candidate.get("validation",""))
+    if not numbers_supported(validation,validation_sources):
+     validation="Numeric validation claims were not source-supported; treat this as a hypothesis and validate demand before spending or publishing."
+    candidate["evidence"]=evidence;candidate["sources"]=list(dict.fromkeys(e["url"] for e in evidence));candidate["validation"]=validation
+    valid.append(candidate)
+   log("discovery_candidate_retry_complete",valid=len(valid),sources=len(seen),queries=len(fresh_queries))
+  except Exception as fresh_extract_error:log("discovery_candidate_retry_extraction_error",error=str(fresh_extract_error)[:160])
  if not valid:return None
  set_activity("opportunity_selection","Customer Researcher is challenging the shortlist before the Strategist decides.","customer_researcher")
  try:
