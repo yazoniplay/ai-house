@@ -293,16 +293,15 @@ def tavily_search(q,depth=None):
   return [{"title":x.get("title",""),"url":x.get("url",""),"content":x.get("content","")[:700],"published_date":x.get("published_date") or x.get("published") or x.get("date")} for x in r.json().get("results",[]) if x.get("url")]
  except Exception as e:
   log("tavily_error",query=str(q)[:240],error=str(e)[:180]);return []
+def search_available():
+ return bool((T and search_allowed(SBF)) or (EX and exa_allowed()))
 def search(q,depth=None):
- tav=tavily_search(q,depth=depth) if T else []
- exa=exa_search(q)
- seen=set();merged=[]
- for x in tav+exa:
-  u=x.get("url","")
-  if u and u not in seen:
-   seen.add(u);merged.append(x)
- log("search_merged",query=str(q)[:240],tavily=len(tav),exa=len(exa),results=len(merged))
- return merged[:10]
+ if T and search_allowed(SBF):
+  tav=tavily_search(q,depth=depth)
+  if tav:return tav
+ ex=exa_search(q)
+ if ex:log("search_fallback_exa",query=str(q)[:240],results=len(ex))
+ return ex
 def opportunity():
  set_activity("market_research","Searching Tavily for evidence-backed business opportunities.","researcher")
  past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in state().get("past_businesses",[])}
@@ -643,9 +642,10 @@ def cycle(s):
   log("market_research_started")
   business=opportunity()
   if business is None:
-   retry_at=next_utc_midnight() if not search_allowed(SBF) else datetime.now(timezone.utc)+timedelta(minutes=30)
+   retry_at=next_utc_midnight() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
    s["discovery_retry_after"]=retry_at.isoformat()
-   s["activity"]={"stage":"discovery_wait","message":"Insufficient source-backed opportunities; retrying discovery in 30 minutes.","role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
+   wait_message="Tavily and Exa search budgets are used up; resuming after the UTC midnight reset." if not search_available() else "Insufficient source-backed opportunities; retrying discovery in 30 minutes."
+   s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
    save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
   s["business"]=business
   folder=f"businesses/{int(s.get('cycle',0))+1:03d}-{slugify(business.get('name',''))}"
