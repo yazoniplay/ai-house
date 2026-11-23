@@ -23,6 +23,25 @@ class SpecialistPromptTests(unittest.TestCase):
         self.assertIn(CONSULTATION_PROTOCOL,specialist_system_prompt("orchestrator"))
         self.assertNotIn(CONSULTATION_PROTOCOL,specialist_system_prompt("builder"))
 
+    def test_roadmap_consultation_uses_independent_specialists(self):
+        calls=[]
+        original_ask=engine.ask
+        original_log=engine.log
+        try:
+            engine.ask=lambda role,prompt: calls.append((role,prompt)) or ("advice from "+role)
+            engine.log=lambda *args,**kwargs: None
+            result=engine.consult_specialists(
+                {"business":{"name":"Example","problem":"slow invoicing"},"history":[]},
+                "initial",
+                None,
+            )
+        finally:
+            engine.ask=original_ask
+            engine.log=original_log
+        self.assertEqual([role for role,_ in calls],["strategist","product_manager"])
+        self.assertEqual([item["role"] for item in result],["strategist","product_manager"])
+        self.assertTrue(all("Do not invent evidence" in prompt or "Do not assume demand" in prompt for _,prompt in calls))
+
     def test_playbooks_preserve_truthfulness_and_external_action_boundaries(self):
         prompt=specialist_system_prompt("sales_drafter").lower()
         self.assertIn("do not contact",prompt)
