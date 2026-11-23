@@ -22,6 +22,18 @@ class DiscoverySearchTests(unittest.TestCase):
         x.assert_called_once()
         d.assert_called_once()
 
+    def test_duckduckgo_timeout_opens_circuit_and_prevents_repeated_waits(self):
+        with patch.dict(engine.os.environ, {"AI_HOUSE_FREE_SEARCH": "1"}), \
+             patch.object(engine, "FREE_SEARCH_COOLDOWN_UNTIL", 0), \
+             patch.object(engine.time, "monotonic", side_effect=[100, 100, 101]), \
+             patch.object(engine.HTTP, "get", side_effect=TimeoutError("connection timed out")) as request, \
+             patch.object(engine, "log"):
+            self.assertEqual(engine.duckduckgo_search("first query"), [])
+            self.assertEqual(engine.duckduckgo_search("second query"), [])
+        request.assert_called_once()
+        self.assertEqual(request.call_args.kwargs["timeout"], 6)
+        self.assertEqual(engine.FREE_SEARCH_COOLDOWN_UNTIL, 700)
+
     def test_search_deduplicates_same_url_from_multiple_providers(self):
         shared={"url":"https://same.example/page","content":"source"}
         with patch.object(engine,"T","key"), patch.object(engine,"EX","key"), \
