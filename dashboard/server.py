@@ -941,6 +941,11 @@ def studio_decide_approval_api(approval_id):
 
 
 
+@app.get("/computer-room")
+def computer_room_page():
+    return send_from_directory(HERE, "computer_room.html")
+
+
 @app.get("/studio")
 def studio_page():
     return send_from_directory(HERE, "studio.html")
