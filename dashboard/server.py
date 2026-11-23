@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
@@ -597,6 +598,73 @@ def rooms_api():
         })
     return jsonify(rooms=output, cursor=registry.get("cursor", 0))
 
+
+
+@app.get("/api/providers/usage")
+def provider_usage():
+    """Aggregate observed provider/model activity without exposing credentials."""
+    providers = {}
+    def entry(name):
+        name = str(name or "unknown")
+        return providers.setdefault(name, {"provider": name, "calls": 0, "estimated_cost_usd": 0.0, "models": {}, "last_call_at": None, "fallbacks": 0, "cooldown_until": None, "last_error": None})
+    def parse_time(value):
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return 0.0
+    try:
+        action_lines = ACTIONS_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-12000:]
+    except Exception:
+        action_lines = []
+    for line in action_lines:
+        try:
+            item = json.loads(line)
+            if item.get("kind") != "model_call":
+                continue
+            row = entry(item.get("provider"))
+            row["calls"] += 1
+            row["estimated_cost_usd"] += float(item.get("cost_usd", 0) or 0)
+            row["last_call_at"] = max((row.get("last_call_at") or ""), str(item.get("at") or ""))
+        except Exception:
+            continue
+    try:
+        event_lines = EVENT_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-12000:]
+    except Exception:
+        event_lines = []
+    now = time.time()
+    for line in event_lines:
+        try:
+            item = json.loads(line)
+            name = item.get("provider")
+            if not name:
+                continue
+            row = entry(name)
+            event = str(item.get("event", ""))
+            if event == "model_call_ok":
+                model = str(item.get("model") or "unknown")
+                row["models"][model] = row["models"].get(model, 0) + 1
+                at = str(item.get("at") or "")
+                row["last_call_at"] = max((row.get("last_call_at") or ""), at)
+            elif event == "fallback":
+                row["fallbacks"] += 1
+                row["last_error"] = str(item.get("error") or "")[:220]
+            elif event == "provider_cooldown":
+                at = parse_time(item.get("at"))
+                until = at + max(0, int(item.get("seconds", 0) or 0))
+                if until > now and until > parse_time(row.get("cooldown_until")):
+                    row["cooldown_until"] = datetime.fromtimestamp(until, timezone.utc).isoformat()
+                    row["last_error"] = str(item.get("error") or "")[:220]
+        except Exception:
+            continue
+    result = []
+    for row in providers.values():
+        row["estimated_cost_usd"] = round(row["estimated_cost_usd"], 6)
+        row["cooldown_seconds_left"] = max(0, int(parse_time(row.get("cooldown_until")) - now))
+        row["status"] = "Cooling down" if row["cooldown_seconds_left"] else ("Observed" if row["calls"] else "Not yet used")
+        row["models"] = [{"name": model, "calls": count} for model, count in sorted(row["models"].items(), key=lambda pair: pair[1], reverse=True)]
+        result.append(row)
+    result.sort(key=lambda row: (row["calls"], row["provider"]), reverse=True)
+    return jsonify(providers=result, total_calls=sum(row["calls"] for row in result), estimated_cost_usd=round(sum(row["estimated_cost_usd"] for row in result), 6), generated_at=datetime.now(timezone.utc).isoformat())
 
 @app.get("/api/live")
 def live():
