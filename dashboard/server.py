@@ -373,8 +373,16 @@ def ask_leader_api():
     except Exception:
         return jsonify(error="The leader is not available right now."), 503
     try:
-        reply = chat_with_leader(text)
-        return jsonify(reply=reply)
+        result = chat_with_leader(text)
+        if isinstance(result, dict):
+            message = result.get("message") or result.get("reply") or "The leader returned no text reply."
+            if not isinstance(message, str):
+                message = json.dumps(message, ensure_ascii=False, default=str)
+            decision_request = result.get("request") if isinstance(result.get("request"), dict) else None
+            return jsonify(reply=message, request=decision_request)
+        if not isinstance(result, str):
+            result = json.dumps(result, ensure_ascii=False, default=str)
+        return jsonify(reply=result, request=None)
     except Exception:
         return jsonify(error="The leader could not answer."), 500
 
