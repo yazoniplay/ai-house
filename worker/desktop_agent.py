@@ -104,17 +104,42 @@ def _model_step(goal, history, screenshot_b64):
     return result
 
 
-def start_task(workspace, goal, max_steps=24):
+def create_task(workspace, goal, max_steps=24):
     goal = str(goal or "").strip()
     if not goal or len(goal) > 4000:
         raise DesktopAgentError("Goal is required and must be under 4000 characters")
     task_id = secrets.token_hex(6)
-    data = {"id": task_id, "goal": goal, "status": "running", "step": 0, "history": [],
-            "summary": "", "approval_id": None, "created_at": time.time(), "updated_at": time.time(),
+    data = {"id": task_id, "goal": goal, "status": "queued", "step": 0, "history": [],
+            "summary": "Queued for local desktop execution.", "approval_id": None, "created_at": time.time(), "updated_at": time.time(),
             "max_steps": max(1, min(40, int(max_steps)))}
     path = _root(workspace) / (task_id + ".json")
     _save(path, data)
-    return _continue(workspace, data, path)
+    return data
+
+
+def run_task(workspace, task_id):
+    path = _root(workspace) / (str(task_id) + ".json")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DesktopAgentError("Desktop task not found") from exc
+    if data.get("status") not in ("queued", "running", "step_limit"):
+        raise DesktopAgentError("Desktop task is not runnable")
+    data["status"] = "running"
+    _save(path, data)
+    try:
+        return _continue(workspace, data, path)
+    except Exception as exc:
+        data["status"] = "failed"
+        data["summary"] = str(exc)[:1200]
+        data["updated_at"] = time.time()
+        _save(path, data)
+        raise
+
+
+def start_task(workspace, goal, max_steps=24):
+    data = create_task(workspace, goal, max_steps)
+    return run_task(workspace, data["id"])
 
 
 def resume_task(workspace, task_id):
@@ -126,7 +151,10 @@ def resume_task(workspace, task_id):
     if data.get("status") != "waiting_approval":
         raise DesktopAgentError("Desktop task is not waiting for approval")
     approval_id = data.get("approval_id")
-    from approvals import get_answer
+    try:
+        from worker.approvals import get_answer
+    except ModuleNotFoundError:
+        from approvals import get_answer
     choice = get_answer(workspace, approval_id)
     if choice is None:
         return data
