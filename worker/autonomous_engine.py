@@ -49,7 +49,7 @@ if GM in ("llama-3.3-70b-versatile","llama-3.1-8b-instant"):GM="openai/gpt-oss-1
 if GFM in ("llama-3.1-8b-instant","llama-3.3-70b-versatile"):GFM="openai/gpt-oss-20b"
 HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507")
 NM=os.getenv("NVIDIA_MODEL","nvidia/nemotron-3-ultra-550b-a55b")
-NVIDIA_MODELS=[m.strip() for m in os.getenv("AI_HOUSE_NVIDIA_MODELS",os.getenv("NVIDIA_MODELS","nvidia/nemotron-3-ultra-550b-a55b,z-ai/glm-5.3-flash,moonshotai/kimi-k3.1-pro").split(",") if m.strip()]
+NVIDIA_MODELS=[m.strip() for m in os.getenv("AI_HOUSE_NVIDIA_MODELS",os.getenv("NVIDIA_MODELS","nvidia/nemotron-3-ultra-550b-a55b,z-ai/glm-5.3-flash,moonshotai/kimi-k3.1-pro")).split(",") if m.strip()]
 MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-v4.1-flash:free")
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
@@ -203,7 +203,7 @@ def provider_order(role):
  return [p for p in order if has[p]]
 def openrouter_chat(sys,ask):
  if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
- r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":ORM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
+ r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":configured_model_pool("openrouter",ORM,"AI_HOUSE_OPENROUTER_MODELS")[0],"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
  if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
  try:return r.json()["choices"][0]["message"].get("content") or ""
  except Exception as e:raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
