@@ -37,6 +37,14 @@ class UsageTaskClassificationTests(unittest.TestCase):
         }
         self.assertTrue(is_usage_verification_task(task))
 
+    def test_analyst_usage_framework_never_receives_adoption_gate(self):
+        task = {
+            "title": "Product usage verification analytics framework",
+            "objective": "Design an event schema and reporting framework.",
+            "agent_role": "analyst",
+        }
+        self.assertFalse(is_usage_verification_task(task))
+
     def test_non_dict_task_is_safe(self):
         self.assertFalse(is_usage_verification_task(None))
 
