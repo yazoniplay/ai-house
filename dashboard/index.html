@@ -566,7 +566,7 @@ async function refreshLedger(){
     ledgerData=await api("/api/ledger");
     const totals=ledgerData.totals||{},kinds=totals.kinds||{};
     const kindText=Object.entries(kinds).map(([kind,count])=>kind+": "+count).join(" · ")||"No action kinds yet";
-    $("ledgerTotals").textContent="Total recorded cost: "+money(totals.cost_usd)+" · "+kindText;
+    $("ledgerTotals").textContent=(ledgerData.history_truncated?"Recent history only (last 12,000 actions): ":"Total recorded cost: ")+money(totals.cost_usd)+" · "+kindText;
     const body=$("ledgerRows");body.replaceChildren();
     const entries=(Array.isArray(ledgerData.entries)?ledgerData.entries:[]).slice(0,50);
     if(!entries.length){const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=5;cell.textContent="No actions recorded yet.";row.append(cell);body.append(row);}
