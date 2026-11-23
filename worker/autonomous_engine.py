@@ -1112,6 +1112,15 @@ def business_decision_text(business):
 
 def cycle(s):
  BDIR.mkdir(parents=True,exist_ok=True)
+ if isinstance(s.get("business"),dict):
+  legacy_decision=BDIR/"BUSINESS_DECISION.json"
+  text_decision=BDIR/"BUSINESS_DECISION.txt"
+  if legacy_decision.exists() or not text_decision.exists():
+   try:
+    text_decision.write_text(business_decision_text(s["business"]),encoding="utf-8")
+    if legacy_decision.exists():legacy_decision.unlink()
+    log("business_decision_migrated_to_text",path=str(Path(s.get("business_dir",""))/"BUSINESS_DECISION.txt"))
+   except OSError as memo_migration_error:log("business_decision_migration_error",error=type(memo_migration_error).__name__)
  if s.get("business_completed"):learn_from_business(s);return
  if not s.get("business") or s.get("business_completed"):
   if s.get("discovery_retry_after"):
