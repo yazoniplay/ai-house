@@ -22,6 +22,46 @@ class DiscoverySearchTests(unittest.TestCase):
         x.assert_called_once()
         d.assert_called_once()
 
+    def test_new_gateway_providers_are_added_to_fallback_rotation(self):
+        with patch.object(engine,"M","gemini"), patch.object(engine,"ORK","orca-key"), \
+             patch.object(engine,"BLK","bazaar-key"), patch.object(engine,"PROVIDER_ROTATION",{"orchestrator":0}), \
+             patch.object(engine,"log"):
+            providers=engine.provider_order("orchestrator")
+        self.assertIn("orcarouter",providers)
+        self.assertIn("bazaarlink",providers)
+
+    def test_gateway_catalogs_keep_router_aliases_and_filter_non_chat_models(self):
+        with patch.object(engine,"provider_model_catalog",side_effect=[
+            {"openai/gpt-6.1-sol","anthropic/claude-sonnet-4.6"},
+            {"openai/gpt-4o-mini","google/gemini-2.5-flash","openai/text-embedding-3-large","openai/whisper-large"},
+        ]), patch.object(engine,"log"):
+            orca=engine.model_candidates("orcarouter","orchestrator")
+            bazaar=engine.model_candidates("bazaarlink","orchestrator")
+        self.assertEqual(orca[0],"orcarouter/auto")
+        self.assertIn("openai/gpt-6.1-sol",orca)
+        self.assertEqual(bazaar[0],"auto:free")
+        self.assertIn("openai/gpt-4o-mini",bazaar)
+        self.assertFalse(any("embedding" in model or "whisper" in model for model in bazaar))
+
+    def test_gateway_chat_requests_use_their_own_keys_and_endpoints(self):
+        from unittest.mock import Mock
+        response=Mock(status_code=200)
+        response.json.return_value={"choices":[{"message":{"content":"{\"ok\":true}"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}
+        cases=[
+            ("orcarouter","ORCAROUTER_API_KEY","https://api.orcarouter.ai/v1/chat/completions","orca-key"),
+            ("bazaarlink","BAZAARLINK_API_KEY","https://api.bazaarlink.ai/v1/chat/completions","bazaar-key"),
+        ]
+        for provider,env_name,url,key in cases:
+            with self.subTest(provider=provider), patch.object(engine,"HTTP") as http, \
+                 patch.object(engine,"record_spend"), patch.object(engine,"record_action"), patch.object(engine,"log"):
+                http.post.return_value=response
+                output=engine._raw_once(provider,"system","prompt","orchestrator","provider/model")
+                self.assertEqual(output,'{"ok":true}')
+                args=http.post.call_args
+                self.assertEqual(args.args[0],url)
+                self.assertEqual(args.kwargs["headers"]["Authorization"],"Bearer "+key)
+                self.assertEqual(args.kwargs["json"]["model"],"provider/model")
+
     def test_gemini_catalog_attempts_are_capped_even_when_env_requests_40(self):
         models=["model-"+str(index) for index in range(34)]
         with patch.dict(engine.os.environ, {"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS": "40"}), \
