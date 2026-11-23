@@ -129,7 +129,7 @@ def execute(workspace, action, approval_id=None):
     if reason:
         if not approval_id or get_answer(workspace, approval_id) != "yes":
             request_id = create_request(
-                workspace, "computer", "desktop_action",
+                workspace, "computer", "desktop_action_" + digest[:12],
                 "AI House requests permission to perform: " + reason,
                 options=["yes", "no"],
                 summary="action_sha256:" + digest,
