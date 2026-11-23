@@ -1249,7 +1249,7 @@ def chat_with_leader(text):
    request_id=create_request(WORK,ROOM_ID,"leader_question",question,options=options,summary=summary)
    request=next((x for x in list_requests(WORK,True) if str(x.get("id"))==request_id),None)
    if request:
-    notify("leader_question:"+request_id,question+"\\n"+summary+"\\nOptions: "+" | ".join(options))
+    log("leader_question_ready_for_discord",request_id=request_id)
     log("discord_leader_question",request_id=request_id,options=len(options))
   log("discord_chat",room_count=len(rooms),reply_length=len(reply),question=bool(question))
   return {"message":reply,"request":request}
