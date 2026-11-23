@@ -262,31 +262,52 @@ def supervisor_loop():
                 pass
 
 
-def collect_artifacts():
-    if not WORKSPACE.exists():
+def collect_artifacts(selected_business_dir=None):
+    """Collect deliverables only from the selected business, not the whole workspace."""
+    if not selected_business_dir:
         return []
+    relative = Path(str(selected_business_dir).replace("\\", "/"))
+    if relative.is_absolute() or any(part in ("", ".", "..") for part in relative.parts):
+        return []
+    try:
+        target = (WORKSPACE / relative).resolve()
+        target.relative_to(WORKSPACE)
+    except (OSError, ValueError):
+        return []
+    if not target.is_dir():
+        return []
+
     blocked_names = {".env", "credentials.json", "secrets.json"}
     blocked_parts = {".ai-house", ".git", "node_modules", ".venv", "venv", "__pycache__"}
     files = []
     try:
-        for path in WORKSPACE.rglob("*"):
-            if not path.is_file() or any(part in blocked_parts for part in path.parts):
-                continue
-            if path.name.lower() in blocked_names or path.suffix.lower() in (".key", ".pem"):
-                continue
-            try:
-                stat = path.stat()
-                files.append({
-                    "path": str(path.relative_to(WORKSPACE)).replace("\\", "/"),
-                    "name": path.name,
-                    "size": stat.st_size,
-                    "modified": stat.st_mtime,
-                })
-            except OSError:
-                continue
+        for root, dirs, names in os.walk(target, topdown=True, followlinks=False):
+            dirs[:] = [name for name in dirs if name not in blocked_parts]
+            for name in names:
+                if name.lower() in blocked_names or Path(name).suffix.lower() in (".key", ".pem"):
+                    continue
+                path = Path(root) / name
+                try:
+                    resolved = path.resolve()
+                    resolved.relative_to(WORKSPACE)
+                    if not resolved.is_file():
+                        continue
+                    stat = resolved.stat()
+                    files.append({
+                        "path": str(resolved.relative_to(WORKSPACE)).replace("\\", "/"),
+                        "name": resolved.name,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime,
+                    })
+                except (OSError, ValueError):
+                    continue
+                if len(files) >= 2000:
+                    break
+            if len(files) >= 2000:
+                break
         files.sort(key=lambda item: item["modified"], reverse=True)
         return files[:120]
-    except Exception:
+    except OSError:
         return []
 
 
@@ -754,11 +775,7 @@ def local_state():
     state = read_json(room_state_path(room), {})
     memory = read_json(NORTH_FACE_FILE, {})
     selected_business_dir = str(state.get("business_dir") or "").strip("/")
-    artifacts = collect_artifacts()
-    if selected_business_dir:
-        artifacts = [item for item in artifacts if item.get("path", "").startswith(selected_business_dir + "/")]
-    else:
-        artifacts = []
+    artifacts = collect_artifacts(selected_business_dir)
     roadmap = state.get("roadmap") or {}
     tasks = roadmap.get("tasks") or []
     return jsonify(
