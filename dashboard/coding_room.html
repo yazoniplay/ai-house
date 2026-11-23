@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI House · Coding Room</title>
+<style>
+:root{color-scheme:dark;--bg:#101116;--panel:#1a1a23;--line:#30303b;--text:#f4f2f8;--muted:#aaa8b7;--accent:#a78bfa}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui}main{max-width:1050px;margin:auto;padding:28px 18px 60px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}h1{margin:0;font-size:28px}p{color:var(--muted)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin:18px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}label{display:block;color:var(--muted);margin:10px 0 6px}input,textarea{width:100%;background:#111119;border:1px solid var(--line);border-radius:10px;color:var(--text);padding:12px;font:inherit}textarea{min-height:110px;resize:vertical}
+button,a.btn{background:var(--accent);color:#171320;border:0;border-radius:10px;padding:10px 14px;font:600 14px system-ui;cursor:pointer;text-decoration:none}button.secondary,a.secondary{background:#292832;color:var(--text);border:1px solid var(--line)}button.danger{background:#7f1d1d;color:white}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.item{border:1px solid var(--line);border-radius:12px;padding:14px;margin:10px 0}.item strong{display:block;font-size:16px}.small{color:var(--muted);font-size:13px}.pill{display:inline-block;padding:4px 9px;border-radius:20px;background:#292832;color:#ddd;font-size:12px;margin:6px 0}
+@media(max-width:700px){.grid{grid-template-columns:1fr}}
+</style></head><body><main>
+<div class="top"><div><h1>Coding Room</h1><p>One flagship app at a time. Build it properly, test it, finish it, then move on.</p></div><a class="btn secondary" href="/">← Dashboard</a></div>
+<div class="panel"><h2>Queue an app</h2><p>AI House will research the problem, plan the app, build the core product, run quality checks, and review the deliverables. The engine takes the next app when a room is available. Only one Coding Room app can be active; the queue is capped at two more.</p>
+<form id="form">
+<label>App name</label><input name="title" maxlength="160" required placeholder="A focused app idea">
+<label>Who is it for?</label><input name="target_user" maxlength="240" required placeholder="A specific type of user">
+<label>What painful problem does it solve?</label><textarea name="problem" maxlength="3000" required placeholder="Describe the real problem, not just a list of features"></textarea>
+<label>App brief and core workflow</label><textarea name="brief" maxlength="8000" required placeholder="What should the app do? What is the one core workflow that must be excellent?"></textarea>
+<label>Success metric (optional)</label><input name="success_metric" maxlength="1000" placeholder="e.g. 5 target users complete the core workflow successfully">
+<div class="row"><button id="submit" type="submit">Add to Coding Room</button><span id="message" class="small"></span></div>
+</form></div>
+<div class="panel"><h2>Flagship app queue</h2><div id="projects" class="small">Loading projects…</div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function api(url,opts={}){const r=await fetch(url,{...opts,headers:{"Content-Type":"application/json",...(opts.headers||{})}});const d=await r.json();if(!r.ok)throw Error(d.error||r.statusText);return d;}
+async function refresh(){try{const d=await api("/api/coding-room/projects");$("projects").innerHTML=d.projects.length?d.projects.map(p=>'<div class="item"><strong>'+esc(p.title)+'</strong><span class="pill">'+esc(p.status)+'</span><div class="small">For: '+esc(p.target_user)+'<br>Problem: '+esc(p.problem)+'<br>Brief: '+esc(p.brief)+'<br>'+esc(p.result||"")+'</div>'+(p.status==="queued"?'<div class="row"><button class="danger" data-cancel="'+esc(p.id)+'">Remove from queue</button></div>':"")+'</div>').join(""):'<p>No apps queued yet.</p>';document.querySelectorAll("[data-cancel]").forEach(b=>b.onclick=async()=>{try{await api("/api/coding-room/projects/"+b.dataset.cancel+"/cancel",{method:"POST",body:"{}"});refresh();}catch(e){alert(e.message);}});}catch(e){$("projects").textContent=e.message;}}
+$("form").onsubmit=async e=>{e.preventDefault();$("submit").disabled=true;$("message").textContent="Saving brief…";const data=Object.fromEntries(new FormData(e.target));try{await api("/api/coding-room/projects",{method:"POST",body:JSON.stringify(data)});e.target.reset();$("message").textContent="Queued. AI House will focus on this app when a room is available.";refresh();}catch(err){$("message").textContent=err.message;}finally{$("submit").disabled=false;}};
+refresh();setInterval(refresh,5000);
+</script></body></html>
