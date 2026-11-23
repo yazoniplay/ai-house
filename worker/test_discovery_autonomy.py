@@ -22,6 +22,17 @@ class DiscoverySearchTests(unittest.TestCase):
         x.assert_called_once()
         d.assert_called_once()
 
+    def test_gemini_catalog_attempts_are_capped_even_when_env_requests_40(self):
+        models=["model-"+str(index) for index in range(34)]
+        with patch.dict(engine.os.environ, {"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS": "40"}), \
+             patch.object(engine, "MODEL_ROTATION", {}), \
+             patch.object(engine, "model_candidates", return_value=models), \
+             patch.object(engine, "_raw_once", side_effect=RuntimeError("429 quota exceeded for model")) as request, \
+             patch.object(engine, "log"):
+            with self.assertRaisesRegex(RuntimeError, "3 attempts"):
+                engine.raw("gemini", "system", "prompt", "orchestrator")
+        self.assertEqual(request.call_count, 3)
+
     def test_duckduckgo_timeout_opens_circuit_and_prevents_repeated_waits(self):
         with patch.dict(engine.os.environ, {"AI_HOUSE_FREE_SEARCH": "1"}), \
              patch.object(engine, "FREE_SEARCH_COOLDOWN_UNTIL", 0), \
