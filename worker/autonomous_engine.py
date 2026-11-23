@@ -463,11 +463,11 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  defaults={"gemini":20,"nvidia":20,"openrouter":20,"groq":16}
+  defaults={"gemini":40,"nvidia":40,"openrouter":40,"groq":40}
   env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS"}
   if p in defaults:max_attempts=max(1,min(50,int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(12,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","8"))))
- except Exception:max_attempts={"gemini":20,"nvidia":20,"openrouter":20,"groq":16}.get(p,8)
+ except Exception:max_attempts={"gemini":40,"nvidia":40,"openrouter":40,"groq":40}.get(p,8)
  if p in ("gemini","nvidia","openrouter","groq") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
