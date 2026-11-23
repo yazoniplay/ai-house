@@ -15,7 +15,7 @@ from briefs import create_brief, get_brief_answer, answer_brief, list_briefs
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
-from provider_router import rotate as route_rotate, cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model
+from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error
 from user_validation import verify_usage_events, load_usage_events
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
 from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
@@ -217,15 +217,11 @@ def ollama_chat(sys,ask):
 PROVIDER_ROTATION={"orchestrator":0,"worker":0}
 def provider_order(role):
  has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK)}
- if role=="orchestrator":
-  base=["gemini","nvidia","groq","tokenharbor","openrouter","sambanova","hf","ollama"]
- else:
-  base=["nvidia","groq","tokenharbor","gemini","hf","openrouter","sambanova","ollama"]
- key="orchestrator" if role=="orchestrator" else "worker"
- order=route_rotate(base,PROVIDER_ROTATION[key])
- PROVIDER_ROTATION[key]+=1
- available=[p for p in order if has[p]]
- log("provider_route_order",role=role,providers=available,rotation=PROVIDER_ROTATION[key]-1)
+ # Gemini is the configured primary for both leader and worker calls. Other providers
+ # are failover only; do not rotate away from Gemini on healthy requests.
+ base=["gemini","groq","nvidia","tokenharbor","hf","openrouter","sambanova","ollama"]
+ available=[p for p in base if has[p]]
+ log("provider_route_order",role=role,providers=available,rotation=0)
  return available
 def openrouter_chat(sys,ask):
  if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
@@ -234,6 +230,44 @@ def openrouter_chat(sys,ask):
  try:return r.json()["choices"][0]["message"].get("content") or ""
  except Exception as e:raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
 MODEL_ROTATION={}
+MODEL_CATALOG_CACHE={}
+MODEL_UNAVAILABLE_UNTIL={}
+def provider_model_catalog(provider):
+ # Refresh live provider catalogs periodically so retired IDs are filtered before they cost a request.
+ now=time.monotonic()
+ cached=MODEL_CATALOG_CACHE.get(provider)
+ if cached and now<cached[0]:return cached[1]
+ try:
+  if provider=="nvidia" and N:
+   response=HTTP.get("https://integrate.api.nvidia.com/v1/models",headers={"Authorization":"Bearer "+N},timeout=10)
+   if response.status_code>=400:raise RuntimeError("NVIDIA model catalog HTTP "+str(response.status_code))
+   rows=response.json().get("data",[])
+   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id")}
+  elif provider=="groq" and G:
+   response=HTTP.get("https://api.groq.com/openai/v1/models",headers={"Authorization":"Bearer "+G},timeout=10)
+   if response.status_code>=400:raise RuntimeError("Groq model catalog HTTP "+str(response.status_code))
+   rows=response.json().get("data",[])
+   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id")}
+  elif provider=="gemini" and M:
+   response=HTTP.get("https://generativelanguage.googleapis.com/v1beta/models",headers={"x-goog-api-key":M},timeout=10)
+   if response.status_code>=400:raise RuntimeError("Gemini model catalog HTTP "+str(response.status_code))
+   rows=response.json().get("models",[])
+   ids=set()
+   for item in rows:
+    if not isinstance(item,dict):continue
+    methods=item.get("supportedGenerationMethods") or []
+    name=str(item.get("name","")).removeprefix("models/").strip()
+    if name and "generateContent" in methods:ids.add(name)
+  else:
+   return None
+  if not ids:raise RuntimeError(provider+" returned an empty model catalog")
+  MODEL_CATALOG_CACHE[provider]=(now+300,ids)
+  log("provider_model_catalog_loaded",provider=provider,model_count=len(ids))
+  return ids
+ except Exception as error:
+  MODEL_CATALOG_CACHE[provider]=(now+60,None)
+  log("provider_model_catalog_unavailable",provider=provider,error=str(error)[:160])
+  return None
 def configured_model_pool(provider,default_model,env_name):
  raw_models=os.getenv(env_name,"")
  pool=[]
@@ -335,11 +369,11 @@ def _raw_once(p,sys,ask,role,model_override=None):
  raise RuntimeError(p+" did not return a completion")
 def model_candidates(provider,role):
  if provider=="gemini":
-  primary=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite") if role=="orchestrator" else os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite")
+  primary=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite") if role=="orchestrator" else os.getenv("GEMINI_WORKER_MODEL","gemini-3.5-flash-lite")
   env_name="AI_HOUSE_GEMINI_LEADER_MODELS" if role=="orchestrator" else "AI_HOUSE_GEMINI_WORKER_MODELS"
  elif provider=="groq" and role=="fast":primary=GFM;env_name="AI_HOUSE_GROQ_FAST_MODELS"
  elif provider=="groq":primary=GM;env_name="AI_HOUSE_GROQ_MODELS"
- elif provider=="nvidia":primary=NM;env_name="AI_HOUSE_NVIDIA_MODELS"
+ elif provider=="nvidia":primary=os.getenv("NVIDIA_MODEL","google/gemma-4-31b-it");env_name="AI_HOUSE_NVIDIA_MODELS"
  elif provider=="hf":primary=HM;env_name="AI_HOUSE_HF_MODELS"
  elif provider=="tokenharbor":primary=TM;env_name="AI_HOUSE_TOKEN_HARBOR_MODELS"
  elif provider=="openrouter":primary=ORM;env_name="AI_HOUSE_OPENROUTER_MODELS"
@@ -348,12 +382,32 @@ def model_candidates(provider,role):
  else:return []
  configured=route_model_pool(primary,os.getenv(env_name,""))
  defaults={
-  "nvidia":["nvidia/nemotron-3-super-120b-a12b","nvidia/nemotron-3.5-lightning-30b-a3b","z-ai/glm-5.3-flash","z-ai/glm-5-3","deepseek-ai/deepseek-v4.1-flash","nvidia/nemotron-3.5-super-vl-120b-a12b","meta/muse-glimmer-30b","google/gemma-4-31b-it","openai/gpt-oss-20b","moonshotai/kimi-k3"],
-  "gemini":["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.1-flash-lite"],
-  "groq":["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
+  # Current, documented NVIDIA chat endpoints only. The live /v1/models catalog below
+  # removes anything NVIDIA has actually retired or disabled for this API key.
+  "nvidia":["google/gemma-4-31b-it","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-ultra-550b-a55b","nvidia/nemotron-3.5-bolt-e4b","z-ai/glm-5.3-flash","moonshotai/kimi-k3.1-pro","nvidia/nemotron-3.5-super-vl-120b-a12b","meta/muse-glimmer-30b"],
+  # Flash Lite first for both CEO and workers; preserve a custom configured model after it.
+  "gemini":["gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.5-flash"],
+  "groq":["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3-32b","meta-llama/llama-4-scout-17b-16e-instruct"]
  }
- candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
- log("model_pool_ready",provider=provider,role=role,model_count=len(candidates),models=candidates[:12])
+ if provider=="gemini":
+  # Keep an explicitly custom model first, but migrate the old default worker model
+  # behind Gemini 3.5 Flash Lite automatically.
+  if primary not in ("gemini-3.1-flash-lite","gemini-3.5-flash-lite"):
+   candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
+  else:
+   candidates=list(dict.fromkeys(defaults.get(provider,[])+configured))
+ elif provider=="nvidia":
+  # Prefer known current endpoints (Gemma first); user-configured IDs remain fallbacks.
+  candidates=list(dict.fromkeys(defaults.get(provider,[])+configured))
+ else:
+  candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
+ catalog=provider_model_catalog(provider)
+ if catalog:
+  candidates=filter_model_pool(candidates,catalog)
+ now=time.monotonic()
+ unavailable=[model for model,until in MODEL_UNAVAILABLE_UNTIL.items() if until>now]
+ candidates=filter_model_pool(candidates,None,unavailable)
+ log("model_pool_ready",provider=provider,role=role,model_count=len(candidates),models=candidates[:12],catalog_verified=bool(catalog))
  return candidates
 def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
@@ -366,7 +420,11 @@ def raw(p,sys,ask,role):
   except Exception as error:
    last_error=error;message=str(error).lower()
    fatal=not should_try_next_model(error)
-   log("model_attempt_failed",provider=p,model=candidate,role=role,attempt=index,total=len(candidates),provider_fatal=fatal,error=str(error)[:180])
+   unavailable_model=is_unavailable_model_error(error)
+   if unavailable_model:
+    MODEL_UNAVAILABLE_UNTIL[candidate]=time.monotonic()+21600
+    log("model_marked_unavailable",provider=p,model=candidate,seconds=21600,reason=str(error)[:180])
+   log("model_attempt_failed",provider=p,model=candidate,role=role,attempt=index,total=len(candidates),provider_fatal=fatal,model_unavailable=unavailable_model,error=str(error)[:180])
    if fatal:break
    if index<len(candidates):log("model_fallback_next",provider=p,failed_model=candidate,next_model=candidates[index],role=role)
  if last_error:raise RuntimeError(p+" models exhausted after "+str(index)+" attempts: "+str(last_error)[:220])

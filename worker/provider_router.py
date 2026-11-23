@@ -21,7 +21,25 @@ def is_model_specific_error(error):
     return any(token in message for token in (
         "model_not_found","model not found","unknown model","invalid model",
         "model does not exist","model_id_not_found","unsupported model",
-        "404 not found","no such model"
+        "404 not found","404 page not found","410","gone","end of life",
+        "retired","no such model"
+    ))
+
+def filter_model_pool(candidates, available=None, unavailable=()):
+    """Keep candidate order while filtering to live catalog IDs and cached dead IDs."""
+    values=list(dict.fromkeys(str(x).strip() for x in candidates if str(x).strip()))
+    blocked=set(unavailable or ())
+    if available is not None:
+        allowed=set(available or ())
+        values=[x for x in values if x in allowed]
+    return [x for x in values if x not in blocked]
+
+def is_unavailable_model_error(error):
+    message=str(error).lower()
+    return any(token in message for token in (
+        "410","gone","end of life","reached its end of life","retired",
+        "model_not_found","model not found","unknown model","unsupported model",
+        "404","does not exist","no such model"
     ))
 
 def cooldown_seconds(error, quota=900, billing=86400, config=3600, timeout=60, server=90):

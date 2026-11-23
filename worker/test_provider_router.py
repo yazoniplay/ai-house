@@ -1,5 +1,5 @@
 import unittest
-from provider_router import rotate, model_pool, is_model_specific_error, cooldown_seconds, should_try_next_model
+from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model
 
 class ProviderRouterTests(unittest.TestCase):
     def test_provider_rotation_spreads_calls_across_available_providers(self):
@@ -15,6 +15,17 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertTrue(is_model_specific_error("HTTP 404: model_not_found"))
         self.assertTrue(is_model_specific_error("unknown model id"))
         self.assertFalse(is_model_specific_error("HTTP 429: quota exceeded"))
+
+    def test_live_catalog_filters_retired_and_unsupported_models(self):
+        candidates=["gemini-3.5-flash-lite","old-model","google/gemma-4-31b-it"]
+        available={"gemini-3.5-flash-lite","google/gemma-4-31b-it"}
+        self.assertEqual(filter_model_pool(candidates,available),["gemini-3.5-flash-lite","google/gemma-4-31b-it"])
+        self.assertEqual(filter_model_pool(candidates,None,{"old-model"}),["gemini-3.5-flash-lite","google/gemma-4-31b-it"])
+
+    def test_retired_model_errors_are_marked_unavailable(self):
+        self.assertTrue(is_unavailable_model_error("NVIDIA 410 Gone: model reached end of life"))
+        self.assertTrue(is_unavailable_model_error("HTTP 404 page not found"))
+        self.assertFalse(is_unavailable_model_error("503 temporarily unavailable"))
 
     def test_quota_and_billing_errors_trigger_provider_cooldown(self):
         self.assertEqual(cooldown_seconds("429 resource_exhausted"),900)
