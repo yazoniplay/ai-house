@@ -1215,6 +1215,8 @@ def cycle(s):
     if legacy_decision.exists():legacy_decision.unlink()
     log("business_decision_migrated_to_text",path=str(Path(s.get("business_dir",""))/"BUSINESS_DECISION.txt"))
    except OSError as memo_migration_error:log("business_decision_migration_error",error=type(memo_migration_error).__name__)
+ if isinstance(s.get("business"),dict) and int((s.get("room_missions") or {}).get("cycle",-1))!=int(s.get("cycle",0) or 0):
+  ensure_autonomous_room_projects(s)
  if s.get("business_completed"):learn_from_business(s);return
  if not s.get("business") or s.get("business_completed"):
   if s.get("discovery_retry_after"):
