@@ -795,6 +795,11 @@ def studio_decide_approval_api(approval_id):
         return jsonify(error=str(exc)), 400
 
 
+
+@app.get("/studio")
+def studio_page():
+    return send_from_directory(HERE, "studio.html")
+
 if __name__ == "__main__":
     if autonomy_enabled():
         try:
