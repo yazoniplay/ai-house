@@ -23,6 +23,9 @@ SUMMARY_TIME=os.getenv("AI_HOUSE_SUMMARY_TIME","22:00")
 MAX_NEW_BUSINESSES_PER_DAY=int(os.getenv("AI_HOUSE_MAX_NEW_BUSINESSES_PER_DAY","2"))
 CONTROL_FILE=SD/"control.json"
 DAILY_DIR=SD/"daily"
+ACTIONS_FILE=SD/"actions.jsonl"
+BUSINESS_BUDGET_USD=float(os.getenv("AI_HOUSE_BUSINESS_BUDGET_USD","0"))
+BUSINESS_BUDGET_MAX_USD=float(os.getenv("AI_HOUSE_BUSINESS_BUDGET_MAX_USD","50"))
 DISCOVERY_QUERIES=["small business customer pain points underserved niche 2026","recent workflow problems freelancers and small businesses","current demand for simple digital products small business","newly emerging consumer needs online services"]
 def envfile(p):
  if p.exists():
@@ -86,6 +89,20 @@ def log(e,**d):
  SD.mkdir(parents=True,exist_ok=True)
  with LF.open("a",encoding="utf-8") as f:f.write(json.dumps({"at":datetime.now(timezone.utc).isoformat(),"event":e,"room":ROOM_ID,**d},ensure_ascii=False)+"\n")
  print(e,json.dumps(d,ensure_ascii=False)[:400])
+def record_action(kind,cost_usd=0.0,**detail):
+ item={"at":datetime.now(timezone.utc).isoformat(),"room":ROOM_ID,"business":str(state().get("business",{}).get("name","") if isinstance(state().get("business"),dict) else ""),"kind":kind,"cost_usd":round(float(cost_usd),6),**detail}
+ SD.mkdir(parents=True,exist_ok=True)
+ with ACTIONS_FILE.open("a",encoding="utf-8") as f:f.write(json.dumps(item,ensure_ascii=False)+chr(10))
+def business_spend_usd(business_name=None):
+ total=0.0
+ try:
+  for line in ACTIONS_FILE.read_text(encoding="utf-8",errors="replace").splitlines():
+   try:
+    item=json.loads(line)
+    if business_name is None or item.get("business")==business_name:total+=float(item.get("cost_usd",0))
+   except Exception:continue
+ except Exception:pass
+ return round(total,6)
 def state():
  SD.mkdir(parents=True,exist_ok=True)
  try:return json.loads(SF.read_text(encoding="utf-8"))
@@ -182,6 +199,8 @@ def raw(p,sys,ask,role):
   except Exception as spend_error:
    try:log("spend_record_error",provider=provider,error=str(spend_error)[:180])
    except Exception:pass
+  try:record_action("model_call",cost_usd=estimate_cost(provider,usage),provider=provider,role=role)
+  except Exception:pass
  if p=="openrouter":
   if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
   r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":ORM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
@@ -366,6 +385,8 @@ def exa_search(q):
  if not exa_allowed():
   log("exa_budget_reached",monthly_limit=exa_monthly_limit());return []
  exa_record()
+ try:record_action("search",cost_usd=0.0,provider="exa",query=str(q)[:200])
+ except Exception:pass
  try:
   r=HTTP.post("https://api.exa.ai/search",headers={"x-api-key":EX,"Content-Type":"application/json"},json={"query":str(q)[:300],"numResults":5,"contents":{"text":{"maxCharacters":700}}},timeout=30)
   if r.status_code>=400:
@@ -382,6 +403,8 @@ def tavily_search(q,depth=None):
  if not search_allowed(SBF):
   log("search_budget_reached",daily_limit=search_daily_limit(),monthly_limit=search_monthly_limit(),query=str(q)[:240]);return []
  for _ in range(cost):record_search(SBF)
+ try:record_action("search",cost_usd=0.0,provider="tavily",depth=depth,query=str(q)[:200])
+ except Exception:pass
  try:
   r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":str(q)[:300],"search_depth":depth,"max_results":5},timeout=30)
   if r.status_code>=400:
@@ -712,6 +735,14 @@ def replan(s):
  create_roadmap(s,"recovery",failed)
 def build(s):
  if not s.get("roadmap"):create_roadmap(s)
+ business_name=s.get("business",{}).get("name") if isinstance(s.get("business"),dict) else None
+ spent=business_spend_usd(business_name)
+ budget=min(BUSINESS_BUDGET_USD,BUSINESS_BUDGET_MAX_USD)
+ if budget>0 and spent>=budget:
+  s["status"]="budget_paused"
+  set_activity("budget_paused","This business reached its budget of $"+str(budget)+". Raise AI_HOUSE_BUSINESS_BUDGET_USD to continue.")
+  save(s);log("business_budget_reached",spent=spent,budget=budget);return
+ s["status"]="active"
  task=select_task(s)
  if task=="WAIT":
   failed=[t for t in s["roadmap"]["tasks"] if t.get("status") in ("failed","blocked")]
@@ -816,7 +847,7 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
  if not any((G,H,M,N,TK,OK,OR,SK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
- log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS,active_hours=ACTIVE_HOURS,summary_time=SUMMARY_TIME,max_new_businesses_per_day=MAX_NEW_BUSINESSES_PER_DAY)
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS,active_hours=ACTIVE_HOURS,summary_time=SUMMARY_TIME,max_new_businesses_per_day=MAX_NEW_BUSINESSES_PER_DAY,business_budget_usd=BUSINESS_BUDGET_USD,business_budget_max_usd=BUSINESS_BUDGET_MAX_USD)
  print("Workspace:",WORK)
  registry=load_rooms()
  if not isinstance(registry.get("rooms"),list) or not registry["rooms"]:registry["rooms"]=[{"id":"room-001","name":"Room 1","state_file":str(SF),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}]

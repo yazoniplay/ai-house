@@ -110,6 +110,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 .pixel-desk.lit{border-color:var(--station-lit);background:var(--station-lit-bg);box-shadow:inset 0 -5px var(--station-lit)}
 .station-panel{--station-lit:var(--green);--station-lit-bg:#18382e}
 .summary-pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:none;min-height:70px}
+.outbox-list,.ledger-list{display:grid;gap:7px;min-width:0}
+.outbox-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;text-align:left;background:#0c1421;border:1px solid #26344a;border-radius:10px;padding:11px;min-width:0}
+.outbox-row strong,.outbox-row small{display:block;overflow-wrap:anywhere}.outbox-row small{color:var(--muted);font-size:10px;margin-top:3px}.outbox-row .outbox-meta{font-size:10px;color:#aebed5;white-space:nowrap}
+.outbox-preview{margin-top:12px}.outbox-preview-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.ledger-summary{color:#c7d5e9;font-size:11px;overflow-wrap:anywhere;margin-bottom:12px}.ledger-table-wrap{overflow-x:auto}.ledger-table{width:100%;border-collapse:collapse;font-size:10px;min-width:560px}.ledger-table th,.ledger-table td{text-align:left;padding:8px;border-bottom:1px solid #26344a;overflow-wrap:anywhere}.ledger-table th{color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.08em}.station-budget{font-size:10px;color:#c4b5fd;margin:4px 0 10px}
 @media(max-width:520px){.schedule-status{width:100%;max-width:none;text-align:left;order:5}.station-desks{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
@@ -206,6 +210,24 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
     </div>
   </section>
 
+
+  <section class="panel" id="outboxPanel">
+    <div class="panel-head"><h2>Outbox: finished files</h2><span class="subtle" id="outboxCount">Loading…</span></div>
+    <div id="outboxList" class="outbox-list"><div class="empty">Looking for finished business files…</div></div>
+    <div id="outboxPreview" class="outbox-preview hidden">
+      <div class="outbox-preview-head"><strong id="outboxPreviewTitle">File preview</strong><button id="outboxClose" type="button">Close</button></div>
+      <pre id="outboxPreviewText">Select a file to preview it.</pre>
+    </div>
+  </section>
+  <section class="panel" id="ledgerPanel">
+    <div class="panel-head"><h2>Action ledger</h2><span class="subtle" id="ledgerUpdated">Loading…</span></div>
+    <div id="ledgerTotals" class="ledger-summary">Loading ledger totals…</div>
+    <div class="ledger-table-wrap"><table class="ledger-table">
+      <thead><tr><th>Time</th><th>Kind</th><th>Provider</th><th>Cost</th><th>Business</th></tr></thead>
+      <tbody id="ledgerRows"><tr><td colspan="5">No actions recorded yet.</td></tr></tbody>
+    </table></div>
+  </section>
+
   <details class="dev">
     <summary>Technical log (for troubleshooting)</summary>
     <pre id="log">No engine log yet.</pre>
@@ -216,6 +238,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 const $=id=>document.getElementById(id);
 let roomList=[];
 let selectedRoom=localStorage.getItem("ai-house-room")||"";
+let ledgerData={entries:[],totals:{cost_usd:0,kinds:{},business_spend_usd:{},business_budget_usd:0}};
+let outboxFiles=[];
 async function api(path,method="GET",body=null){
   const response=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body});
   const data=await response.json().catch(()=>({}));
@@ -241,6 +265,56 @@ async function toggleHouse(){
   catch(error){alert(error.message);}
   finally{$("houseToggle").disabled=false;}
 }
+
+function money(value){return "$"+Number(value||0).toFixed(2);}
+async function refreshLedger(){
+  try{
+    ledgerData=await api("/api/ledger");
+    const totals=ledgerData.totals||{},kinds=totals.kinds||{};
+    const kindText=Object.entries(kinds).map(([kind,count])=>kind+": "+count).join(" · ")||"No action kinds yet";
+    $("ledgerTotals").textContent="Total recorded cost: "+money(totals.cost_usd)+" · "+kindText;
+    const body=$("ledgerRows");body.replaceChildren();
+    const entries=(Array.isArray(ledgerData.entries)?ledgerData.entries:[]).slice(0,50);
+    if(!entries.length){const row=document.createElement("tr"),cell=document.createElement("td");cell.colSpan=5;cell.textContent="No actions recorded yet.";row.append(cell);body.append(row);}
+    entries.forEach(item=>{
+      const row=document.createElement("tr");
+      const values=[item.at?new Date(item.at).toLocaleString():"—",item.kind||"unknown",item.provider||"—",money(item.cost_usd),item.business||"—"];
+      values.forEach(value=>{const cell=document.createElement("td");cell.textContent=String(value);row.append(cell);});
+      body.append(row);
+    });
+    $("ledgerUpdated").textContent="Updated "+new Date().toLocaleTimeString();
+  }catch(error){$("ledgerTotals").textContent="Ledger unavailable: "+error.message;}
+}
+async function openOutboxFile(file){
+  $("outboxPreview").classList.remove("hidden");
+  $("outboxPreviewTitle").textContent=file.business+" · "+file.path;
+  $("outboxPreviewText").textContent="Loading file…";
+  try{
+    const data=await api("/api/outbox/file?path="+encodeURIComponent(file.path));
+    $("outboxPreviewText").textContent=String(data.content||"").slice(0,200000);
+  }catch(error){$("outboxPreviewText").textContent="Could not open file: "+error.message;}
+}
+async function refreshOutbox(){
+  try{
+    const data=await api("/api/outbox");outboxFiles=Array.isArray(data.files)?data.files:[];
+    const list=$("outboxList");list.replaceChildren();
+    $("outboxCount").textContent=outboxFiles.length+" files";
+    if(!outboxFiles.length)addEmpty(list,"No finished files found in business reports, build, or drafts folders yet.");
+    outboxFiles.forEach(file=>{
+      const row=document.createElement("button");row.type="button";row.className="outbox-row";
+      const main=document.createElement("span");
+      const name=document.createElement("strong");name.textContent=file.business||"Business";
+      const path=document.createElement("small");path.textContent=file.path||"";
+      main.append(name,path);
+      const meta=document.createElement("span");meta.className="outbox-meta";
+      const time=file.modified?new Date(file.modified).toLocaleString():"";
+      meta.textContent=formatBytes(Number(file.bytes||0))+" · "+time;
+      row.append(main,meta);row.addEventListener("click",()=>openOutboxFile(file));list.append(row);
+    });
+  }catch(error){$("outboxCount").textContent="Unavailable";addEmpty($("outboxList"),error.message);}
+}
+$("outboxClose").addEventListener("click",()=>{$("outboxPreview").classList.add("hidden");$("outboxPreviewText").textContent="";});
+
 async function refreshSummary(){
   try{const data=await api("/api/summary");$("dailySummary").textContent=data&&typeof data.text==="string"?data.text:"No daily summary has been written yet."; $("summaryDate").textContent=data&&data.date?data.date:"No report yet";}
   catch(error){$("dailySummary").textContent="Summary unavailable: "+error.message;}
@@ -261,6 +335,10 @@ async function refreshStation(){
     let live={};try{live=await api("/api/live?room="+encodeURIComponent(room.id));}catch(error){live={};}
     const activity=live.activity||{},tasks=Array.isArray(live.roadmap?.tasks)?live.roadmap.tasks:[];
     const status=document.createElement("div");status.className="station-status";status.textContent=stationStatus(activity,controlState);card.append(status);
+    const businessName=String(room.business_name||live.business?.name||"");
+    const spend=Number((ledgerData.totals?.business_spend_usd||{})[businessName]||0);
+    const budget=Number(ledgerData.totals?.business_budget_usd||0);
+    const budgetLine=document.createElement("div");budgetLine.className="station-budget";budgetLine.textContent=businessName?"Spent "+money(spend)+" of "+money(budget):"Budget: waiting for a business";card.append(budgetLine);
     const desks=document.createElement("div");desks.className="station-desks";
     const roles=[...new Set(tasks.map(task=>String(task.agent_role||"agent")))];
     if(!roles.length)addEmpty(desks,"No roles on this roadmap yet.");
@@ -566,12 +644,14 @@ $("resume").addEventListener("click",async()=>{
   catch(error){alert(error.message);$("resume").disabled=false;}
 });
 refreshRooms().then(()=>{render();refreshLive();refreshStation();});
-refreshControl();refreshSummary();
+refreshControl();refreshSummary();refreshLedger();refreshOutbox();
 setInterval(render,2500);
 setInterval(refreshLive,3000);
 setInterval(refreshRooms,10000);
 setInterval(refreshControl,4000);
 setInterval(refreshSummary,15000);
+setInterval(refreshLedger,10000);
+setInterval(refreshOutbox,10000);
 setInterval(refreshStation,5000);
 setInterval(()=>{if(document.querySelector("details.dev").open)refreshLog();},4000);
 document.querySelector("details.dev").addEventListener("toggle",e=>{if(e.target.open)refreshLog();});

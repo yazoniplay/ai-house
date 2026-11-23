@@ -20,6 +20,8 @@ NORTH_FACE_FILE = STATE_DIR / "north_face.json"
 CONTROL_FILE = STATE_DIR / "autonomy_control.json"
 HOUSE_CONTROL_FILE = STATE_DIR / "control.json"
 DAILY_DIR = STATE_DIR / "daily"
+ACTIONS_FILE = STATE_DIR / "actions.jsonl"
+BUSINESSES_DIR = WORKSPACE / "businesses"
 PID_FILE = STATE_DIR / "engine.pid"
 ENGINE_LOG = STATE_DIR / "engine.log"
 ENGINE = WORKER_DIR / "autonomous_engine.py"
@@ -362,6 +364,151 @@ def daily_summary_api():
         return jsonify(date=newest.stem, text=newest.read_text(encoding="utf-8", errors="replace"))
     except Exception:
         return jsonify(None)
+
+
+
+def dashboard_budget_settings():
+    names = ("AI_HOUSE_BUSINESS_BUDGET_USD", "AI_HOUSE_BUSINESS_BUDGET_MAX_USD")
+    values = {}
+    for name, default in ((names[0], "0"), (names[1], "50")):
+        value = os.getenv(name)
+        if value is None:
+            for path in (WORKER_DIR / ".env", ROOT / ".env"):
+                try:
+                    for line in path.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            key, raw = line.split("=", 1)
+                            if key.strip() == name:
+                                value = raw.strip().strip('"').strip("'")
+                                break
+                except Exception:
+                    continue
+                if value is not None:
+                    break
+        values[name] = float(value if value is not None else default)
+    return min(values[names[0]], values[names[1]])
+
+
+def workspace_contained(path):
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(WORKSPACE)
+    except ValueError:
+        return None
+    return resolved
+
+
+def outbox_path(relative_path):
+    if not relative_path or Path(relative_path).is_absolute():
+        return None
+    parts = Path(relative_path.replace("\\", "/")).parts
+    if not parts or parts[0] != "businesses" or any(part in (".ai-house", ".git", "node_modules", ".venv", "venv") for part in parts):
+        return None
+    if len(parts) < 3 or parts[1] in ("", ".", "..") or parts[2] not in ("reports", "build", "drafts"):
+        return None
+    candidate = workspace_contained(WORKSPACE.joinpath(*parts))
+    business_root = workspace_contained(BUSINESSES_DIR / parts[1])
+    allowed_root = workspace_contained(BUSINESSES_DIR / parts[1] / parts[2])
+    if candidate is None or business_root is None or allowed_root is None:
+        return None
+    if business_root not in candidate.parents or allowed_root not in candidate.parents:
+        return None
+    return candidate
+
+
+@app.get("/api/ledger")
+def action_ledger_api():
+    entries = []
+    total_cost = 0.0
+    kinds = {}
+    business_spend = {}
+    try:
+        lines = ACTIONS_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        lines = []
+    for line in lines:
+        try:
+            item = json.loads(line)
+            if not isinstance(item, dict):
+                continue
+            cost = float(item.get("cost_usd", 0) or 0)
+            kind = str(item.get("kind", "unknown"))
+            business = str(item.get("business", ""))
+            total_cost += cost
+            kinds[kind] = kinds.get(kind, 0) + 1
+            if business:
+                business_spend[business] = business_spend.get(business, 0.0) + cost
+            entries.append(item)
+        except Exception:
+            continue
+    newest = list(reversed(entries[-200:]))
+    totals = {
+        "cost_usd": round(total_cost, 6),
+        "kinds": kinds,
+        "business_spend_usd": {name: round(value, 6) for name, value in business_spend.items()},
+        "business_budget_usd": dashboard_budget_settings(),
+    }
+    return jsonify(entries=newest, totals=totals)
+
+
+@app.get("/api/outbox")
+def outbox_api():
+    output = []
+    root = workspace_contained(BUSINESSES_DIR)
+    if root is None or not root.is_dir():
+        return jsonify(files=[])
+    blocked = {".ai-house", ".git", "node_modules", ".venv", "venv"}
+    try:
+        businesses = list(root.iterdir())
+    except OSError:
+        businesses = []
+    for business_dir in businesses:
+        safe_business = workspace_contained(business_dir)
+        if safe_business is None or not safe_business.is_dir() or safe_business.parent != root:
+            continue
+        for folder in ("reports", "build", "drafts"):
+            target_dir = workspace_contained(safe_business / folder)
+            if target_dir is None or not target_dir.is_dir():
+                continue
+            try:
+                paths = target_dir.rglob("*")
+            except OSError:
+                continue
+            for path in paths:
+                if not path.is_file() or any(part in blocked for part in path.parts):
+                    continue
+                resolved = workspace_contained(path)
+                if resolved is None or not resolved.is_file() or target_dir not in resolved.parents:
+                    continue
+                try:
+                    stat = resolved.stat()
+                    output.append({
+                        "business": safe_business.name,
+                        "path": str(resolved.relative_to(WORKSPACE)).replace("\\", "/"),
+                        "bytes": stat.st_size,
+                        "modified": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(stat.st_mtime)),
+                    })
+                except OSError:
+                    continue
+    output.sort(key=lambda item: item["modified"], reverse=True)
+    return jsonify(files=output[:200])
+
+
+@app.get("/api/outbox/file")
+def outbox_file_api():
+    relative_path = request.args.get("path", "")
+    candidate = outbox_path(relative_path)
+    if candidate is None:
+        return jsonify(error="Path must identify a file inside a business reports, build, or drafts folder."), 400
+    if not candidate.is_file():
+        return jsonify(error="Outbox file not found."), 404
+    try:
+        content = candidate.read_text(encoding="utf-8", errors="replace")[:200000]
+    except OSError:
+        return jsonify(error="Outbox file could not be read."), 404
+    return jsonify(path=str(candidate.relative_to(WORKSPACE)).replace("\\", "/"), content=content)
+
 
 
 @app.get("/api/rooms")
