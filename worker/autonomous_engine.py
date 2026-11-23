@@ -6,7 +6,7 @@ import httpx
 import sys
 try:sys.stdout.reconfigure(errors="replace")
 except Exception:pass
-from north_face import context as north_face_context, record_task as north_face_record_task, record_business as north_face_record_business
+from north_face import context as north_face_context, context_with_ids, record_outcome, record_task as north_face_record_task, record_business as north_face_record_business
 from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit, search_monthly_limit, next_utc_midnight, spend_allowed, record_spend, spend_daily_cap, spend_monthly_cap
 from publisher import run_publisher
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
@@ -514,13 +514,18 @@ def north_face_task_learning(s,t,status,review,output):
    learning={"root_cause":fallback,"lesson":"Preserve the task review and retry learning even if the reflection model call fails.","improvement_rule":"On reflection-call failure, persist a deterministic fallback lesson and continue; never leave the task stuck in running state.","confidence":"low"}
  learning_status=status
  north_face_record_task(SD/"north_face.json",t,learning_status,review,learning,str(output.get("summary",""))[:1200])
+ outcome_status = "completed" if str(status).lower() in ("completed", "approved") else ("retry" if str(status).lower() == "retry" else "failed")
+ record_outcome(SD/"north_face.json", t.get("applied_lessons", []), t.get("id", ""), outcome_status)
  log("north_face_task_learned",task=t.get("id"),status=status,root_cause=str(learning.get("root_cause",""))[:180])
 def run_roadmap_task(s,t):
  b=s["business"];role=t["agent_role"];attempt=int(t.get("attempts",0))+1
  t["status"]="running";t["attempts"]=attempt;save(s)
  log("agent_task_started",task=t.get("id"),title=t.get("title"),role=role,attempt=attempt)
  set_activity("task_execution",role.capitalize()+" is working on: "+str(t.get("title","")),role,t.get("id"))
- task_context={"business":b,"roadmap_strategy":s["roadmap"]["strategy"],"success_metric":s["roadmap"]["success_metric"],"task":t,"workspace":listing()+"\nAll paths are relative to this business's folder.","prior_task_outputs":[{"id":x["id"],"title":x["title"],"output":x.get("output")} for x in s["roadmap"]["tasks"] if x["status"]=="completed"],"north_face_memory":north_face_context(SD/"north_face.json")[:12000]}
+ task_type=str((t.get("input") or {}).get("task_type","all") or "all")
+ north_face_memory, applied_ids = context_with_ids(SD/"north_face.json", role=role, task_type=task_type)
+ t["applied_lessons"]=applied_ids;save(s)
+ task_context={"business":b,"roadmap_strategy":s["roadmap"]["strategy"],"success_metric":s["roadmap"]["success_metric"],"task":t,"workspace":listing()+"\nAll paths are relative to this business's folder.","prior_task_outputs":[{"id":x["id"],"title":x["title"],"output":x.get("output")} for x in s["roadmap"]["tasks"] if x["status"]=="completed"],"north_face_memory":north_face_memory}
  required=required_deliverable_paths(t)
  if role in ("researcher","analyst","legal_risk"):set_activity("evidence_gathering",role.capitalize()+" is gathering fresh evidence for this task.",role,t.get("id"))
  search_depth=task_search_depth(t,role)
@@ -581,7 +586,10 @@ def retry_task(s,t):
  t["attempts"]=attempt;t["status"]="running";save(s)
  log("agent_task_retry_started",task=t.get("id"),title=t.get("title"),role=role,attempt=attempt)
  set_activity("task_retry","An agent is applying the CEO requested corrections.",role,t.get("id"))
- task_context={"business":s.get("business"),"task":t,"previous_output":old,"leader_fix":t.get("last_error",""),"workspace":listing()+"\nAll paths are relative to this business's folder.","north_face_memory":north_face_context(SD/"north_face.json")[:12000]}
+ task_type=str((t.get("input") or {}).get("task_type","all") or "all")
+ north_face_memory, applied_ids = context_with_ids(SD/"north_face.json", role=role, task_type=task_type)
+ t["applied_lessons"]=applied_ids;save(s)
+ task_context={"business":s.get("business"),"task":t,"previous_output":old,"leader_fix":t.get("last_error",""),"workspace":listing()+"\nAll paths are relative to this business's folder.","north_face_memory":north_face_memory}
  required=required_deliverable_paths(t)
  if role in ("researcher","analyst","legal_risk"):set_activity("evidence_gathering",role.capitalize()+" is gathering fresh evidence for the retry.",role,t.get("id"))
  search_depth=task_search_depth(t,role)
