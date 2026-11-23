@@ -104,3 +104,82 @@ def context_with_ids(path,role=None,task_type=None):
  txt=("THE NORTH FACE — SELF-IMPROVEMENT MEMORY (highest operating priority)\nUse confirmed, relevant experience to improve decisions and execution. Check recurring mistakes. Apply rules explicitly; do not repeat contradicted or expired lessons. After each task, extract evidence-based learning.\nReusable lessons:\n"+json.dumps([{"id":x.get("id"),"lesson":x.get("lesson"),"improvement_rule":x.get("improvement_rule"),"frequency":x.get("count",1),"context":x.get("latest_context")} for x in ls],ensure_ascii=False)[:7000]+"\nRecurring mistake patterns:\n"+json.dumps([{"root_cause":x.get("root_cause"),"frequency":x.get("count"),"examples":x.get("examples",[])} for x in ps],ensure_ascii=False)[:3500])
  return txt,ids
 def context(path,max_lessons=18,role=None,task_type=None): return context_with_ids(path,role,task_type)[0]
+
+
+def record_decision(path, decision, review=None):
+ """Persist a structured, evidence-aware review of a Leader decision."""
+ d=load(path); review=review if isinstance(review,dict) else {}
+ now=_now(); did=str(decision.get("id") or _id(str(decision.get("title","decision"))+" "+now))
+ item={
+  "id":did,"at":now,"title":str(decision.get("title",""))[:300],
+  "decision":str(decision.get("decision",""))[:1200],
+  "goal":str(decision.get("goal",""))[:700],
+  "rationale":str(decision.get("rationale",""))[:1200],
+  "alternatives":_list(decision.get("alternatives",[]),6),
+  "expected_outcome":str(decision.get("expected_outcome",""))[:700],
+  "success_metric":str(decision.get("success_metric",""))[:500],
+  "evidence":_list(decision.get("evidence",[]),8),
+  "risks":_list(decision.get("risks",[]),8),
+  "confidence":str(decision.get("confidence","low")).lower(),
+  "review":str(review.get("keep_modify_or_rollback",review.get("decision","review"))).lower(),
+  "review_reason":str(review.get("reason",""))[:1000],
+  "observed_outcome":str(review.get("observed_outcome",""))[:1000],
+  "lesson":str(review.get("lesson",""))[:1000],
+  "evidence_quality":str(review.get("evidence_quality","unverified")).lower()
+ }
+ d.setdefault("decision_reviews",[]); d["decision_reviews"]=(d["decision_reviews"]+[item])[-500:]
+ save(path,d); return item
+
+def record_experiment(path, experiment):
+ """Register a testable hypothesis; registration never marks it successful."""
+ d=load(path); e=dict(experiment or {})
+ title=str(e.get("title","")).strip()
+ hypothesis=str(e.get("hypothesis","")).strip()
+ metric=str(e.get("metric","")).strip()
+ if not title or not hypothesis or not metric:
+  raise ValueError("Experiment requires title, hypothesis, and metric")
+ eid=str(e.get("id") or _id(title+" "+_now()))
+ item={
+  "id":eid,"created_at":_now(),"title":title[:300],"hypothesis":hypothesis[:1200],
+  "metric":metric[:500],"baseline":e.get("baseline"),"target":e.get("target"),
+  "direction":str(e.get("direction","increase")).lower(),
+  "minimum_samples":max(1,int(e.get("minimum_samples",10))),
+  "control_description":str(e.get("control_description",""))[:700],
+  "treatment_description":str(e.get("treatment_description",""))[:700],
+  "status":"proposed","observations":[],"evaluation":None
+ }
+ if item["direction"] not in ("increase","decrease","reduce","increase_or_equal"):
+  raise ValueError("Unsupported experiment direction")
+ d.setdefault("experiments",[]); d["experiments"]=(d["experiments"]+[item])[-200:]
+ save(path,d); return item
+
+def evaluate_experiment(path, experiment_id, observations):
+ """Evaluate with sample-count and metric evidence; underpowered results stay inconclusive."""
+ d=load(path); exp=next((x for x in d.get("experiments",[]) if x.get("id")==experiment_id),None)
+ if exp is None: raise KeyError("Experiment not found")
+ obs=[x for x in (observations or []) if isinstance(x,dict)]
+ exp["observations"]=obs[-100:]
+ def number(v):
+  try:
+   n=float(v); return n if n==n and abs(n)!=float("inf") else None
+  except (TypeError,ValueError): return None
+ baseline=number(exp.get("baseline")); actual=number(obs[-1].get("value")) if obs else None
+ samples=sum(max(0,int(x.get("sample_size",0) or 0)) for x in obs)
+ required=int(exp.get("minimum_samples",10))
+ result={"evaluated_at":_now(),"baseline":baseline,"observed":actual,"sample_size":samples,"required_samples":required,"metric":exp.get("metric")}
+ if baseline is None or actual is None:
+  result.update({"status":"inconclusive","reason":"Baseline and observed numeric metric are required"})
+ elif samples<required:
+  result.update({"status":"inconclusive","reason":"Insufficient sample size"})
+ else:
+  direction=exp.get("direction","increase")
+  passed=(actual>baseline if direction=="increase" else actual<baseline if direction in ("decrease","reduce") else actual>=baseline)
+  result.update({"status":"supported" if passed else "not_supported","reason":"Metric met the registered direction" if passed else "Metric did not meet the registered direction"})
+ exp["evaluation"]=result; exp["status"]=result["status"]
+ save(path,d); return result
+
+def decision_review_context(path, limit=12):
+ d=load(path)
+ decisions=d.get("decision_reviews",[])[-max(1,min(int(limit),50)):]
+ experiments=d.get("experiments",[])[-max(1,min(int(limit),50)):]
+ return {"recent_decisions":[{"id":x.get("id"),"title":x.get("title"),"decision":x.get("decision"),"rationale":x.get("rationale"),"expected_outcome":x.get("expected_outcome"),"review":x.get("review"),"observed_outcome":x.get("observed_outcome"),"lesson":x.get("lesson"),"evidence_quality":x.get("evidence_quality")} for x in reversed(decisions)],"experiments":[{"id":x.get("id"),"title":x.get("title"),"hypothesis":x.get("hypothesis"),"metric":x.get("metric"),"status":x.get("status"),"evaluation":x.get("evaluation")} for x in reversed(experiments)]}
