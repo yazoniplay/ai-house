@@ -9,6 +9,7 @@ except Exception:pass
 from north_face import context as north_face_context, context_with_ids, record_outcome, record_task as north_face_record_task, record_business as north_face_record_business
 from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit, search_monthly_limit, next_utc_midnight, spend_allowed, record_spend, spend_daily_cap, spend_monthly_cap
 from publisher import run_publisher
+from approvals import create_request, get_answer
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
 SD=WORK/".ai-house"; SF=SD/"state.json"; LF=SD/"events.jsonl"; SBF=SD/"search-budget.json"
@@ -540,7 +541,7 @@ def roadmap_prompt(s,mode="initial",failed=None):
  "\nRecent results:\n"+json.dumps(history,ensure_ascii=False)[:7000]+
  "\nLessons learned:\n"+json.dumps(lessons,ensure_ascii=False)[:5000]+
  "\nFailure context:\n"+json.dumps(failed or {},ensure_ascii=False)[:5000]+
- "\nCreate a practical roadmap of 4-8 atomic tasks. Focus first on validating demand and the smallest useful product, then build, verify, and prepare honest distribution. Use legal_risk before any task that publishes, sells, or collects customer data. Use sales_drafter only to draft outreach as files; never plan a task that sends messages. Search budget left today: `"+str(search_credits_left())+"` credits. For each task that needs live web facts, set \"search\" to \"basic\" (1 credit, for quick facts, current names, or prices) or \"advanced\" (2 credits, for deep research on evidence that matters most). Use \"none\" when the task needs no live facts. Prefer basic. Use at most one advanced search per roadmap. Each task must have id (short unique slug), title, objective, agent_role (researcher|strategist|architect|builder|growth|finance|copywriter|designer|qa_tester|sales_drafter|analyst|legal_risk), priority (1-100), depends_on (list of task ids), acceptance (2-5 observable checks), and deliverable (specific artifact/output), search (none|basic|advanced). Include a measurable business success_metric and a short strategy. Avoid vague tasks like 'research more'. No new business suggestions to the owner; decide and execute internally. Do not include tasks outside this business or the user's excluded existing projects. Return JSON: {\"strategy\":\"...\",\"success_metric\":\"...\",\"tasks\":[...]}")
+ "\nCreate a practical roadmap of 4-8 atomic tasks. Focus first on validating demand and the smallest useful product, then build, verify, and prepare honest distribution. Use legal_risk before any task that publishes, sells, or collects customer data. Use sales_drafter only to draft outreach as files; never plan a task that sends messages. Search budget left today: `"+str(search_credits_left())+"` credits. For each task that needs live web facts, set \"search\" to \"basic\" (1 credit, for quick facts, current names, or prices) or \"advanced\" (2 credits, for deep research on evidence that matters most). Use \"none\" when the task needs no live facts. Prefer basic. Use at most one advanced search per roadmap. Each task must have id (short unique slug), title, objective, agent_role (researcher|strategist|architect|builder|growth|finance|copywriter|designer|qa_tester|sales_drafter|analyst|legal_risk), priority (1-100), depends_on (list of task ids), acceptance (2-5 observable checks), deliverable (specific artifact/output), search (none|basic|advanced), and needs_approval (true for any task that spends money, publishes anything publicly, contacts a person, or changes a live account; otherwise false). Include a measurable business success_metric and a short strategy. Avoid vague tasks like 'research more'. No new business suggestions to the owner; decide and execute internally. Do not include tasks outside this business or the user's excluded existing projects. Return JSON: {\"strategy\":\"...\",\"success_metric\":\"...\",\"tasks\":[...]}")
 def validate_roadmap(tasks):
  if not isinstance(tasks,list) or not 4<=len(tasks)<=8:return "roadmap must contain 4 to 8 tasks"
  ids=set()
@@ -622,6 +623,19 @@ def north_face_task_learning(s,t,status,review,output):
  record_outcome(SD/"north_face.json", t.get("applied_lessons", []), t.get("id", ""), outcome_status)
  log("north_face_task_learned",task=t.get("id"),status=status,root_cause=str(learning.get("root_cause",""))[:180])
 def run_roadmap_task(s,t):
+ if t.get("needs_approval"):
+  approval_id=t.get("approval_id")
+  answer=get_answer(WORK,approval_id) if approval_id else None
+  if answer is None:
+   approval_id=create_request(WORK,ROOM_ID,"task_approval","Approve this step: "+str(t.get("title","")),summary=str(t.get("objective",""))[:500])
+   t["status"]="waiting_approval";t["approval_id"]=approval_id;save(s)
+   log("task_waiting_approval",task=t.get("id"),approval_id=approval_id)
+   set_activity("waiting_approval","This room is waiting for the owner’s answer before continuing.",t.get("agent_role"),t.get("id"))
+   return
+  if answer!="yes":
+   t["status"]="failed";t["last_error"]="Owner declined this step"
+   log("task_declined",task=t.get("id"),approval_id=approval_id)
+   save(s);return
  b=s["business"];role=t["agent_role"];attempt=int(t.get("attempts",0))+1
  t["status"]="running";t["attempts"]=attempt;save(s)
  log("agent_task_started",task=t.get("id"),title=t.get("title"),role=role,attempt=attempt)
@@ -743,6 +757,11 @@ def build(s):
   set_activity("budget_paused","This business reached its budget of $"+str(budget)+". Raise AI_HOUSE_BUSINESS_BUDGET_USD to continue.")
   save(s);log("business_budget_reached",spent=spent,budget=budget);return
  s["status"]="active"
+ for waiting_task in (s.get("roadmap") or {}).get("tasks",[]):
+  if waiting_task.get("status")=="waiting_approval":
+   answer=get_answer(WORK,waiting_task.get("approval_id"))
+   if answer is not None:
+    waiting_task["status"]="pending";save(s)
  task=select_task(s)
  if task=="WAIT":
   failed=[t for t in s["roadmap"]["tasks"] if t.get("status") in ("failed","blocked")]
