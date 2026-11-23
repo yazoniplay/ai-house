@@ -133,6 +133,19 @@ def record_decision(path, decision, review=None):
  d.setdefault("decision_reviews",[]); d["decision_reviews"]=(d["decision_reviews"]+[item])[-500:]
  save(path,d); return item
 
+def review_decision(path, decision_id, review):
+ """Update the original decision with its later measured outcome and verdict."""
+ d=load(path);item=next((x for x in d.get("decision_reviews",[]) if str(x.get("id"))==str(decision_id)),None)
+ if item is None:return None
+ review=review if isinstance(review,dict) else {}
+ item["reviewed_at"]=_now()
+ item["review"]=str(review.get("keep_modify_or_rollback",review.get("decision","review"))).lower()[:40]
+ item["review_reason"]=str(review.get("reason",""))[:1000]
+ item["observed_outcome"]=str(review.get("observed_outcome",""))[:1000]
+ item["lesson"]=str(review.get("lesson",""))[:1000]
+ item["evidence_quality"]=str(review.get("evidence_quality","unverified")).lower()[:80]
+ save(path,d);return item
+
 def record_experiment(path, experiment):
  """Register a testable hypothesis; registration never marks it successful."""
  d=load(path); e=dict(experiment or {})
