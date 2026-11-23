@@ -84,6 +84,15 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 @media(max-width:900px){.hero{grid-template-columns:1fr}.content{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){header{height:auto;min-height:68px;padding:12px;gap:9px;flex-wrap:wrap}.brand{font-size:15px}.room-select{max-width:100%;min-width:130px;flex:1}.pill{font-size:10px;padding:6px 8px}button{padding:8px 10px;font-size:11px}main{padding:16px 12px 40px}.hero{padding:21px 18px}.panel{padding:15px}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:21px}}
 
+.ask-leader-panel{margin-bottom:16px}
+.ask-leader-controls{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center}
+.ask-leader-input{width:100%;min-width:0;border:1px solid var(--line);border-radius:11px;padding:11px 13px;background:#0b1320;color:var(--text);font:inherit}
+.ask-leader-options{display:flex;align-items:center;gap:8px;margin:10px 0;color:var(--muted);font-size:11px}
+.ask-leader-options label{display:flex;align-items:center;gap:7px}
+.ask-leader-note{color:var(--muted);font-size:11px;margin:6px 0}
+#leaderReply{min-height:76px;max-height:320px;margin:10px 0 0;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}
+@media(max-width:520px){.ask-leader-controls{grid-template-columns:minmax(0,1fr) min-content min-content}.ask-leader-controls button{padding:9px 10px}.ask-leader-options{flex-wrap:wrap}}
+
 .live-now-panel{margin-bottom:16px}
 .live-now-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .live-block{min-width:0;background:#0b1320;border:1px solid #26344a;border-radius:12px;padding:13px}
@@ -282,6 +291,22 @@ button:not(:disabled):active{transform:translateY(0)}
   <button id="stop" class="stop hidden">Stop autonomy</button>
 </header>
 <main>
+  <section class="panel ask-leader-panel" aria-labelledby="askLeaderTitle">
+    <div class="panel-head"><div><h2 id="askLeaderTitle">Ask the leader</h2><div class="subtle">Ask about live house activity. This chat is read-only.</div></div></div>
+    <form id="askLeaderForm">
+      <div class="ask-leader-controls">
+        <input id="leaderQuestion" class="ask-leader-input" type="text" maxlength="1000" autocomplete="off" placeholder="Ask the leader a question…" aria-label="Question for the leader">
+        <button id="leaderSend" type="submit">Send</button>
+        <button id="leaderSpeak" type="button">Speak</button>
+      </div>
+    </form>
+    <div class="ask-leader-options">
+      <label id="leaderReadOption"><input id="leaderReadAloud" type="checkbox"> Read replies aloud</label>
+      <span id="leaderSpeechNote" class="ask-leader-note" hidden></span>
+    </div>
+    <pre id="leaderReply" aria-live="polite">Your last reply will appear here.</pre>
+  </section>
+
 
   <section class="panel live-now-panel" aria-live="polite">
     <div class="panel-head"><h2>What the house is doing right now</h2><span class="subtle" id="liveUpdated">Connecting…</span></div>
@@ -427,6 +452,74 @@ button:not(:disabled):active{transform:translateY(0)}
 </main>
 
 <script>
+
+// Ask the leader: built-in browser speech only, no external services.
+const leaderForm=$("askLeaderForm");
+const leaderQuestion=$("leaderQuestion");
+const leaderSend=$("leaderSend");
+const leaderReply=$("leaderReply");
+const leaderSpeakButton=$("leaderSpeak");
+const leaderReadOption=$("leaderReadOption");
+const leaderReadAloud=$("leaderReadAloud");
+const leaderSpeechNote=$("leaderSpeechNote");
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+let leaderRecognition=null;
+let leaderListening=false;
+try{leaderReadAloud.checked=localStorage.getItem("ai-house-read-replies-aloud")==="true";}catch(_){}
+if(!("speechSynthesis" in window)||typeof SpeechSynthesisUtterance==="undefined"){
+ leaderReadOption.hidden=true;
+}else{
+ leaderReadAloud.addEventListener("change",()=>{
+  try{localStorage.setItem("ai-house-read-replies-aloud",String(leaderReadAloud.checked));}catch(_){}
+  if(!leaderReadAloud.checked)window.speechSynthesis.cancel();
+ });
+}
+if(!SpeechRecognition){
+ leaderSpeakButton.hidden=true;
+ leaderSpeechNote.hidden=false;
+ leaderSpeechNote.textContent="Speech recognition is not available in this browser.";
+}else{
+ leaderRecognition=new SpeechRecognition();
+ leaderRecognition.lang="en-US";
+ leaderRecognition.continuous=false;
+ leaderRecognition.interimResults=false;
+ leaderRecognition.onstart=()=>{leaderListening=true;leaderSpeakButton.textContent="Stop listening";leaderReply.textContent="Listening…";};
+ leaderRecognition.onresult=event=>{
+  const result=event.results&&event.results[0]&&event.results[0][0];
+  if(result&&result.transcript)leaderQuestion.value=result.transcript.trim();
+ };
+ leaderRecognition.onerror=event=>{
+  leaderReply.textContent=event.error==="not-allowed"?"Microphone access was denied. Allow microphone access and try again.":"Speech recognition failed. Please try again or type your question.";
+ };
+ leaderRecognition.onend=()=>{leaderListening=false;leaderSpeakButton.textContent="Speak";};
+ leaderSpeakButton.addEventListener("click",()=>{
+  if(leaderListening){leaderRecognition.stop();return;}
+  try{leaderRecognition.start();}
+  catch(_){leaderReply.textContent="Could not start speech recognition. Try again in a moment.";}
+ });
+}
+function leaderReadReply(text){
+ if(!leaderReadAloud.checked||!("speechSynthesis" in window)||typeof SpeechSynthesisUtterance==="undefined")return;
+ window.speechSynthesis.cancel();
+ const utterance=new SpeechSynthesisUtterance(String(text||""));
+ utterance.lang="en-US";
+ window.speechSynthesis.speak(utterance);
+}
+leaderForm.addEventListener("submit",async event=>{
+ event.preventDefault();
+ const question=leaderQuestion.value.trim();
+ if(!question){leaderReply.textContent="Please type or speak a question first.";leaderQuestion.focus();return;}
+ leaderSend.disabled=true;
+ leaderReply.textContent="Thinking…";
+ try{
+  const result=await api("/api/ask","POST",JSON.stringify({text:question}));
+  const reply=String(result.reply??"");
+  leaderReply.textContent=reply;
+  leaderReadReply(reply);
+ }catch(error){
+  leaderReply.textContent=error.message||"The leader could not answer.";
+ }finally{leaderSend.disabled=false;}
+});
 const $=id=>document.getElementById(id);
 let roomList=[];
 let selectedRoom=localStorage.getItem("ai-house-room")||"";

@@ -41,6 +41,8 @@ app = Flask(__name__)
 lock = threading.RLock()
 engine_process = None
 engine_log_handle = None
+ask_rate_lock = threading.Lock()
+ask_last_question = 0.0
 
 
 def read_json(path, fallback):
@@ -291,6 +293,35 @@ def collect_artifacts():
 @app.get("/")
 def index():
     return send_from_directory(HERE, "index.html")
+
+
+@app.post("/api/ask")
+def ask_leader_api():
+    global ask_last_question
+    body = request.get_json(silent=True)
+    text = body.get("text") if isinstance(body, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        return jsonify(error="Please enter a question."), 400
+    if len(text) > 1000:
+        return jsonify(error="Question must be 1,000 characters or fewer."), 400
+    text = text.strip()
+    now = time.monotonic()
+    with ask_rate_lock:
+        if now - ask_last_question < 5:
+            return jsonify(error="Wait a few seconds before asking again."), 429
+        ask_last_question = now
+    try:
+        worker_path = str(WORKER_DIR)
+        if worker_path not in sys.path:
+            sys.path.insert(0, worker_path)
+        from autonomous_engine import chat_with_leader
+    except Exception:
+        return jsonify(error="The leader is not available right now."), 503
+    try:
+        reply = chat_with_leader(text)
+        return jsonify(reply=reply)
+    except Exception:
+        return jsonify(error="The leader could not answer."), 500
 
 
 def read_event_tail(limit=150):
