@@ -239,12 +239,19 @@ def ollama_chat(sys,ask):
 PROVIDER_ROTATION={"orchestrator":0,"worker":0}
 def provider_order(role):
  has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK)}
- # Gemini is the configured primary for both leader and worker calls. Other providers
- # are failover only; do not rotate away from Gemini on healthy requests.
- base=["gemini","openrouter","groq","nvidia","tokenharbor","hf","sambanova","ollama"]
+ # Keep Gemini as the preferred primary, but rotate the backup order per role
+ # so NVIDIA and the other configured providers are genuinely exercised on failures.
+ base=["gemini","groq","nvidia","tokenharbor","hf","sambanova","openrouter","ollama"]
  available=[p for p in base if has[p]]
- log("provider_route_order",role=role,providers=available,rotation=0)
- return available
+ primary=["gemini"] if "gemini" in available else []
+ backups=[p for p in available if p not in primary]
+ offset=PROVIDER_ROTATION.get(role,0)%max(1,len(backups))
+ if backups:
+  backups=backups[offset:]+backups[:offset]
+  PROVIDER_ROTATION[role]=offset+1
+ ordered=primary+backups
+ log("provider_route_order",role=role,providers=ordered,backup_rotation=offset)
+ return ordered
 def openrouter_chat(sys,ask):
  if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
  r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":configured_model_pool("openrouter",ORM,"AI_HOUSE_OPENROUTER_MODELS")[0],"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
@@ -908,10 +915,14 @@ def create_roadmap(s,mode="initial",failed=None):
  tasks=plan.get("tasks",[])
  error=validate_roadmap(tasks)
  if error:
-  plan=leader_json("Repair this invalid roadmap. Error: "+error+"\nOriginal: "+json.dumps(plan,ensure_ascii=False)+
-   "\nReturn corrected JSON with strategy, success_metric, and 4-8 valid tasks using the required schema.")
-  tasks=plan.get("tasks",[]);error=validate_roadmap(tasks)
- if error:raise RuntimeError("leader produced invalid roadmap: "+error)
+  for repair_attempt in range(1,4):
+   repair_prompt=("Repair this invalid roadmap (repair attempt "+str(repair_attempt)+"/3). Error: "+str(error)+
+    "\nOriginal roadmap: "+json.dumps(plan,ensure_ascii=False)[:14000]+
+    "\nReturn corrected JSON with strategy, success_metric, decision_review, and 4-8 valid tasks. Use only the documented agent_role values, unique task ids, valid dependencies, and observable acceptance criteria. Keep each task's deliverable inside the assigned role's allowed output folders.")
+   plan=leader_json(repair_prompt)
+   tasks=plan.get("tasks",[]);error=validate_roadmap(tasks)
+   if not error:break
+ if error:raise RuntimeError("leader produced invalid roadmap after 3 repair attempts: "+error)
  business=s.get("business") if isinstance(s.get("business"),dict) else {}
  business_text=" ".join(str(business.get(k,"")) for k in ("name","customer","problem","solution","revenue_model","validation","mvp")).lower()
  software_product=bool(s.get("coding_project_id")) or any(term in business_text for term in ("software","web app","mobile app","saas","application","browser extension","productivity app","online tool","platform","dashboard app"))
