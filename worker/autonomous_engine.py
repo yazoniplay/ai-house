@@ -1274,7 +1274,7 @@ def discord_command(text):
   set_house_running(False);return "House stopped."
  if command=="!start":
   set_house_running(True);return "House started."
- return "Commands: !status, !pending, !approve <id>, !deny <id>, !stop, !start, !help. Any message without ! goes to the leader."
+ return "Commands: !status, !pending, !approve <id>, !deny <id>, !directive <instruction>, !directive clear, !stop, !start, !help. Any message without ! goes to the leader."
 def chat_with_leader(text):
  try:
   registry=load_rooms()
