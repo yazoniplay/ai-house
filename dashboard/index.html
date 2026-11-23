@@ -16,6 +16,7 @@ button.resume{background:#19382f;border-color:#2d785f;color:#bfffe5}
 header{height:74px;display:flex;align-items:center;gap:18px;padding:0 clamp(16px,4vw,48px);border-bottom:1px solid #202c40;background:#0b111ddd;backdrop-filter:blur(16px);position:sticky;top:0;z-index:5}
 .brand{font-size:18px;font-weight:900;letter-spacing:.08em}.brand b{color:var(--accent)}.brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:.22em;font-weight:700;margin-top:-2px}
 .header-spacer{flex:1}
+.room-select{max-width:260px;min-width:160px;border:1px solid var(--line);border-radius:11px;padding:9px 12px;background:#121b2a;color:var(--text);font:inherit;font-size:12px;font-weight:700}
 .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:7px 11px;color:var(--muted);font-size:12px;font-weight:750;background:#121b2a}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block}
 .dot.on{background:var(--green);box-shadow:0 0 0 4px #64e4b21c,0 0 14px #64e4b277}
@@ -81,7 +82,7 @@ details.dev summary{cursor:pointer;color:#abbad0;font-size:11px;font-weight:750}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px solid #202b3d;border-radius:9px;padding:13px;max-height:350px;overflow:auto;color:#b9c9e3;font-size:10px}
 .hidden{display:none!important}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.content{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:520px){header{height:auto;min-height:68px;padding:12px;gap:9px}.brand{font-size:15px}.pill{font-size:10px;padding:6px 8px}button{padding:8px 10px;font-size:11px}main{padding:16px 12px 40px}.hero{padding:21px 18px}.panel{padding:15px}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:21px}}
+@media(max-width:520px){header{height:auto;min-height:68px;padding:12px;gap:9px;flex-wrap:wrap}.brand{font-size:15px}.room-select{max-width:100%;min-width:130px;flex:1}.pill{font-size:10px;padding:6px 8px}button{padding:8px 10px;font-size:11px}main{padding:16px 12px 40px}.hero{padding:21px 18px}.panel{padding:15px}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:21px}}
 
 .live-now-panel{margin-bottom:16px}
 .live-now-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -105,6 +106,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 <header>
   <div class="brand">AI <b>HOUSE</b><small>LOCAL AUTONOMY CONTROL ROOM</small></div>
   <div class="header-spacer"></div>
+  <select id="roomSelect" class="room-select" aria-label="Choose room"><option>Loading rooms…</option></select>
   <div class="pill"><i id="headerDot" class="dot"></i><span id="headerStatus">Connecting</span></div>
   <button id="resume" class="resume hidden">Resume autonomy</button>
   <button id="stop" class="stop">Stop autonomy</button>
@@ -191,11 +193,31 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 
 <script>
 const $=id=>document.getElementById(id);
+let roomList=[];
+let selectedRoom=localStorage.getItem("ai-house-room")||"";
 async function api(path,method="GET"){
   const response=await fetch(path,{method,headers:{"Content-Type":"application/json"}});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(data.error||("HTTP "+response.status));
   return data;
+}
+async function refreshRooms(){
+  try{
+    const data=await api("/api/rooms");
+    roomList=Array.isArray(data.rooms)?data.rooms:[];
+    if(!roomList.some(room=>room.id===selectedRoom))selectedRoom=roomList[0]?.id||"";
+    const select=$("roomSelect");select.replaceChildren();
+    roomList.forEach(room=>{
+      const option=document.createElement("option");
+      option.value=String(room.id||"");
+      option.textContent=String(room.name||room.id||"Room")+" · "+String(room.status||"active")+" · "+String(room.business_name||"No business yet");
+      select.append(option);
+    });
+    if(selectedRoom){select.value=selectedRoom;localStorage.setItem("ai-house-room",selectedRoom);}
+  }catch(error){
+    const select=$("roomSelect");select.replaceChildren();
+    const option=document.createElement("option");option.textContent="Rooms unavailable";select.append(option);
+  }
 }
 function addEmpty(parent,message){
   const node=document.createElement("div");node.className="empty";node.textContent=message;parent.append(node);
@@ -365,12 +387,12 @@ function renderLive(data){
   $("liveUpdated").textContent="Updated "+new Date().toLocaleTimeString();
 }
 async function refreshLive(){
-  try{renderLive(await api("/api/live"));}
+  try{renderLive(await api("/api/live?room="+encodeURIComponent(selectedRoom)));}
   catch(error){$("liveUpdated").textContent="Live feed unavailable: "+error.message;}
 }
 
 function render(){
-  api("/api/local/state").then(s=>{
+  api("/api/local/state?room="+encodeURIComponent(selectedRoom)).then(s=>{
     const tasks=s.tasks||[],files=s.artifacts||[],events=s.events||[],memory=s.memory||{};
     const completed=tasks.filter(t=>t.status==="completed").length;
     const total=tasks.length,active=tasks.find(t=>t.status==="running");
@@ -460,15 +482,18 @@ $("stop").addEventListener("click",async()=>{
   try{await api("/api/local/stop","POST");await render();}
   catch(error){alert(error.message);$("stop").disabled=false;}
 });
+$("roomSelect").addEventListener("change",()=>{
+  selectedRoom=$("roomSelect").value;localStorage.setItem("ai-house-room",selectedRoom);render();refreshLive();
+});
 $("resume").addEventListener("click",async()=>{
   $("resume").disabled=true;
   try{await api("/api/local/start","POST");await render();}
   catch(error){alert(error.message);$("resume").disabled=false;}
 });
-render();
-refreshLive();
+refreshRooms().then(()=>{render();refreshLive();});
 setInterval(render,2500);
 setInterval(refreshLive,3000);
+setInterval(refreshRooms,10000);
 setInterval(()=>{if(document.querySelector("details.dev").open)refreshLog();},4000);
 document.querySelector("details.dev").addEventListener("toggle",e=>{if(e.target.open)refreshLog();});
 </script>

@@ -15,6 +15,7 @@ WORKSPACE = Path(os.getenv("AI_HOUSE_WORKSPACE", ROOT / "workspace")).resolve()
 STATE_DIR = WORKSPACE / ".ai-house"
 STATE_FILE = STATE_DIR / "state.json"
 EVENT_FILE = STATE_DIR / "events.jsonl"
+ROOMS_FILE = STATE_DIR / "rooms.json"
 NORTH_FACE_FILE = STATE_DIR / "north_face.json"
 CONTROL_FILE = STATE_DIR / "autonomy_control.json"
 PID_FILE = STATE_DIR / "engine.pid"
@@ -264,9 +265,51 @@ def read_event_tail(limit=150):
         return []
 
 
+def room_registry():
+    data = read_json(ROOMS_FILE, {})
+    rooms = data.get("rooms") if isinstance(data, dict) else None
+    if not isinstance(rooms, list) or not rooms:
+        rooms = [{"id": "room-001", "name": "Room 1", "state_file": str(STATE_FILE), "status": "active"}]
+        data = {"rooms": rooms, "cursor": 0, "past_businesses": []}
+    return data
+
+
+def room_state_path(room):
+    raw = room.get("state_file") or str(STATE_FILE)
+    path = Path(raw)
+    if not path.is_absolute():
+        path = ROOT / path
+    return path
+
+
+@app.get("/api/rooms")
+def rooms_api():
+    registry = room_registry()
+    output = []
+    for room in registry.get("rooms", []):
+        if not isinstance(room, dict):
+            continue
+        state = read_json(room_state_path(room), {})
+        business = state.get("business")
+        output.append({
+            "id": room.get("id", "room-001"),
+            "name": room.get("name", room.get("id", "Room")),
+            "status": room.get("status", "active"),
+            "business_name": business.get("name") if isinstance(business, dict) else None,
+        })
+    return jsonify(rooms=output, cursor=registry.get("cursor", 0))
+
+
 @app.get("/api/live")
 def live():
-    state = read_json(STATE_FILE, {})
+    registry = room_registry()
+    requested_room = request.args.get("room")
+    rooms = registry.get("rooms", [])
+    room = next((item for item in rooms if isinstance(item, dict) and item.get("id") == requested_room), None) if requested_room else (rooms[0] if rooms else None)
+    if room is None:
+        room = {"id": "room-001", "state_file": str(STATE_FILE)}
+    room_id = str(room.get("id", "room-001"))
+    state = read_json(room_state_path(room), {})
     raw_roadmap = state.get("roadmap")
     roadmap = None
     if isinstance(raw_roadmap, dict):
@@ -298,14 +341,27 @@ def live():
         activity=state.get("activity"),
         business=business,
         roadmap=roadmap,
-        events=read_event_tail(150),
+        events=[event for event in read_event_tail(1000) if str(event.get('room', 'room-001')) == room_id][-150:],
     )
 
 
 @app.get("/api/local/state")
 def local_state():
-    state = read_json(STATE_FILE, {})
+    registry = room_registry()
+    requested_room = request.args.get("room")
+    rooms = registry.get("rooms", [])
+    room = next((item for item in rooms if isinstance(item, dict) and item.get("id") == requested_room), None) if requested_room else (rooms[0] if rooms else None)
+    if room is None:
+        room = {"id": "room-001", "state_file": str(STATE_FILE)}
+    room_id = str(room.get("id", "room-001"))
+    state = read_json(room_state_path(room), {})
     memory = read_json(NORTH_FACE_FILE, {})
+    selected_business_dir = str(state.get("business_dir") or "").strip("/")
+    artifacts = collect_artifacts()
+    if selected_business_dir:
+        artifacts = [item for item in artifacts if item.get("path", "").startswith(selected_business_dir + "/")]
+    else:
+        artifacts = []
     roadmap = state.get("roadmap") or {}
     tasks = roadmap.get("tasks") or []
     return jsonify(
@@ -327,8 +383,8 @@ def local_state():
             "business_postmortems": memory.get("business_postmortems", [])[-10:],
             "updated_at": memory.get("updated_at"),
         },
-        events=read_events(100),
-        artifacts=collect_artifacts(),
+        events=[event for event in read_events(1000) if str(event.get('room', 'room-001')) == room_id][-100:],
+        artifacts=artifacts,
         workspace=str(WORKSPACE),
     )
 

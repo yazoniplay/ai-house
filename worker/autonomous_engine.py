@@ -14,6 +14,10 @@ WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
 SD=WORK/".ai-house"; SF=SD/"state.json"; LF=SD/"events.jsonl"; SBF=SD/"search-budget.json"
 BUSINESSES=WORK/"businesses"
 BDIR=WORK
+MAX_ROOMS=int(os.getenv("AI_HOUSE_MAX_ROOMS","3"))
+ROOMS_FILE=SD/"rooms.json"
+ROOMS_DIR=SD/"rooms"
+ROOM_ID="room-001"
 DISCOVERY_QUERIES=["small business customer pain points underserved niche 2026","recent workflow problems freelancers and small businesses","current demand for simple digital products small business","newly emerging consumer needs online services"]
 def envfile(p):
  if p.exists():
@@ -75,7 +79,7 @@ def provider_available(provider):
  return time.monotonic()>=PROVIDER_COOLDOWN.get(provider,0)
 def log(e,**d):
  SD.mkdir(parents=True,exist_ok=True)
- with LF.open("a",encoding="utf-8") as f:f.write(json.dumps({"at":datetime.now(timezone.utc).isoformat(),"event":e,**d},ensure_ascii=False)+"\n")
+ with LF.open("a",encoding="utf-8") as f:f.write(json.dumps({"at":datetime.now(timezone.utc).isoformat(),"event":e,"room":ROOM_ID,**d},ensure_ascii=False)+"\n")
  print(e,json.dumps(d,ensure_ascii=False)[:400])
 def state():
  SD.mkdir(parents=True,exist_ok=True)
@@ -83,6 +87,25 @@ def state():
  except:return {"cycle":0,"business":None,"iteration":0,"history":[]}
 def save(s):
  SD.mkdir(parents=True,exist_ok=True);tmp=SF.with_suffix(".tmp");tmp.write_text(json.dumps(s,indent=2,ensure_ascii=False),encoding="utf-8");tmp.replace(SF)
+def load_rooms():
+ try:data=json.loads(ROOMS_FILE.read_text(encoding="utf-8"))
+ except Exception:data={}
+ if not isinstance(data,dict):data={}
+ data.setdefault("rooms",[{"id":"room-001","name":"Room 1","state_file":str(SF),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}])
+ data.setdefault("cursor",0);data.setdefault("past_businesses",[])
+ return data
+def save_rooms(data):
+ SD.mkdir(parents=True,exist_ok=True);tmp=ROOMS_FILE.with_suffix(".tmp");tmp.write_text(json.dumps(data,indent=2,ensure_ascii=False),encoding="utf-8");tmp.replace(ROOMS_FILE)
+def activate_room(room):
+ global SF,ROOM_ID,BDIR
+ ROOM_ID=room["id"];SF=Path(room["state_file"])
+ if room.get("business_dir"):set_business_dir(room["business_dir"])
+ else:BDIR=WORK
+def new_room(registry):
+ n=len(registry["rooms"])+1;rid=f"room-{n:03d}"
+ path=ROOMS_DIR/rid/"state.json";path.parent.mkdir(parents=True,exist_ok=True)
+ room={"id":rid,"name":f"Room {n}","state_file":str(path),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}
+ registry["rooms"].append(room);return room
 def set_activity(stage,message,role=None,task=None):
  # Persist current execution stage so the dashboard can show work during long model calls.
  try:
@@ -336,7 +359,7 @@ def search(q,depth=None):
  return ex
 def opportunity():
  set_activity("market_research","Searching Tavily for evidence-backed business opportunities.","researcher")
- past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in state().get("past_businesses",[])}
+ past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in load_rooms()["past_businesses"]}
  queries=list(DISCOVERY_QUERIES)
  try:
   planned=obj(ask("researcher",'Write up to 4 focused Tavily search queries about current customer problems and market demand. Do not suggest businesses or business ideas. Return JSON {"queries":["..."]}.'))
@@ -669,7 +692,7 @@ def learn_from_business(s):
  log("north_face_business_postmortem",business=s.get("business",{}).get("name"),decision=outcome.get("decision"),lessons=len(postmortem["lessons"]))
 def cycle(s):
  BDIR.mkdir(parents=True,exist_ok=True)
- if s.get("business_completed"):learn_from_business(s)
+ if s.get("business_completed"):learn_from_business(s);return
  if not s.get("business") or s.get("business_completed"):
   if s.get("discovery_retry_after"):
    try:
@@ -688,12 +711,13 @@ def cycle(s):
    s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
    save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
   s["business"]=business
-  folder=f"businesses/{int(s.get('cycle',0))+1:03d}-{slugify(business.get('name',''))}"
+  folder=f"businesses/{len(load_rooms().get('past_businesses',[]))+1:03d}-{slugify(business.get('name',''))}"
   set_business_dir(folder)
   s["business_dir"]=folder
   (BDIR/"README.md").write_text("# "+str(business.get("name",""))+"\n\n"+"Customer: "+str(business.get("customer",""))+"\n\nScore: "+str(business.get("score",""))+"\n\nSources:\n"+"\n".join("- "+u for u in business.get("sources",[]))+"\n",encoding="utf-8")
   s.setdefault("past_businesses",[]).append(str(business.get("name","")))
   s["past_businesses"]=s["past_businesses"][-300:]
+  registry=load_rooms();registry.setdefault("past_businesses",[]).append(str(business.get("name","")));registry["past_businesses"]=registry["past_businesses"][-300:];save_rooms(registry)
   s.pop("discovery_retry_after",None)
   s["iteration"]=0;s["business_completed"]=False;s["roadmap"]=None;s["roadmap_replans"]=0;s["cycle"]=int(s.get("cycle",0))+1;save(s)
   (BDIR/"BUSINESS_DECISION.json").write_text(json.dumps(s["business"],indent=2,ensure_ascii=False),encoding="utf-8")
@@ -704,50 +728,64 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
  if not any((G,H,M,N,TK,OK,OR,SK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
- log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap())
- print("Workspace:",WORK);s=state()
- if s.get("business_dir"):set_business_dir(s["business_dir"])
- recovered=[]
- for task in (s.get("roadmap") or {}).get("tasks",[]):
-  if task.get("status")=="running":
-   task["status"]="retry"
-   task["last_error"]="The previous worker stopped mid-task. The task has been safely queued again."
-   recovered.append(task.get("id"))
- if recovered:
-  save(s);log("interrupted_tasks_recovered",tasks=recovered)
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS)
+ print("Workspace:",WORK)
+ registry=load_rooms()
+ if not isinstance(registry.get("rooms"),list) or not registry["rooms"]:registry["rooms"]=[{"id":"room-001","name":"Room 1","state_file":str(SF),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}]
+ registry["rooms"]=registry["rooms"][:max(1,MAX_ROOMS)]
+ registry.setdefault("past_businesses",[]);registry.setdefault("cursor",0)
+ save_rooms(registry)
+ first=registry["rooms"][0]
+ for room in registry["rooms"]:
+  activate_room(room);s=state()
+  if s.get("business_dir"):room["business_dir"]=s["business_dir"];set_business_dir(s["business_dir"])
+  recovered=[]
+  for task in (s.get("roadmap") or {}).get("tasks",[]):
+   if task.get("status")=="running":
+    task["status"]="retry";task["last_error"]="The previous worker stopped mid-task. The task has been safely queued again.";recovered.append(task.get("id"))
+  if recovered:save(s);log("interrupted_tasks_recovered",tasks=recovered)
+ save_rooms(registry);activate_room(first)
  while True:
   try:
-   published=run_publisher(WORK,HTTP)
-   log("publish_pass",published=published)
-  except Exception as publish_error:
-   log("publish_pass",published=0,error=str(publish_error)[:500])
-  try:cycle(s);s=state()
-  except KeyboardInterrupt:print("Stopped; saved.");return 0
-  except Exception as e:
-   error=str(e)[:800]
-   provider_wait=("No available leader provider:" in error or "No available worker provider:" in error)
-   log("cycle_error",error=error,provider_wait=provider_wait)
-   s=state();requeued=[]
-   for task in (s.get("roadmap") or {}).get("tasks",[]):
-    if task.get("status")=="running":
-     if provider_wait:
-      # Provider outages are infrastructure waits, not failed agent attempts.
-      task["attempts"]=max(0,int(task.get("attempts",0))-1)
-      if task.get("last_error"):
-       task["status"]="retry"
-      else:
-       task["status"]="pending";task["last_error"]=""
-      requeued.append(task.get("id"))
-     else:
-      task["status"]="retry";task["last_error"]="Interrupted attempt queued again: "+error[:500];requeued.append(task.get("id"))
-   if requeued:
-    save(s)
-    if provider_wait:log("provider_waiting_tasks",tasks=requeued)
-    else:log("task_requeued_after_error",tasks=requeued)
-   if provider_wait:
-    set_activity("provider_wait","All configured AI providers are temporarily unavailable or rate-limited. Work is saved; the house will retry automatically.")
-   else:
-    set_activity("recovery","The worker hit an error and is recovering; unfinished work will be retried.")
+   published=run_publisher(WORK,HTTP);log("publish_pass",published=published)
+  except Exception as publish_error:log("publish_pass",published=0,error=str(publish_error)[:500])
+  registry=load_rooms();active=[room for room in registry["rooms"] if room.get("status","active")=="active"]
+  if active:
+   index=int(registry.get("cursor",0))%len(active);room=active[index];registry["cursor"]=int(registry.get("cursor",0))+1;save_rooms(registry)
+   try:
+    room_state={}
+    try:room_state=json.loads(Path(room["state_file"]).read_text(encoding="utf-8"))
+    except Exception:pass
+    if room_state.get("business_dir"):room["business_dir"]=room_state["business_dir"]
+    activate_room(room);s=state();cycle(s);s=state()
+    if s.get("business_completed"):learn_from_business(s);s=state()
+    registry=load_rooms();room=next((item for item in registry["rooms"] if item.get("id")==room.get("id")),room)
+    if s.get("business_dir"):room["business_dir"]=s["business_dir"]
+    if s.get("business_completed"):
+     room["status"]="done"
+     if len(registry["rooms"])<MAX_ROOMS:
+      created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"])
+     else:save_rooms(registry)
+    else:save_rooms(registry)
+   except KeyboardInterrupt:print("Stopped; saved.");return 0
+   except Exception as e:
+    error=str(e)[:800];provider_wait=("No available leader provider:" in error or "No available worker provider:" in error)
+    log("cycle_error",room=room.get("id"),error=error,provider_wait=provider_wait)
+    activate_room(room);s=state();requeued=[]
+    for task in (s.get("roadmap") or {}).get("tasks",[]):
+     if task.get("status")=="running":
+      if provider_wait:
+       task["attempts"]=max(0,int(task.get("attempts",0))-1)
+       if task.get("last_error"):task["status"]="retry"
+       else:task["status"]="pending";task["last_error"]=""
+       requeued.append(task.get("id"))
+      else:task["status"]="retry";task["last_error"]="Interrupted attempt queued again: "+error[:500];requeued.append(task.get("id"))
+    if requeued:
+     save(s)
+     if provider_wait:log("provider_waiting_tasks",room=room.get("id"),tasks=requeued)
+     else:log("task_requeued_after_error",room=room.get("id"),tasks=requeued)
+    if provider_wait:set_activity("provider_wait","All configured AI providers are temporarily unavailable or rate-limited. Work is saved; the house will retry automatically.")
+    else:set_activity("recovery","The worker hit an error and is recovering; unfinished work will be retried.")
   if not a.loop or a.once:return 0
   time.sleep(int(os.getenv("AI_HOUSE_POLL_SECONDS","10")))
 if __name__=="__main__":raise SystemExit(main())
