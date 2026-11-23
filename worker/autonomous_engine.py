@@ -291,7 +291,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
   worker_model=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite")
   model_id=model_override or (configured_model_pool("gemini_leader",leader_model,"AI_HOUSE_GEMINI_LEADER_MODELS")[0] if role=="orchestrator" else configured_model_pool("gemini_worker",worker_model,"AI_HOUSE_GEMINI_WORKER_MODELS")[0])
   url=f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
-  r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=55)
+  r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=25)
   if r.status_code>=400:raise RuntimeError(r.text[:220])
   try:
    out="".join(x.get("text","") for x in r.json()["candidates"][0]["content"]["parts"])
@@ -307,7 +307,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  if p=="groq":
   # Both GPT-OSS models support JSON mode; all Groq completions in this worker expect structured JSON.
   payload["response_format"]={"type":"json_object"}
- timeout_seconds=35 if p=="nvidia" else (45 if p=="groq" else 50)
+ timeout_seconds=12 if p=="nvidia" else (18 if p=="groq" else 25)
  candidates=[model]
  if p=="groq" and role!="fast" and model!=GFM:
   # If a user's main model is unavailable, try the already configured fast model before leaving Groq.
