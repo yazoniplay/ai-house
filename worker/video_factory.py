@@ -105,16 +105,16 @@ def create_voiceover(script, output_path, voice="en-US-AndrewNeural"):
     target = Path(output_path).expanduser().resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        subprocess.run(
-            [os.environ.get("AI_HOUSE_PYTHON", sys.executable), "-m", "edge_tts",
-             "--voice", str(voice)[:80], "--text", script[:50000],
-             "--write-media", str(target)],
-            check=True, timeout=600, capture_output=True, text=True,
-        )
-    except FileNotFoundError as exc:
+        import asyncio
+        import edge_tts
+        async def save_audio():
+            communicate = edge_tts.Communicate(script[:50000], str(voice)[:80])
+            await communicate.save(str(target))
+        asyncio.run(save_audio())
+    except ImportError as exc:
         raise VideoFactoryError("Install edge-tts with: pip install -r worker/requirements.txt") from exc
-    except subprocess.CalledProcessError as exc:
-        raise VideoFactoryError("Voice generation failed: " + (exc.stderr or "")[:500]) from exc
+    except Exception as exc:
+        raise VideoFactoryError("Voice generation failed: " + str(exc)[:500]) from exc
     if not target.is_file() or target.stat().st_size == 0:
         raise VideoFactoryError("Voice generation produced no audio file")
     return target
