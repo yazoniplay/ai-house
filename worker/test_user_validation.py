@@ -43,6 +43,12 @@ class ProductUsageValidationTests(unittest.TestCase):
         self.assertEqual(report["rejected_events"]["invalid_or_old_timestamp"],1)
 
 
+
+    def test_supports_nested_posthog_style_production_events(self):
+        events=[{"$distinct_id":"stable-id-000001","event":"core_action","timestamp":self.now.isoformat(),"properties":{"$environment":"production"}}]
+        report=verify_usage_events(events,now=self.now)
+        self.assertEqual(report["distinct_production_users"],1)
+
     def test_loads_jsonl_analytics_export(self):
         from pathlib import Path
         import tempfile, json
