@@ -17,3 +17,16 @@ def test_directive_length_is_validated(tmp_path):
         pass
     else:
         raise AssertionError("empty directive should be rejected")
+
+
+def test_new_directive_changes_leader_selected_priority(monkeypatch, tmp_path):
+    import autonomous_engine as engine
+    monkeypatch.setattr(engine,"WORK",tmp_path)
+    monkeypatch.setattr(engine,"save",lambda state:None)
+    monkeypatch.setattr(engine,"log",lambda *args,**kwargs:None)
+    monkeypatch.setattr(engine,"leader_json",lambda prompt:{"priority_changes":[{"task_id":"onboarding","priority":99,"reason":"Owner asked to focus on activation"}],"replan_required":False,"reason":"Applied owner direction"})
+    directive=add_directive(tmp_path,"Prioritize onboarding and activation")
+    state={"roadmap":{"tasks":[{"id":"onboarding","title":"Improve onboarding","priority":40,"status":"pending"}]}}
+    assert engine.apply_owner_directives(state) is False
+    assert state["roadmap"]["tasks"][0]["priority"]==99
+    assert directive["id"] in state["owner_directives_reviewed"]
