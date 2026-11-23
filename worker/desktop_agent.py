@@ -46,6 +46,15 @@ def _save(path, data):
     tmp.replace(path)
 
 
+def get_task(workspace, task_id):
+    path = _root(workspace) / (str(task_id) + ".json")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DesktopAgentError("Desktop task not found") from exc
+    return data
+
+
 def list_tasks(workspace):
     items = []
     root = _root(workspace)
