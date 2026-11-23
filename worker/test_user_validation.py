@@ -54,7 +54,7 @@ class ProductUsageValidationTests(unittest.TestCase):
         import tempfile, json
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"events.jsonl"
-            path.write_text(json.dumps(self.event("user-00000001"))+"\\n"+json.dumps(self.event("user-00000002")),encoding="utf-8")
+            path.write_text(json.dumps(self.event("user-00000001"))+"\n"+json.dumps(self.event("user-00000002")),encoding="utf-8")
             loaded=load_usage_events(path)
             self.assertEqual(len(loaded),2)
             self.assertEqual(verify_usage_events(loaded,now=self.now)["distinct_production_users"],2)
