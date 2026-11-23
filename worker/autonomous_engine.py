@@ -1,5 +1,5 @@
 """Local autonomous business lab for ai-house; run on the owner's PC."""
-import argparse,json,os,re,shlex,subprocess,time
+import argparse,json,os,re,shlex,subprocess,time,threading
 from pathlib import Path
 from datetime import datetime,timezone,timedelta
 import httpx
@@ -18,6 +18,9 @@ from discord_bot import start_discord_bot, enqueue_alert
 from provider_router import rotate as route_rotate, cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool
 from user_validation import verify_usage_events, load_usage_events
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
+from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
+from free_search import parse_results as parse_free_search_results
+from room_autonomy import normalize_room_plan
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
 SD=WORK/".ai-house"; SF=SD/"state.json"; LF=SD/"events.jsonl"; SBF=SD/"search-budget.json"
@@ -58,7 +61,7 @@ TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
 OR=os.getenv("OPENROUTER_API_KEY","");ORM=os.getenv("OPENROUTER_MODEL","openrouter/free")
 SK=os.getenv("SAMBANOVA_API_KEY","");SNM=os.getenv("SAMBANOVA_MODEL","deepseek-ai/DeepSeek-V3.2")
-EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"
+EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"; SEARCH_PROVIDER_STATE=SD/"search-provider-state.json"
 PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0}
 PAID_PROVIDERS=set(x.strip() for x in os.getenv("AI_HOUSE_PAID_PROVIDERS","").split(",") if x.strip())
 SPENDBF=SD/"search-budget.json"
@@ -450,7 +453,7 @@ def exa_record():
  data=_exa_budget_data();data["count"]=int(data.get("count",0))+1
  EBF.parent.mkdir(parents=True,exist_ok=True);EBF.write_text(json.dumps(data),encoding="utf-8")
 def exa_search(q):
- if not EX:return []
+ if not EX or not search_provider_ready(SEARCH_PROVIDER_STATE,"exa"):return []
  if not exa_allowed():
   log("exa_budget_reached",monthly_limit=exa_monthly_limit());return []
  exa_record()
@@ -459,13 +462,14 @@ def exa_search(q):
  try:
   r=HTTP.post("https://api.exa.ai/search",headers={"x-api-key":EX,"Content-Type":"application/json"},json={"query":str(q)[:300],"numResults":5,"contents":{"text":{"maxCharacters":700}}},timeout=30)
   if r.status_code>=400:
-   log("exa_error",query=str(q)[:240],status=r.status_code,error=r.text[:180]);return []
-  data=r.json();items=data.get("results") or (data.get("data") or {}).get("results") or []
+   error="HTTP "+str(r.status_code)+" "+r.text[:240];mark=mark_search_failure(SEARCH_PROVIDER_STATE,"exa",error)
+   log("exa_error",query=str(q)[:240],status=r.status_code,error=r.text[:180],retry_after=mark.get("retry_after"));return []
+  data=r.json();items=data.get("results") or (data.get("data") or {}).get("results") or [];mark_search_success(SEARCH_PROVIDER_STATE,"exa")
   return [{"title":x.get("title",""),"url":x.get("url",""),"content":str(x.get("text") or x.get("highlights") or "")[:700],"published_date":x.get("publishedDate")} for x in items if isinstance(x,dict) and x.get("url")]
  except Exception as e:
-  log("exa_error",query=str(q)[:240],error=str(e)[:180]);return []
+  mark=mark_search_failure(SEARCH_PROVIDER_STATE,"exa",str(e));log("exa_error",query=str(q)[:240],error=str(e)[:180],retry_after=mark.get("retry_after"));return []
 def tavily_search(q,depth=None):
- if not T:return []
+ if not T or not search_provider_ready(SEARCH_PROVIDER_STATE,"tavily"):return []
  depth=(depth or SEARCH_DEPTH).lower()
  if depth not in ("basic","advanced"):depth="basic"
  cost=2 if depth=="advanced" else 1
@@ -477,19 +481,38 @@ def tavily_search(q,depth=None):
  try:
   r=HTTP.post("https://api.tavily.com/search",headers={"Authorization":"Bearer "+T},json={"query":str(q)[:300],"search_depth":depth,"max_results":5},timeout=30)
   if r.status_code>=400:
-   log("tavily_error",query=str(q)[:240],status=r.status_code,error=r.text[:180]);return []
-  return [{"title":x.get("title",""),"url":x.get("url",""),"content":x.get("content","")[:700],"published_date":x.get("published_date") or x.get("published") or x.get("date")} for x in r.json().get("results",[]) if x.get("url")]
+   error="HTTP "+str(r.status_code)+" "+r.text[:240];mark=mark_search_failure(SEARCH_PROVIDER_STATE,"tavily",error)
+   log("tavily_error",query=str(q)[:240],status=r.status_code,error=r.text[:180],retry_after=mark.get("retry_after"));return []
+  items=[{"title":x.get("title",""),"url":x.get("url",""),"content":x.get("content","")[:700],"published_date":x.get("published_date") or x.get("published") or x.get("date")} for x in r.json().get("results",[]) if x.get("url")]
+  mark_search_success(SEARCH_PROVIDER_STATE,"tavily");return items
  except Exception as e:
-  log("tavily_error",query=str(q)[:240],error=str(e)[:180]);return []
+  mark=mark_search_failure(SEARCH_PROVIDER_STATE,"tavily",str(e));log("tavily_error",query=str(q)[:240],error=str(e)[:180],retry_after=mark.get("retry_after"));return []
+def duckduckgo_search(q):
+ if os.getenv("AI_HOUSE_FREE_SEARCH","1").strip().lower() in ("0","false","no","off"):return []
+ try:
+  response=HTTP.get("https://html.duckduckgo.com/html/",params={"q":str(q)[:300]},headers={"User-Agent":"Mozilla/5.0 (compatible; AIHouseResearch/1.0)"},timeout=25)
+  if response.status_code>=400:log("free_search_error",provider="duckduckgo",status=response.status_code);return []
+  items=parse_free_search_results(response.text,limit=5)
+  if items:
+   try:record_action("search",cost_usd=0.0,provider="duckduckgo",query=str(q)[:200])
+   except Exception:pass
+  log("free_search_result",provider="duckduckgo",query=str(q)[:180],results=len(items));return items
+ except Exception as e:
+  log("free_search_error",provider="duckduckgo",error=str(e)[:180]);return []
 def search_available():
- return bool((T and search_allowed(SBF)) or (EX and exa_allowed()))
+ return bool((T and search_provider_ready(SEARCH_PROVIDER_STATE,"tavily") and search_allowed(SBF)) or (EX and search_provider_ready(SEARCH_PROVIDER_STATE,"exa") and exa_allowed()) or os.getenv("AI_HOUSE_FREE_SEARCH","1").strip().lower() not in ("0","false","no","off"))
+def search_retry_at():
+ return search_provider_next_retry(SEARCH_PROVIDER_STATE,["tavily","exa"])
 def search(q,depth=None):
- if T and search_allowed(SBF):
+ if T and search_provider_ready(SEARCH_PROVIDER_STATE,"tavily") and search_allowed(SBF):
   tav=tavily_search(q,depth=depth)
   if tav:return tav
  ex=exa_search(q)
  if ex:log("search_fallback_exa",query=str(q)[:240],results=len(ex))
- return ex
+ if ex:return ex
+ free=duckduckgo_search(q)
+ if free:log("search_fallback_free",query=str(q)[:240],results=len(free))
+ return free
 def claim_numbers(text):
  nums=set()
  for m in re.finditer(r"\d[\d,]*(?:\.\d+)?",str(text)):
@@ -502,11 +525,11 @@ def numbers_supported(claim_text,source_text):
  if not needed:return True
  return needed<=claim_numbers(source_text)
 def opportunity():
- set_activity("market_research","Searching Tavily for evidence-backed business opportunities.","researcher")
+ set_activity("market_research","Searching available web sources for evidence-backed business opportunities.","researcher")
  past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in load_rooms()["past_businesses"]}
  queries=list(DISCOVERY_QUERIES)
  try:
-  planned=obj(ask("researcher",'Write up to 4 focused Tavily search queries about current customer problems and market demand. Do not suggest businesses or business ideas. Return JSON {"queries":["..."]}.'))
+  planned=obj(ask("researcher",'Write up to 4 focused web search queries about current customer problems and market demand. Do not suggest businesses or business ideas. Return JSON {"queries":["..."]}.'))
   queries.extend(str(q).strip()[:250] for q in planned.get("queries",[])[:2] if str(q).strip())
  except Exception as e:log("discovery_query_planning_error",error=str(e)[:180])
  results=[];seen=set();counts=[]
@@ -518,7 +541,7 @@ def opportunity():
  log("discovery_evidence",queries=counts,query_count=len(queries),source_count=len(results),unique_source_count=len(seen))
  if len(seen)<3:return None
  set_activity("opportunity_extraction","Researcher is extracting candidate business models only from retrieved sources.","researcher")
- prompt=('Extract business models ONLY from these Tavily results. Do not use model memory or introduce outside ideas. Each candidate must cite one or more exact URLs present in these results. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","score":0,"evidence":[{"url":"exact source URL","claim":"..."}],"risks":[],"mvp":"..."}]}\n'+json.dumps(results,ensure_ascii=False)[:20000])
+ prompt=('Extract business models ONLY from these retrieved search results. Do not use model memory or introduce outside ideas. Each candidate must cite one or more exact URLs present in these results. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","score":0,"evidence":[{"url":"exact source URL","claim":"..."}],"risks":[],"mvp":"..."}]}\n'+json.dumps(results,ensure_ascii=False)[:20000])
  try:extracted=obj(ask("researcher",prompt))
  except Exception as e:log("discovery_extraction_error",error=str(e)[:180]);return None
  valid=[];source_urls={x.get("url") for x in results}
@@ -1149,9 +1172,9 @@ def cycle(s):
     log("daily_business_limit_reached",limit=MAX_NEW_BUSINESSES_PER_DAY);notify("daily_limit","The daily new-business limit was reached.");return
    business=opportunity()
    if business is None:
-    retry_at=next_utc_midnight() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
+    retry_at=search_retry_at() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
     s["discovery_retry_after"]=retry_at.isoformat()
-    wait_message="Tavily and Exa search budgets are used up; resuming after the UTC midnight reset." if not search_available() else "Insufficient source-backed opportunities; retrying discovery in 30 minutes."
+    wait_message="Search providers are paused by saved quota/credit cooldowns; retrying at "+retry_at.isoformat()+"." if not search_available() else "Insufficient source-backed opportunities; retrying discovery in 30 minutes using the no-key search fallback if needed."
     s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
     save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
    folder=f"businesses/{len(load_rooms().get('past_businesses',[]))+1:03d}-{slugify(business.get('name',''))}"
