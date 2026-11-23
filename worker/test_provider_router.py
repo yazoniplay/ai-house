@@ -1,5 +1,5 @@
 import unittest
-from provider_router import rotate, model_pool, is_model_specific_error, cooldown_seconds
+from provider_router import rotate, model_pool, is_model_specific_error, cooldown_seconds, should_try_next_model
 
 class ProviderRouterTests(unittest.TestCase):
     def test_provider_rotation_spreads_calls_across_available_providers(self):
@@ -21,7 +21,7 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertEqual(cooldown_seconds("402 insufficient credits"),86400)
         self.assertEqual(cooldown_seconds("401 invalid API key"),3600)
 
-    def test_unknown_error_does_not_disable_provider(self):
+    def test_transient_model_failure_keeps_trying_alternates(self):\n        self.assertTrue(should_try_next_model("read operation timed out"))\n        self.assertTrue(should_try_next_model("429 rate limit for this model"))\n        self.assertTrue(should_try_next_model("503 temporarily unavailable"))\n        self.assertFalse(should_try_next_model("401 invalid API key"))\n        self.assertFalse(should_try_next_model("402 insufficient credits"))\n\n    def test_model_pool_keeps_primary_and_alternates_in_order(self):\n        self.assertEqual(model_pool("kimi", "nemotron,glm,kimi"), ["kimi", "nemotron", "glm"])\n\n    def test_unknown_error_does_not_disable_provider(self):
         self.assertEqual(cooldown_seconds("bad response shape"),0)
 
 if __name__=="__main__":
