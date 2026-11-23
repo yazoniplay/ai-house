@@ -4,6 +4,14 @@ AI House is a local-first autonomous business lab. A CEO/orchestrator chooses an
 
 ## Run the local dashboard
 
+### Windows quick start
+
+Download the latest [main branch ZIP](https://github.com/yazoniplay/ai-house/archive/refs/heads/main.zip), extract it, and run `start-house.bat`. The launcher installs the Python dependencies and opens the dashboard at `http://127.0.0.1:8000`. It keeps startup errors visible in a console.
+
+When reinstalling, copy your existing `worker/.env` and entire `workspace/` folder into the newly extracted project before launching. Keep the old project folder until the new one starts successfully. The repository contains only `worker/.env.example`; the private `worker/.env` is ignored and is not shipped in the ZIP.
+
+### Manual start
+
 From the project root in PowerShell:
 
 ```powershell
