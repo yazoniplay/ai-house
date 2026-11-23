@@ -133,11 +133,44 @@ def local_active_now(window):
         return False
 
 
+def read_jsonl_tail(path, limit=150, max_bytes=8 * 1024 * 1024):
+    """Read at most the newest max_bytes and limit JSONL records from a growing log."""
+    try:
+        if not path.exists():
+            return []
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            end = handle.tell()
+            start = max(0, end - max_bytes)
+            handle.seek(start)
+            raw = handle.read(max_bytes)
+        if start:
+            # Drop the possibly incomplete first record from a mid-file slice.
+            first_newline = raw.find(b"\n")
+            raw = raw[first_newline + 1:] if first_newline >= 0 else b""
+        parsed = []
+        for line in raw.splitlines()[-limit:]:
+            try:
+                item = json.loads(line.decode("utf-8", errors="replace"))
+                if isinstance(item, dict):
+                    parsed.append(item)
+            except Exception:
+                continue
+        return parsed
+    except (OSError, ValueError, TypeError):
+        return []
+
+
+def jsonl_tail_truncated(path, max_bytes=8 * 1024 * 1024):
+    try:
+        return path.exists() and path.stat().st_size > max_bytes
+    except OSError:
+        return False
+
+
 def read_events(limit=100):
-    # Read only the recent tail. The event log can grow for weeks; reading the
-    # entire JSONL file on every dashboard poll made the initial status request
-    # appear to hang on larger workspaces.
-    return list(reversed(read_event_tail(limit)))
+    # Recent events only; never load an unbounded log during status polling.
+    return list(reversed(read_jsonl_tail(EVENT_FILE, limit)))
 
 
 def pid_is_running(pid):
@@ -337,32 +370,8 @@ def ask_leader_api():
 
 
 def read_event_tail(limit=150):
-    """Read only the end of the event log and return valid JSON events."""
-    if not EVENT_FILE.exists():
-        return []
-    try:
-        with EVENT_FILE.open("rb") as handle:
-            handle.seek(0, os.SEEK_END)
-            position = handle.tell()
-            chunks = []
-            newline_count = 0
-            while position > 0 and newline_count <= limit:
-                size = min(8192, position)
-                position -= size
-                handle.seek(position)
-                chunk = handle.read(size)
-                chunks.insert(0, chunk)
-                newline_count += chunk.count(b"\n")
-            lines = b"".join(chunks).decode("utf-8", errors="replace").splitlines()[-limit:]
-        events = []
-        for line in lines:
-            try:
-                events.append(json.loads(line))
-            except Exception:
-                continue
-        return events
-    except Exception:
-        return []
+    """Compatibility wrapper for callers that need the recent event tail."""
+    return read_jsonl_tail(EVENT_FILE, limit)
 
 
 def room_registry():
@@ -536,15 +545,9 @@ def action_ledger_api():
     total_cost = 0.0
     kinds = {}
     business_spend = {}
-    try:
-        lines = ACTIONS_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
-    except Exception:
-        lines = []
-    for line in lines:
+    entries = read_jsonl_tail(ACTIONS_FILE, limit=12000)
+    for item in entries:
         try:
-            item = json.loads(line)
-            if not isinstance(item, dict):
-                continue
             cost = float(item.get("cost_usd", 0) or 0)
             kind = str(item.get("kind", "unknown"))
             business = str(item.get("business", ""))
@@ -552,8 +555,7 @@ def action_ledger_api():
             kinds[kind] = kinds.get(kind, 0) + 1
             if business:
                 business_spend[business] = business_spend.get(business, 0.0) + cost
-            entries.append(item)
-        except Exception:
+        except (TypeError, ValueError):
             continue
     newest = list(reversed(entries[-200:]))
     totals = {
@@ -562,7 +564,7 @@ def action_ledger_api():
         "business_spend_usd": {name: round(value, 6) for name, value in business_spend.items()},
         "business_budget_usd": dashboard_budget_settings(),
     }
-    return jsonify(entries=newest, totals=totals)
+    return jsonify(entries=newest, totals=totals, history_truncated=jsonl_tail_truncated(ACTIONS_FILE))
 
 
 @app.get("/api/outbox")
@@ -655,29 +657,21 @@ def provider_usage():
             return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
         except Exception:
             return 0.0
-    try:
-        action_lines = ACTIONS_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-12000:]
-    except Exception:
-        action_lines = []
-    for line in action_lines:
+    action_items = read_jsonl_tail(ACTIONS_FILE, limit=12000)
+    for item in action_items:
         try:
-            item = json.loads(line)
             if item.get("kind") != "model_call":
                 continue
             row = entry(item.get("provider"))
             row["calls"] += 1
             row["estimated_cost_usd"] += float(item.get("cost_usd", 0) or 0)
             row["last_call_at"] = max((row.get("last_call_at") or ""), str(item.get("at") or ""))
-        except Exception:
+        except (TypeError, ValueError):
             continue
-    try:
-        event_lines = EVENT_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-12000:]
-    except Exception:
-        event_lines = []
+    event_items = read_jsonl_tail(EVENT_FILE, limit=12000)
     now = time.time()
-    for line in event_lines:
+    for item in event_items:
         try:
-            item = json.loads(line)
             name = item.get("provider")
             if not name:
                 continue
@@ -697,7 +691,7 @@ def provider_usage():
                 if until > now and until > parse_time(row.get("cooldown_until")):
                     row["cooldown_until"] = datetime.fromtimestamp(until, timezone.utc).isoformat()
                     row["last_error"] = str(item.get("error") or "")[:220]
-        except Exception:
+        except (TypeError, ValueError):
             continue
     result = []
     for row in providers.values():
@@ -707,7 +701,8 @@ def provider_usage():
         row["models"] = [{"name": model, "calls": count} for model, count in sorted(row["models"].items(), key=lambda pair: pair[1], reverse=True)]
         result.append(row)
     result.sort(key=lambda row: (row["calls"], row["provider"]), reverse=True)
-    return jsonify(providers=result, total_calls=sum(row["calls"] for row in result), estimated_cost_usd=round(sum(row["estimated_cost_usd"] for row in result), 6), generated_at=datetime.now(timezone.utc).isoformat())
+    truncated = jsonl_tail_truncated(ACTIONS_FILE) or jsonl_tail_truncated(EVENT_FILE)
+    return jsonify(providers=result, total_calls=sum(row["calls"] for row in result), estimated_cost_usd=round(sum(row["estimated_cost_usd"] for row in result), 6), history_truncated=truncated, generated_at=datetime.now(timezone.utc).isoformat())
 
 @app.get("/api/live")
 def live():
