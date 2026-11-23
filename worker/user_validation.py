@@ -59,3 +59,27 @@ def verify_usage_events(events, owner_user_ids=(), minimum_users=10, window_days
         "privacy_safe_user_fingerprints":sorted(hashlib.sha256(uid.encode("utf-8")).hexdigest()[:16] for uid in users),
         "claim":"Distinct production user accounts observed performing a core action; not a guarantee that each account represents a separate person."
     }
+
+def load_usage_events(path):
+    """Load a JSON array/object or JSON Lines analytics export."""
+    from pathlib import Path
+    import json
+    text=Path(path).read_text(encoding="utf-8-sig",errors="replace").strip()
+    if not text:return []
+    try:
+        data=json.loads(text)
+        if isinstance(data,list):return [x for x in data if isinstance(x,dict)]
+        if isinstance(data,dict):
+            events=data.get("events") or data.get("results") or data.get("data")
+            if isinstance(events,list):return [x for x in events if isinstance(x,dict)]
+            return [data]
+    except json.JSONDecodeError:
+        pass
+    output=[]
+    for line in text.splitlines():
+        try:
+            item=json.loads(line)
+            if isinstance(item,dict):output.append(item)
+        except json.JSONDecodeError:
+            continue
+    return output
