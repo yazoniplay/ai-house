@@ -219,3 +219,80 @@ def write_credits(project_dir, assets, filename="asset_credits.json"):
         clean.append({key: str(asset.get(key, ""))[:500] for key in ("id", "photographer", "pexels_page", "query")})
     path.write_text(json.dumps({"provider": "Pexels", "assets": clean}, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
+
+
+def produce_video_from_recipe(business_dir, recipe):
+    """Create an original narrated video from a research-backed scene recipe."""
+    import re
+    import textwrap
+    from PIL import Image, ImageDraw, ImageFont
+    if not isinstance(recipe, dict):
+        raise VideoFactoryError("video_recipe must be an object")
+    title = str(recipe.get("title", "")).strip()
+    scenes = recipe.get("scenes")
+    if not title or len(title) > 100 or not isinstance(scenes, list) or not 4 <= len(scenes) <= 24:
+        raise VideoFactoryError("recipe needs a title (max 100 chars) and 4-24 scenes")
+    scenes = [{"narration": str(s.get("narration", "")).strip()[:3000],
+               "visual_query": str(s.get("visual_query", "")).strip()[:160]} for s in scenes if isinstance(s, dict)]
+    if len(scenes) < 4 or any(not x["narration"] or not x["visual_query"] for x in scenes):
+        raise VideoFactoryError("every scene needs narration and a visual_query")
+    base = Path(business_dir).resolve()
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60] or "video"
+    project = _inside(base, base / "youtube" / slug)
+    project.mkdir(parents=True, exist_ok=True)
+    narration = project / "narration.mp3"
+    create_voiceover(" ".join(x["narration"] for x in scenes), narration, str(recipe.get("voice", "en-US-AndrewNeural")))
+    clips_dir = project / "clips"
+    clips_dir.mkdir(exist_ok=True)
+    assets, clips = [], []
+    for i, scene in enumerate(scenes, 1):
+        found = search_pexels(scene["visual_query"], per_page=5, orientation="landscape")
+        if not found:
+            raise VideoFactoryError("No Pexels footage for scene " + str(i) + ": " + scene["visual_query"])
+        asset = found[0]
+        asset["scene"] = i
+        assets.append(asset)
+        path = download_clip(asset, clips_dir, "scene_" + str(i).zfill(2) + ".mp4")
+        clips.append({"path": path, "duration": max(1, len(scene["narration"].split()))})
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(narration)], check=True, capture_output=True, text=True, timeout=30)
+    total = float(probe.stdout.strip())
+    words_total = sum(max(1, len(s["narration"].split())) for s in scenes)
+    cursor, rows = 0.0, []
+    def stamp(t):
+        ms = max(0, int(round(t * 1000)))
+        h, ms = divmod(ms, 3600000); m, ms = divmod(ms, 60000); sec, ms = divmod(ms, 1000)
+        return f"{h:02}:{m:02}:{sec:02},{ms:03}"
+    for scene in scenes:
+        words = scene["narration"].split()
+        duration = total * max(1, len(words)) / words_total
+        groups = [words[j:j+8] for j in range(0, len(words), 8)]
+        for j, group in enumerate(groups):
+            start, end = cursor + duration*j/len(groups), cursor + duration*(j+1)/len(groups)
+            rows.append(f"{len(rows)+1}\\n{stamp(start)} --> {stamp(end)}\\n{' '.join(group)}\\n")
+        cursor += duration
+    captions = project / "captions.srt"
+    captions.write_text("\\n".join(rows), encoding="utf-8")
+    output = project / "final.mp4"
+    rendered = render_video(project, clips, narration, output, subtitles_path=captions, aspect=str(recipe.get("aspect", "16:9")))
+    write_credits(project, assets)
+    frame = project / "thumbnail_base.jpg"
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", "1", "-i", str(clips[0]["path"]), "-frames:v", "1", str(frame)], check=True, timeout=60, capture_output=True)
+    if frame.is_file():
+        image = Image.open(frame).convert("RGB")
+        draw = ImageDraw.Draw(image, "RGBA")
+        draw.rectangle((0, int(image.height*.58), image.width, image.height), fill=(0,0,0,175))
+        try: font = ImageFont.truetype("arial.ttf", max(32, image.width//18))
+        except OSError: font = ImageFont.load_default()
+        y = int(image.height*.64)
+        for line in textwrap.wrap(title, 28)[:3]:
+            draw.text((int(image.width*.05), y), line, font=font, fill=(255,255,255,255), stroke_width=2, stroke_fill=(0,0,0,255))
+            y += int(image.height*.11)
+        image.save(project / "thumbnail.jpg", quality=92)
+        frame.unlink(missing_ok=True)
+    manifest = {"title": title, "script": " ".join(s["narration"] for s in scenes), "render": rendered,
+                "research_sources": recipe.get("research_sources", []), "asset_credits": "asset_credits.json"}
+    (project / "production.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {k: (project / v).relative_to(base).as_posix() for k, v in {
+        "video": "final.mp4", "thumbnail": "thumbnail.jpg", "captions": "captions.srt",
+        "credits": "asset_credits.json", "manifest": "production.json"}.items() if (project / v).is_file()} | {
+        "project_dir": project.relative_to(base).as_posix(), "scene_count": len(scenes), "duration_seconds": round(total, 1)}
