@@ -69,6 +69,14 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertNotIn("meta/llama-embedding",groq)
         self.assertNotIn("nvidia/whisper-large",groq)
 
+    def test_new_openai_compatible_provider_catalogs_filter_non_chat_models(self):
+        catalog=["glm-5.3-flash","Qwen/Qwen3-32B","BAAI/bge-m3-embedding","rerank/model","whisper-large"]
+        for provider in ("vercel","zai","siliconflow"):
+            pool=provider_chat_model_pool(provider,catalog,["glm-5.3-flash"])
+            self.assertEqual(pool[0],"glm-5.3-flash")
+            self.assertIn("Qwen/Qwen3-32B",pool)
+            self.assertFalse(any("embedding" in x or "rerank" in x or "whisper" in x for x in pool))
+
     def test_openrouter_free_models_are_first_then_paid_catalog_fallbacks(self):
         catalog=["paid/model-large","free/llama:free","paid/model-mini","free/gemma:free"]
         pool=provider_chat_model_pool("openrouter",catalog,["paid/model-mini"],["free/llama:free","free/gemma:free"])
