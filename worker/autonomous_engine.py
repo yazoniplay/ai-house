@@ -408,7 +408,7 @@ def model_candidates(provider,role):
  elif provider=="sambanova":primary=SNM;env_name="AI_HOUSE_SAMBANOVA_MODELS"
  elif provider=="ollama":primary=OM;env_name="AI_HOUSE_OLLAMA_MODELS"
  else:return []
- configured=route_model_pool(primary,os.getenv(env_name,""))
+ configured=route_model_pool(primary,NVIDIA_MODELS if provider=="nvidia" else os.getenv(env_name,""))
  defaults={
   # Current, documented NVIDIA chat endpoints only. The live /v1/models catalog below
   # removes anything NVIDIA has actually retired or disabled for this API key.
