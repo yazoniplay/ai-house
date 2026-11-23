@@ -98,3 +98,9 @@ This first renderer creates original narrated stock-footage videos and captions.
 ## One flagship app at a time
 
 The autonomous Leader roadmap now instructs software businesses to focus on one flagship app and finish its core workflow, usability, tests, security, and deployment-quality checks before starting another app. Gumroad product tasks are also instructed to validate a specific buyer problem and competitor alternatives, deliver a complete useful product with previews/instructions, and build a researched channel-specific acquisition plan rather than generating generic AI filler.
+
+
+
+### Computer Room setup notes
+
+Open `http://127.0.0.1:8000/computer-room` while the local dashboard is running. The vision operator is currently Gemini-based and reads `GEMINI_API_KEY` from the local environment or `worker/.env`. To allow app launching, copy `worker/computer_apps.example.json` to `workspace/.ai-house/computer_apps.json` and replace the example paths with the exact executable paths on your PC. Only those aliases can be launched; the desktop agent does not receive a general shell tool. Desktop tasks are queued in local JSON, visible in the Computer Room, and pause/resume through the owner approval queue. For safety, use a dedicated desktop account or VM with only business files and channel accounts.
