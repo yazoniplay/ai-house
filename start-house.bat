@@ -45,16 +45,9 @@ if not exist "dashboard\server.py" (
   exit /b 1
 )
 
-echo Starting AI House engine...
-start "AI House Engine" /D "%ROOT%" "%PYTHON_EXE%" "worker\autonomous_engine.py" --loop
-if errorlevel 1 (
-  echo Could not start the AI House engine.
-  pause
-  exit /b 1
-)
-
-echo Starting AI House dashboard...
-start "AI House Dashboard" /D "%ROOT%dashboard" "%PYTHON_EXE%" "server.py"
+echo Starting AI House dashboard.
+echo The dashboard starts and supervises the single local engine process.
+start "AI House Dashboard" /D "%ROOT%" "%PYTHON_EXE%" "dashboard\server.py"
 if errorlevel 1 (
   echo Could not start the dashboard.
   pause
