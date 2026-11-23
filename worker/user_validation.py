@@ -32,16 +32,17 @@ def verify_usage_events(events, owner_user_ids=(), minimum_users=10, window_days
     users=set();qualified=0;rejected={"missing_user":0,"owner_or_internal":0,"non_production":0,"non_usage_event":0,"invalid_or_old_timestamp":0,"test_or_bot":0}
     for item in events or []:
         if not isinstance(item,dict):continue
-        uid=str(item.get("user_id") or item.get("distinct_id") or item.get("anonymous_user_id") or "").strip()
+        props=item.get("properties") if isinstance(item.get("properties"),dict) else {}
+        uid=str(item.get("user_id") or item.get("distinct_id") or item.get("$distinct_id") or item.get("anonymous_user_id") or props.get("$user_id") or "").strip()
         if not uid:rejected["missing_user"]+=1;continue
-        if uid in owners or item.get("is_internal") or item.get("is_owner"):
+        if uid in owners or item.get("is_internal") or item.get("is_owner") or props.get("is_internal") or props.get("is_owner"):
             rejected["owner_or_internal"]+=1;continue
-        if item.get("is_test") or item.get("test") or item.get("is_bot") or item.get("bot"):
+        if item.get("is_test") or item.get("test") or item.get("is_bot") or item.get("bot") or props.get("is_test") or props.get("test") or props.get("is_bot") or props.get("bot"):
             rejected["test_or_bot"]+=1;continue
-        environment=str(item.get("environment") or item.get("env") or "").strip().lower()
+        environment=str(item.get("environment") or item.get("env") or item.get("$environment") or props.get("environment") or props.get("env") or props.get("$environment") or "").strip().lower()
         if environment not in PRODUCTION_VALUES:
             rejected["non_production"]+=1;continue
-        event=str(item.get("event_name") or item.get("event") or item.get("type") or "").strip().lower()
+        event=str(item.get("event_name") or item.get("event") or item.get("$event") or item.get("type") or "").strip().lower()
         if event not in QUALIFYING_EVENTS:
             rejected["non_usage_event"]+=1;continue
         stamp=_timestamp(item.get("timestamp") or item.get("at") or item.get("created_at"))
