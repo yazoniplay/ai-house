@@ -368,6 +368,17 @@ def search(q,depth=None):
  ex=exa_search(q)
  if ex:log("search_fallback_exa",query=str(q)[:240],results=len(ex))
  return ex
+def claim_numbers(text):
+ nums=set()
+ for m in re.finditer(r"\d[\d,]*(?:\.\d+)?",str(text)):
+  n=m.group(0).replace(",","").rstrip(".")
+  digits=n.replace(".","")
+  if len(digits)>=2:nums.add(n)
+ return nums
+def numbers_supported(claim_text,source_text):
+ needed=claim_numbers(claim_text)
+ if not needed:return True
+ return needed<=claim_numbers(source_text)
 def opportunity():
  set_activity("market_research","Searching Tavily for evidence-backed business opportunities.","researcher")
  past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in load_rooms()["past_businesses"]}
@@ -389,11 +400,17 @@ def opportunity():
  try:extracted=obj(ask("researcher",prompt))
  except Exception as e:log("discovery_extraction_error",error=str(e)[:180]);return None
  valid=[];source_urls={x.get("url") for x in results}
+ by_url={x.get("url"):x for x in results}
  for c in extracted.get("candidates",[]):
   if not isinstance(c,dict):continue
-  evidence=[e for e in c.get("evidence",[]) if isinstance(e,dict) and e.get("url") in source_urls]
+  raw_evidence=[e for e in c.get("evidence",[]) if isinstance(e,dict) and e.get("url") in source_urls]
+  evidence=[e for e in raw_evidence if numbers_supported(e.get("claim",""),str(by_url.get(e.get("url"),{}).get("content","")))]
+  if len(evidence)<len(raw_evidence):log("evidence_number_mismatch",name=c.get("name"),dropped=len(raw_evidence)-len(evidence))
   key=re.sub(r"[^a-z0-9]+"," ",str(c.get("name","")).lower()).strip()
   if not evidence or not key or key in past:continue
+  validation_sources=" ".join(str(by_url.get(e.get("url"),{}).get("content","")) for e in evidence)
+  if not numbers_supported(c.get("validation",""),validation_sources):
+   log("validation_number_mismatch",name=c.get("name"));continue
   c["evidence"]=evidence;c["sources"]=list(dict.fromkeys(e["url"] for e in evidence));valid.append(c)
  if not valid:return None
  set_activity("opportunity_selection","Strategist is scoring cited candidates.","strategist")
