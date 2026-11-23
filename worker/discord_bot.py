@@ -43,6 +43,10 @@ def enqueue_alert(workspace,kind,text):
   _ALERTS.put((str(workspace),kind,redact(str(text)[:1800])))
  except Exception:return
 
+def parse_approval_alert(message):
+ match=re.search(r"!approve\s+([0-9a-fA-F]+).*?!deny\s+([0-9a-fA-F]+)",str(message),re.S)
+ return match.group(1) if match and match.group(1)==match.group(2) else None
+
 def start_discord_bot(workspace,command_handler,chat_handler=None):
  global _STARTED
  token=os.getenv("DISCORD_BOT_TOKEN","").strip()
@@ -117,9 +121,8 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
      try:channel=await client.fetch_channel(int(channel_id))
      except Exception:_ALERTS.put(item);break
     try:
-     match=re.search(r"!approve\s+([0-9a-fA-F]+).*?!deny\s+([0-9a-fA-F]+)",message,re.S)
-     if match:
-      request_id=match.group(1)
+     request_id=parse_approval_alert(message)
+     if request_id:
       view=ChoiceView(request_id,["yes","no"],owner_id)
       await channel.send(redact(message)[:1700],view=view)
      else:await channel.send(redact(message)[:1900])
