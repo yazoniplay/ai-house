@@ -30,9 +30,10 @@ class DiscoverySearchTests(unittest.TestCase):
              patch.object(engine, "log"):
             self.assertEqual(engine.duckduckgo_search("first query"), [])
             self.assertEqual(engine.duckduckgo_search("second query"), [])
-        request.assert_called_once()
-        self.assertEqual(request.call_args.kwargs["timeout"], 6)
-        self.assertEqual(engine.FREE_SEARCH_COOLDOWN_UNTIL, 700)
+            cooldown=engine.FREE_SEARCH_COOLDOWN_UNTIL
+            request.assert_called_once()
+            self.assertEqual(request.call_args.kwargs["timeout"], 6)
+        self.assertEqual(cooldown, 700)
 
     def test_search_deduplicates_same_url_from_multiple_providers(self):
         shared={"url":"https://same.example/page","content":"source"}
