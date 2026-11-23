@@ -412,6 +412,11 @@ def model_candidates(provider,role):
 def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
+ try:max_attempts=max(1,min(6,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
+ except Exception:max_attempts=3
+ if len(candidates)>max_attempts:
+  log("model_attempt_limit",provider=p,role=role,available_models=len(candidates),attempt_limit=max_attempts)
+  candidates=candidates[:max_attempts]
  last_error=None
  for index,candidate in enumerate(candidates,1):
   try:
