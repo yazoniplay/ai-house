@@ -20,7 +20,7 @@ class StudioWorkflowTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_youtube_pipeline_requires_owner_approval_before_publish(self):
+    def test_youtube_pipeline_requires_leader_approval_before_publish(self):
         project = create_project(self.workspace, "youtube", "A test video")
         for stage in ("research", "script", "storyboard", "assets", "editing", "review", "approval_pending"):
             project = move_stage(self.workspace, project["id"], stage)
@@ -29,6 +29,7 @@ class StudioWorkflowTests(unittest.TestCase):
             move_stage(self.workspace, project["id"], "published")
         decided = decide_approval(self.workspace, approval["id"], "approve", "Looks good")
         self.assertEqual(decided["status"], "approved")
+        self.assertEqual(decided["decision_actor"], "leader")
         project = move_stage(self.workspace, project["id"], "published")
         self.assertEqual(project["stage"], "published")
 
