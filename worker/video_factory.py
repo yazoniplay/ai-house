@@ -161,7 +161,8 @@ def render_video(project_dir, clips, narration_path, output_path, subtitles_path
     inputs = []
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     for path, _ in safe_clips:
-        cmd += ["-i", str(path)]
+        # Loop each stock clip as needed so a short source never truncates the narration.
+        cmd += ["-stream_loop", "-1", "-i", str(path)]
     narration_index = len(safe_clips)
     cmd += ["-i", str(narration)]
     music_index = None
