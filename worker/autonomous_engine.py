@@ -619,7 +619,21 @@ def opportunity():
    url=str(item.get("url","")).strip()
    if url and url not in seen:seen.add(url);results.append(item)
  log("discovery_evidence",queries=counts,query_count=len(queries),source_count=len(results),unique_source_count=len(seen))
- if len(seen)<3:return None
+ if len(seen)<3:
+  log("discovery_search_retry",reason="fewer_than_three_unique_sources",source_count=len(seen))
+  try:
+   retry_plan=obj(ask("researcher",'Search returned too few unique sources. Generate 3 fresh, specific queries for customer complaints, manual workarounds and active demand in '+str(datetime.now(timezone.utc).year)+'. Return JSON {"queries":["..."]}.'))
+   retry_queries=[str(q).strip()[:250] for q in retry_plan.get("queries",[])[:3] if str(q).strip()]
+  except Exception as retry_error:
+   log("discovery_search_retry_plan_error",error=str(retry_error)[:160])
+   retry_queries=["small business workflow pain points customer complaints","freelancer repetitive admin tasks workaround","customers seeking affordable alternatives business tools"]
+  for retry_query in retry_queries:
+   retry_items=search(retry_query,depth="basic")
+   for retry_item in retry_items:
+    retry_url=str(retry_item.get("url","")).strip()
+    if retry_url and retry_url not in seen:seen.add(retry_url);results.append(retry_item)
+  log("discovery_search_retry_complete",query_count=len(retry_queries),source_count=len(seen))
+ if not seen:return None
  set_activity("opportunity_extraction","Researcher is extracting candidate business models only from retrieved sources.","researcher")
  prompt=('Extract business models ONLY from these retrieved search results. Do not use model memory or introduce outside ideas. Each candidate must cite one or more exact URLs present in these results. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","score":0,"evidence":[{"url":"exact source URL","claim":"..."}],"risks":[],"mvp":"..."}]}\n'+json.dumps(results,ensure_ascii=False)[:20000])
  try:extracted=obj(ask("researcher",prompt))
