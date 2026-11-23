@@ -51,13 +51,13 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertEqual(model_pool("kimi", "nemotron,glm,kimi"), ["kimi", "nemotron", "glm"])
 
     def test_gemini_pool_uses_full_catalog_and_filters_specialized_models(self):
-        catalog={"gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.8-flash","gemini-3.6-flash","gemini-2.5-pro","gemma-3-27b-it","gemini-embedding-001","gemini-3.5-transcribe","gemini-3.1-flash-live-preview","gemini-3-pro-image"}
+        catalog={"gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.8-flash","gemini-3.6-flash","gemini-2.5-pro","gemma-3-27b-it","gemini-embedding-001","gemini-3.5-transcribe","gemini-3.1-flash-live-preview","gemini-3-pro-image","lyria-3-pro-preview","nano-banana-pro-preview","antigravity-preview-latest","deep-research-max-preview","gemini-2.5-computer-use-preview"}
         pool=gemini_chat_model_pool(catalog,["gemini-3.5-flash-lite","gemini-3.1-flash-lite"])
         self.assertEqual(pool[:2],["gemini-3.5-flash-lite","gemini-3.1-flash-lite"])
         self.assertIn("gemini-3.8-flash",pool)
         self.assertIn("gemma-3-27b-it",pool)
         self.assertIn("gemini-2.5-pro",pool)
-        self.assertFalse(any(any(token in model for token in ("embedding","transcribe","live","image")) for model in pool))
+        self.assertFalse(any(any(token in model for token in ("embedding","transcribe","live","image","lyria","nano-banana","antigravity","deep-research","computer-use")) for model in pool))
         self.assertEqual(len(pool),6)
 
     def test_provider_chat_catalog_expands_and_prioritizes_free_and_fast_models(self):
@@ -105,6 +105,33 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertTrue(is_provider_wide_error("openrouter",error))
         self.assertFalse(should_try_next_model(error))
         self.assertFalse(is_provider_wide_error("groq","429 rate limit for this model"))
+
+    def test_zai_insufficient_balance_is_provider_wide_and_billing_cooldown(self):
+        error='zai 429: {"error":{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}}'
+        self.assertTrue(is_provider_wide_error("zai",error))
+        self.assertFalse(should_try_next_model(error))
+        self.assertEqual(cooldown_seconds(error),86400)
+
+    def test_vercel_credit_card_requirement_is_provider_wide(self):
+        error="vercel 403: AI Gateway requires a valid credit card on file"
+        self.assertTrue(is_provider_wide_error("vercel",error))
+        self.assertFalse(should_try_next_model(error))
+        self.assertEqual(cooldown_seconds(error),86400)
+
+    def test_siliconflow_busy_system_is_transient_not_provider_wide(self):
+        error='siliconflow 429: {"code":50609,"message":"Request rejected due to rate limiting. System is too busy now."}'
+        self.assertFalse(is_provider_wide_error("siliconflow",error))
+        self.assertTrue(should_try_next_model(error))
+        self.assertEqual(cooldown_seconds(error),90)
+
+    def test_gemini_model_quota_and_overload_remain_bounded_model_fallbacks(self):
+        self.assertFalse(is_provider_wide_error("gemini","429 quota exceeded for this model"))
+        self.assertTrue(should_try_next_model("429 quota exceeded for this model"))
+        self.assertTrue(should_try_next_model("503 model experiencing high demand"))
+        self.assertEqual(cooldown_seconds("503 model experiencing high demand"),90)
+
+    def test_incompatible_gemini_models_are_cached_as_unavailable(self):
+        self.assertTrue(is_unavailable_model_error("400 Developer instruction is not enabled for models/antigravity-preview-latest"))
 
     def test_unknown_error_does_not_disable_provider(self):
         self.assertEqual(cooldown_seconds("bad response shape"),0)
