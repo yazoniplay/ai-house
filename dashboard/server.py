@@ -29,6 +29,8 @@ HERE = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from worker.channel_connectors import connection_status, gumroad_products, gumroad_create_product, youtube_channel, youtube_upload_video, ConnectorError
+from worker.computer_use import ComputerUseError, execute as computer_execute, status as computer_status
+from worker.approvals import list_requests as list_owner_approvals, answer as answer_owner_approval
 
 app = Flask(__name__)
 lock = threading.RLock()
@@ -738,6 +740,40 @@ def local_log():
     except Exception:
         return jsonify(text="No engine log yet.")
 
+
+
+@app.get("/api/computer/status")
+def computer_status_api():
+    return jsonify(computer=computer_status(WORKSPACE))
+
+
+@app.post("/api/computer/action")
+def computer_action_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        result = computer_execute(WORKSPACE, body.get("action"), approval_id=body.get("approval_id"))
+        return jsonify(result)
+    except ComputerUseError as exc:
+        return jsonify(error=str(exc)), 400
+
+
+@app.get("/api/computer/approvals")
+def computer_approvals_api():
+    items = [item for item in list_owner_approvals(WORKSPACE, pending_only=True) if item.get("room") == "computer"]
+    return jsonify(approvals=items)
+
+
+@app.post("/api/computer/approvals/<approval_id>")
+def computer_answer_approval_api(approval_id):
+    body = request.get_json(silent=True) or {}
+    choice = body.get("choice")
+    if choice not in ("yes", "no"):
+        return jsonify(error="choice must be yes or no"), 400
+    try:
+        item = answer_owner_approval(WORKSPACE, approval_id, choice)
+        return jsonify(approval=item)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
 
 
 @app.get("/api/integrations/status")
