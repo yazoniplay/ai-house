@@ -108,27 +108,22 @@ class DiscoverySearchTests(unittest.TestCase):
     def test_cloudflare_workers_ai_is_in_provider_rotation_and_uses_account_scoped_endpoint(self):
         from unittest.mock import Mock
         response=Mock(status_code=200)
-        response.json.return_value={"choices":[{"message":{"content":"{\\"ok\\":true}"}}],"usage":{"prompt_tokens":12,"completion_tokens":8}}
-        with patch.object(engine,"CFK","cf-token"), patch.object(engine,"CF_ACCOUNT_ID","account-123"), \\
-             patch.object(engine,"CFB","https://api.cloudflare.com/client/v4/accounts/account-123/ai/v1"), \\
-             patch.object(engine,"PROVIDER_ROTATION",{"orchestrator":0}), patch.object(engine,"HTTP") as http, \\
-             patch.object(engine,"record_spend"), patch.object(engine,"record_action"), patch.object(engine,"log"):
+        response.json.return_value={"choices":[{"message":{"content":"{\"ok\":true}"}}],"usage":{"prompt_tokens":12,"completion_tokens":8}}
+        with patch.object(engine,"CFK","cf-token"), patch.object(engine,"CF_ACCOUNT_ID","account-123"), patch.object(engine,"CFB","https://api.cloudflare.com/client/v4/accounts/account-123/ai/v1"), patch.object(engine,"PROVIDER_ROTATION",{"orchestrator":0}), patch.object(engine,"HTTP") as http, patch.object(engine,"record_spend"), patch.object(engine,"record_action"), patch.object(engine,"log"):
             providers=engine.provider_order("orchestrator")
             self.assertIn("cloudflare",providers)
             http.post.return_value=response
             output=engine._raw_once("cloudflare","system","prompt","orchestrator","@cf/meta/llama-3.3-70b-instruct-fp8-fast")
-        self.assertEqual(output,'{"ok":true}')
+        self.assertEqual(output,"{\"ok\":true}")
         args=http.post.call_args
         self.assertEqual(args.args[0],"https://api.cloudflare.com/client/v4/accounts/account-123/ai/v1/chat/completions")
         self.assertEqual(args.kwargs["headers"]["Authorization"],"Bearer cf-token")
         self.assertEqual(args.kwargs["json"]["model"],"@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 
     def test_cloudflare_model_pool_uses_workers_ai_model_ids(self):
-        with patch.object(engine,"CFM","@cf/meta/llama-3.3-70b-instruct-fp8-fast"), \\
-             patch.object(engine,"provider_model_catalog",return_value=None), patch.object(engine,"log"):
+        with patch.object(engine,"CFM","@cf/meta/llama-3.3-70b-instruct-fp8-fast"), patch.object(engine,"provider_model_catalog",return_value=None), patch.object(engine,"log"):
             models=engine.model_candidates("cloudflare","orchestrator")
         self.assertEqual(models[0],"@cf/meta/llama-3.3-70b-instruct-fp8-fast")
         self.assertTrue(all(model.startswith("@cf/") for model in models))
-
 if __name__=="__main__":
     unittest.main()
