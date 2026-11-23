@@ -17,4 +17,4 @@ jobs:
       - name: Install worker requirements
         run: python -m pip install -r worker/requirements.txt
       - name: Compile Python files
-        run: python -m py_compile worker/autonomous_engine.py worker/north_face.py dashboard/server.py
+        run: python -m py_compile worker/*.py dashboard/server.py
