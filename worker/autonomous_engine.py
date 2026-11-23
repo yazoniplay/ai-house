@@ -1248,6 +1248,23 @@ def retry_task(s,t):
  written=write(result.get("files",[]),role=role)
  if not written:raise RuntimeError(role+" retry returned no physical files in its files array")
  verify_deliverables(t,written)
+ usage_gate=None
+ if is_usage_verification_task(t):
+  try:usage_target=max(10,int(t.get("verification_target_users",10) or 10))
+  except (TypeError,ValueError):usage_target=10
+  usage_rel=str(t.get("usage_events_path") or "reports/product-usage-events.jsonl")
+  usage_file=None
+  try:
+   usage_file,_=filesafe(usage_rel)
+   owner_data=json.loads((SD/"owner_user_ids.json").read_text(encoding="utf-8")) if (SD/"owner_user_ids.json").exists() else []
+   owner_ids=owner_data.get("user_ids",[]) if isinstance(owner_data,dict) else owner_data
+   usage_events=load_usage_events(usage_file) if usage_file.exists() else []
+   usage_gate=verify_usage_events(usage_events,owner_user_ids=owner_ids,minimum_users=usage_target,window_days=30)
+   usage_gate["source_path"]=usage_rel
+   usage_gate["source_exists"]=usage_file.exists()
+  except Exception as usage_error:
+   usage_gate={"status":"pending","minimum_users":usage_target,"distinct_production_users":0,"source_path":usage_rel,"source_exists":bool(usage_file and usage_file.exists()),"evidence_quality":"invalid_or_unreadable_export","error":str(usage_error)[:300]}
+  log("product_usage_validation",task=t.get("id"),status=usage_gate.get("status"),users=usage_gate.get("distinct_production_users",0),required=usage_target,source=usage_rel,retry=True)
  output={"summary":str(result.get("summary",""))[:9000],"files":written,"validation":result.get("validation",[]),"sources":[x.get("url","") for x in sources]}
  check=tests() if role=="builder" else []
  set_activity("leader_review","The CEO is re-checking the corrected files.","orchestrator",t.get("id"))
@@ -1257,8 +1274,11 @@ def retry_task(s,t):
   target,_=filesafe(rel)
   try:file_evidence.append({"path":rel,"content":target.read_text(encoding="utf-8",errors="replace")[:20000]})
   except Exception as e:file_evidence.append({"path":rel,"read_error":str(e)[:180]})
- review=leader_json("Final re-review of the retry. Verify exact required deliverable paths physically exist, inspect actual file content below, and check every acceptance criterion. Never approve based only on a summary. Task: "+json.dumps(t,ensure_ascii=False)+"\nOutput: "+json.dumps(output,ensure_ascii=False)+"\nActual file contents: "+json.dumps(file_evidence,ensure_ascii=False)[:24000]+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
- log("leader_review_completed",task=t.get("id"),decision=review.get("decision"),score=review.get("score"),retry=True)
+ review=leader_json("Final re-review of the retry. Verify exact required deliverable paths physically exist, inspect actual file content below, and check every acceptance criterion. Never approve based only on a summary. Deterministic 10-user production validation: "+json.dumps(usage_gate,ensure_ascii=False)+"\nIf this is the adoption-verification task and the gate is pending, approve only the truthful verification report while explicitly leaving adoption pending; never claim the target was reached. Task: "+json.dumps(t,ensure_ascii=False)+"\nOutput: "+json.dumps(output,ensure_ascii=False)+"\nActual file contents: "+json.dumps(file_evidence,ensure_ascii=False)[:24000]+"\nChecks: "+json.dumps(check,ensure_ascii=False)+'\nReturn JSON {"decision":"approve|block","score":0-100,"issues":[],"reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
+ if usage_gate:
+  review["usage_verification"]=usage_gate
+  if usage_gate.get("status")!="verified":review["usage_milestone_status"]="pending"
+ log("leader_review_completed",task=t.get("id"),decision=review.get("decision"),score=review.get("score"),retry=True,usage_status=(usage_gate or {}).get("status"))
  if str(review.get("decision","")).lower()=="approve":
   t["status"]="completed";t["output"]=output;t["review"]=review
  else:t["status"]="failed";t["output"]=output;t["review"]=review;t["last_error"]=str(review.get("reason","retry failed"))[:1200]
