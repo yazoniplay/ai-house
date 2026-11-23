@@ -79,3 +79,22 @@ AI House can control the desktop session on the PC where its local dashboard is 
 Supported action kinds: screenshot, click, move, type, hotkey, scroll, launch_app. App launch is restricted to aliases configured in `workspace/.ai-house/computer_apps.json`, e.g. `{"apps":{"vscode":"C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe"}}`. No shell command or arbitrary launch arguments are exposed. PyAutoGUI's corner fail-safe remains enabled.
 
 Actions whose declared intent/target indicates sending, publishing, uploading, purchasing, deleting, installing, changing permissions, or another nonstandard shortcut create an owner approval request. The approval is tied to the exact action payload; changing the action invalidates that approval. The Leader can continue routine work, but the local owner must answer risky computer actions. Treat this as an initial guarded computer-use bridge: desktop vision grounding, application-specific UI automation, stronger isolation, and a polished live computer view are still future work. Do not run it against a personal session containing private data; prefer a dedicated Windows user or VM with only business accounts and files.
+
+
+
+## Original YouTube production pipeline
+
+A roadmap task explicitly titled **YouTube video production** (or create/produce/edit video) now requires current source evidence from the existing Tavily/Exa research path and a structured `video_recipe`. The local engine uses the recipe to generate narration with Edge TTS, retrieve scene-matched Pexels footage, edit a 1080p video with FFmpeg, burn captions, and create a thumbnail and asset-credit manifest. The resulting MP4 and supporting files are saved under that business's `youtube/<video-slug>/` folder and included in the task's physical deliverables. The Leader reviews the result; this does not automatically publish it.
+
+Local setup:
+
+1. Add `PEXELS_API_KEY` to private `worker/.env`.
+2. Install Python packages: `pip install -r worker/requirements.txt`.
+3. Install FFmpeg and FFprobe on Windows and add both to PATH.
+4. Keep `TAVILY_API_KEY` and/or `EXA_API_KEY` configured for current source-backed research.
+
+This first renderer creates original narrated stock-footage videos and captions. It is a production foundation, not a guarantee of viral performance: the Leader must still reject weak scripts, generic visuals, inaccurate claims, poor pacing, or low-quality thumbnails before publishing.
+
+## One flagship app at a time
+
+The autonomous Leader roadmap now instructs software businesses to focus on one flagship app and finish its core workflow, usability, tests, security, and deployment-quality checks before starting another app. Gumroad product tasks are also instructed to validate a specific buyer problem and competitor alternatives, deliver a complete useful product with previews/instructions, and build a researched channel-specific acquisition plan rather than generating generic AI filler.
