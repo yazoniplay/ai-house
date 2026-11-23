@@ -749,7 +749,7 @@ def main():
    published=run_publisher(WORK,HTTP);log("publish_pass",published=published)
   except Exception as publish_error:log("publish_pass",published=0,error=str(publish_error)[:500])
   registry=load_rooms()
-  if not any(item.get("status","active")=="active" for item in registry["rooms"]) and len(registry["rooms"])<MAX_ROOMS:
+  if not any(item.get("status","active")=="active" for item in registry["rooms"]):
    created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],reason="no_active_rooms")
   active=[room for room in registry["rooms"] if room.get("status","active")=="active"]
   if active:
