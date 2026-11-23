@@ -1,4 +1,4 @@
-"""Discord gateway bridge for the local AI House engine."""
+"""Owner-only Discord mobile command center for AI House."""
 import asyncio
 import json
 import logging
@@ -30,9 +30,7 @@ def _alert_state_path(workspace):
 
 def enqueue_alert(workspace,kind,text):
  try:
-  kind=str(kind)
-  path=_alert_state_path(workspace)
-  now=time.time()
+  kind=str(kind);path=_alert_state_path(workspace);now=time.time()
   with _ALERT_LOCK:
    try:
     state=json.loads(path.read_text(encoding="utf-8"))
@@ -40,14 +38,10 @@ def enqueue_alert(workspace,kind,text):
    except Exception:state={}
    previous=float(state.get(kind,0) or 0)
    if now-previous<_COOLDOWN_SECONDS:return
-   state[kind]=now
-   path.parent.mkdir(parents=True,exist_ok=True)
-   tmp=path.with_suffix(".tmp")
-   tmp.write_text(json.dumps(state,ensure_ascii=False),encoding="utf-8")
-   tmp.replace(path)
+   state[kind]=now;path.parent.mkdir(parents=True,exist_ok=True)
+   tmp=path.with_suffix(".tmp");tmp.write_text(json.dumps(state,ensure_ascii=False),encoding="utf-8");tmp.replace(path)
   _ALERTS.put((str(workspace),kind,redact(str(text)[:1800])))
- except Exception:
-  return
+ except Exception:return
 
 def start_discord_bot(workspace,command_handler,chat_handler=None):
  global _STARTED
@@ -65,17 +59,48 @@ def _thread_main(workspace,command_handler,chat_handler,token):
   try:
    asyncio.run(_bot_session(workspace,command_handler,chat_handler,token))
    _LOG.error("discord_bot_error connection ended")
-  except Exception as exc:
-   _LOG.error("discord_bot_error %s",type(exc).__name__)
+  except Exception as exc:_LOG.error("discord_bot_error %s",type(exc).__name__)
   time.sleep(next(delays,300))
 
 async def _bot_session(workspace,command_handler,chat_handler,token):
  import discord
  channel_id=os.getenv("DISCORD_CHANNEL_ID","").strip()
  owner_id=os.getenv("DISCORD_OWNER_ID","").strip()
- intents=discord.Intents.default()
- intents.message_content=True
+ intents=discord.Intents.default();intents.message_content=True
  client=discord.Client(intents=intents)
+
+ class ChoiceView(discord.ui.View):
+  def __init__(self,request_id,options,owner):
+   super().__init__(timeout=7*24*60*60)
+   self.request_id=str(request_id);self.owner=str(owner)
+   for index,option in enumerate(list(options)[:5]):
+    label=str(option).strip()[:80] or "Option "+str(index+1)
+    button=discord.ui.Button(label=label,style=discord.ButtonStyle.primary if index==0 else discord.ButtonStyle.secondary,custom_id="aihouse:"+self.request_id+":"+str(index))
+    button.callback=self._callback(index)
+    self.add_item(button)
+  def _callback(self,index):
+   async def callback(interaction):
+    if str(interaction.user.id)!=self.owner:
+     await interaction.response.send_message("Only the AI House owner can answer this.",ephemeral=True);return
+    await interaction.response.defer()
+    result=await asyncio.to_thread(command_handler,"!answer "+self.request_id+" "+str(index))
+    await interaction.message.edit(content=redact(str(result))[:1800],view=None)
+    if chat_handler is not None and str(result).startswith("Answered "):
+     follow=await asyncio.to_thread(chat_handler,"The owner answered request "+self.request_id+" with option "+str(index)+". Continue from that answer and ask another question only if necessary.")
+     await send_payload(interaction.channel,follow)
+   return callback
+
+ async def send_payload(channel,payload):
+  if isinstance(payload,dict):
+   content=redact(str(payload.get("message") or payload.get("reply") or "Leader response"))[:1800]
+   req=payload.get("request")
+   if isinstance(req,dict) and req.get("id") and req.get("options"):
+    view=ChoiceView(req["id"],req["options"],owner_id)
+    await channel.send(content,view=view);return
+   await channel.send(content);return
+  content=redact(str(payload or ""))[:1800]
+  if content:await channel.send(content)
+
  async def drain_alerts():
   while not client.is_closed():
    await asyncio.sleep(2)
@@ -88,35 +113,35 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
     channel=client.get_channel(int(channel_id)) if channel_id.isdigit() else None
     if channel is None:
      try:channel=await client.fetch_channel(int(channel_id))
-     except Exception:
-      _ALERTS.put(item);break
-    try:await channel.send(redact(message)[:1900])
-    except Exception:
-     _ALERTS.put(item);break
+     except Exception:_ALERTS.put(item);break
+    try:
+     match=re.search(r"!approve\\s+([0-9a-fA-F]+).*?!deny\\s+([0-9a-fA-F]+)",message,re.S)
+     if match:
+      request_id=match.group(1)
+      view=ChoiceView(request_id,["yes","no"],owner_id)
+      await channel.send(redact(message)[:1700],view=view)
+     else:await channel.send(redact(message)[:1900])
+    except Exception:_ALERTS.put(item);break
+
  @client.event
- async def on_ready():
-  _LOG.info("discord_bot_ready")
+ async def on_ready():_LOG.info("discord_bot_ready")
  @client.event
  async def on_message(message):
   if message.author.bot or message.author.id==client.user.id:return
   if str(message.author.id)!=owner_id or str(message.channel.id)!=channel_id:return
   content=str(message.content or "")
   try:
-   if content.startswith("!"):
-    result=await asyncio.to_thread(command_handler,content)
+   if content.startswith("!"):result=await asyncio.to_thread(command_handler,content)
    elif chat_handler is not None:
-    async with message.channel.typing():
-     result=await asyncio.to_thread(chat_handler,content)
+    async with message.channel.typing():result=await asyncio.to_thread(chat_handler,content)
    else:return
-   reply=redact(str(result or ""))[:1900]
-   if reply:await message.reply(reply,mention_author=False)
+   await send_payload(message.channel,result)
   except Exception as exc:
    safe=redact("Request failed ("+type(exc).__name__+")")[:1900]
    try:await message.reply(safe,mention_author=False)
    except Exception:_LOG.error("discord_bot_error message_reply %s",type(exc).__name__)
  drain_task=asyncio.create_task(drain_alerts())
- try:
-  await client.start(token,reconnect=False)
+ try:await client.start(token,reconnect=False)
  finally:
   drain_task.cancel()
   try:await drain_task
