@@ -505,7 +505,7 @@ def model_candidates(provider,role):
    # configured or paid catalog models. Paid slugs remain available as fallbacks.
    aliases={"openrouter/free","openrouter/auto"}
    candidates=[x for x in candidates if x in aliases]+provider_chat_model_pool(provider,catalog,candidates,OPENROUTER_FREE_MODELS)
-  elif provider in ("nvidia","groq","vercel","zai","siliconflow","orcarouter","bazaarlink"):
+  elif provider in ("nvidia","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter","routeway"):
    # OrcaRouter exposes its adaptive alias as a first-class route even if its catalog omits it.
    allow_aliases={"orcarouter/auto"} if provider=="orcarouter" else ({"auto:free"} if provider=="bazaarlink" else set())
    candidates=filter_model_pool(candidates,catalog,allow_unlisted=allow_aliases)+provider_chat_model_pool(provider,catalog,candidates)
