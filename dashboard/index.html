@@ -526,10 +526,19 @@ let selectedRoom=localStorage.getItem("ai-house-room")||"";
 let ledgerData={entries:[],totals:{cost_usd:0,kinds:{},business_spend_usd:{},business_budget_usd:0}};
 let outboxFiles=[];
 async function api(path,method="GET",body=null){
-  const response=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw Error(data.error||("HTTP "+response.status));
-  return data;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12000);
+  try{
+    const response=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body,signal:controller.signal});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(data.error||("HTTP "+response.status));
+    return data;
+  }catch(error){
+    if(error&&error.name==="AbortError")throw Error("Dashboard request timed out after 12 seconds: "+path);
+    throw error;
+  }finally{
+    clearTimeout(timeout);
+  }
 }
 let controlState=null;
 async function refreshControl(){
