@@ -955,7 +955,7 @@ def apply_owner_directives(s):
  if not pending:return False
  roadmap=s.get("roadmap") if isinstance(s.get("roadmap"),dict) else {}
  tasks=roadmap.get("tasks",[])
- prompt=("The owner sent new mobile directives. Treat these as binding priorities and scope instructions, subject to safety and approval requirements. Review the current roadmap and return JSON with priority_changes [{task_id,priority,reason}], replan_required (true only if the owner's instruction materially changes the goal or scope and the existing roadmap cannot satisfy it), and reason. Do not invent task IDs. Preserve completed work. Current business: "+json.dumps(s.get("business",{}),ensure_ascii=False)+"\\nCurrent tasks: "+json.dumps([{"id":t.get("id"),"title":t.get("title"),"objective":t.get("objective"),"status":t.get("status"),"priority":t.get("priority")} for t in tasks],ensure_ascii=False)+"\\nNew directives: "+json.dumps(pending,ensure_ascii=False))
+ prompt=("The owner sent new mobile directives. Treat these as binding priorities and scope instructions, subject to safety and approval requirements. Review the current roadmap and return JSON with priority_changes [{task_id,priority,reason}], replan_required (true only if the owner's instruction materially changes the goal or scope and the existing roadmap cannot satisfy it), and reason. Do not invent task IDs. Preserve completed work. Current business: "+json.dumps(s.get("business",{}),ensure_ascii=False)+"\nCurrent tasks: "+json.dumps([{"id":t.get("id"),"title":t.get("title"),"objective":t.get("objective"),"status":t.get("status"),"priority":t.get("priority")} for t in tasks],ensure_ascii=False)+"\nNew directives: "+json.dumps(pending,ensure_ascii=False))
  try:review=leader_json(prompt)
  except Exception as directive_error:
   log("owner_directive_review_error",error=type(directive_error).__name__);return False
@@ -1210,7 +1210,7 @@ def discord_command(text):
   raw_command=str(text).strip();directive_text=raw_command[len(parts[0]):].strip()
   if not directive_text:
    items=list_owner_directives(WORK,True,12)
-   return "No active owner directives." if not items else "\\n".join(str(x.get("id"))+" | "+str(x.get("text","")) for x in items)
+   return "No active owner directives." if not items else "\n".join(str(x.get("id"))+" | "+str(x.get("text","")) for x in items)
   if directive_text.lower()=="clear":
    count=clear_owner_directives(WORK);return "Cleared "+str(count)+" active owner directives."
   try:
