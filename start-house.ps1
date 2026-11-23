@@ -33,15 +33,15 @@ if ($LASTEXITCODE -ne 0) {
 # Port 8000 may still be held by the old dashboard after a previous launcher
 # started it in a hidden window. Stop only a Python process running dashboard/server.py.
 $listeners = @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
-foreach ($ProcessId in $listeners) {
-    $ProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+foreach ($ListenerPid in $listeners) {
+    $ProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ListenerPid" -ErrorAction SilentlyContinue
     if ($ProcessInfo -and $ProcessInfo.CommandLine -match "(?i)dashboard[\\/]+server\.py") {
-        Write-Host "Stopping the previous AI House dashboard (PID $ProcessId)..."
-        & taskkill.exe /PID $ProcessId /T /F | Out-Null
+        Write-Host "Stopping the previous AI House dashboard (PID $ListenerPid)..."
+        & taskkill.exe /PID $ListenerPid /T /F | Out-Null
         Start-Sleep -Seconds 2
     } else {
         $Name = if ($ProcessInfo) { $ProcessInfo.Name } else { "unknown process" }
-        Write-Host "Port 8000 is already used by $Name (PID $ProcessId). Close that program and run start-house.bat again."
+        Write-Host "Port 8000 is already used by $Name (PID $ListenerPid). Close that program and run start-house.bat again."
         exit 1
     }
 }
