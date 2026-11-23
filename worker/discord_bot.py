@@ -117,7 +117,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
      try:channel=await client.fetch_channel(int(channel_id))
      except Exception:_ALERTS.put(item);break
     try:
-     match=re.search(r"!approve\\s+([0-9a-fA-F]+).*?!deny\\s+([0-9a-fA-F]+)",message,re.S)
+     match=re.search(r"!approve\s+([0-9a-fA-F]+).*?!deny\s+([0-9a-fA-F]+)",message,re.S)
      if match:
       request_id=match.group(1)
       view=ChoiceView(request_id,["yes","no"],owner_id)
