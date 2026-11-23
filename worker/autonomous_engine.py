@@ -46,7 +46,8 @@ def envfile(p):
   for x in p.read_text().splitlines():
    x=x.strip()
    if x and not x.startswith("#") and "=" in x:
-    k,v=x.split("=",1);k=k.strip();v=v.strip().strip('"').strip("'");\n    if not os.environ.get(k):os.environ[k]=v
+    k,v=x.split("=",1);k=k.strip();v=v.strip().strip('"').strip("'");
+    if not os.environ.get(k):os.environ[k]=v
 envfile(HERE/".env");envfile(ROOT/".env")
 G=os.getenv("GROQ_API_KEY","");H=os.getenv("HF_TOKEN","") or os.getenv("HUGGINGFACEHUB_API_TOKEN","");M=os.getenv("GEMINI_API_KEY","");N=os.getenv("NVIDIA_API_KEY","");T=os.getenv("TAVILY_API_KEY","")
 GM=os.getenv("GROQ_MODEL","openai/gpt-oss-120b")
