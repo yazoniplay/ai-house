@@ -180,12 +180,20 @@ def resume_task(workspace, task_id):
     result = execute(workspace, action, approval_id=approval_id)
     if result.get("status") != "ok":
         raise DesktopAgentError("Approved action could not be executed: " + str(result.get("reason", "unknown")))
-    data["history"].append({"step": data["step"], "action": action, "result": "executed_after_owner_approval"})
+    data["history"].append({"step": data["step"] + 1, "action": action, "result": "executed_after_owner_approval"})
+    data["step"] += 1
     data["status"] = "running"
     data["approval_id"] = None
     data.pop("pending_action", None)
     _save(path, data)
-    return _continue(workspace, data, path)
+    try:
+        return _continue(workspace, data, path)
+    except Exception as exc:
+        data["status"] = "failed"
+        data["summary"] = str(exc)[:1200]
+        data["updated_at"] = time.time()
+        _save(path, data)
+        raise
 
 
 def _continue(workspace, data, path):
