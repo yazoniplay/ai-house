@@ -614,6 +614,12 @@ def validate_roadmap(tasks):
  if not isinstance(tasks,list) or not 4<=len(tasks)<=8:return "roadmap must contain 4 to 8 tasks"
  ids=set()
  for t in tasks:
+  if isinstance(t,dict):
+   usage_text=" ".join(str(t.get(k,"")) for k in ("title","objective","success_metric","acceptance")).lower()
+   if any(term in usage_text for term in ("10 users","ten users","user adoption verification","verify product usage","verify usage","usage verification")):
+    t.setdefault("verification_target_users",10)
+    t.setdefault("usage_events_path","reports/product-usage-events.jsonl")
+ for t in tasks:
   if not isinstance(t,dict):return "task must be an object"
   tid=str(t.get("id","")).strip()
   if not tid or tid in ids:return "task ids must be unique and nonempty"
@@ -806,11 +812,13 @@ def run_roadmap_task(s,t):
   log("video_produced",task=t.get("id"),video=video_result.get("video"),duration=video_result.get("duration_seconds"),scenes=video_result.get("scene_count"))
  verify_deliverables(t,written)
  usage_gate=None
- usage_target=max(0,int(t.get("verification_target_users",0) or 0))
+ try:usage_target=max(0,int(t.get("verification_target_users",0) or 0))
+ except (TypeError,ValueError):usage_target=0
  if usage_target>=10:
   usage_rel=str(t.get("usage_events_path") or "reports/product-usage-events.jsonl")
-  usage_file,_=filesafe(usage_rel)
+  usage_file=None
   try:
+   usage_file,_=filesafe(usage_rel)
    owner_data=json.loads((SD/"owner_user_ids.json").read_text(encoding="utf-8")) if (SD/"owner_user_ids.json").exists() else []
    owner_ids=owner_data.get("user_ids",[]) if isinstance(owner_data,dict) else owner_data
    usage_events=load_usage_events(usage_file) if usage_file.exists() else []
@@ -818,7 +826,7 @@ def run_roadmap_task(s,t):
    usage_gate["source_path"]=usage_rel
    usage_gate["source_exists"]=usage_file.exists()
   except Exception as usage_error:
-   usage_gate={"status":"pending","minimum_users":usage_target,"distinct_production_users":0,"source_path":usage_rel,"source_exists":usage_file.exists(),"evidence_quality":"invalid_or_unreadable_export","error":str(usage_error)[:300]}
+   usage_gate={"status":"pending","minimum_users":usage_target,"distinct_production_users":0,"source_path":usage_rel,"source_exists":bool(usage_file and usage_file.exists()),"evidence_quality":"invalid_or_unreadable_export","error":str(usage_error)[:300]}
   log("product_usage_validation",task=t.get("id"),status=usage_gate.get("status"),users=usage_gate.get("distinct_production_users",0),required=usage_target,source=usage_rel)
  output={"summary":str(result.get("summary",""))[:9000],"files":written,"validation":result.get("validation",[]),"sources":[x.get("url","") for x in sources],"video_production":video_result,"desktop_result":t.get("desktop_result")}
  check=tests() if role=="builder" else []
