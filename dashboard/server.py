@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
 from worker.channel_connectors import connection_status, gumroad_products, gumroad_create_product, youtube_channel, youtube_upload_video, ConnectorError
 from worker.computer_use import ComputerUseError, execute as computer_execute, status as computer_status
 from worker.approvals import list_requests as list_owner_approvals, answer as answer_owner_approval
+from worker.desktop_agent import DesktopAgentError, create_task as create_desktop_task, run_task as run_desktop_task, resume_task as resume_desktop_task, list_tasks as list_desktop_tasks
 
 app = Flask(__name__)
 lock = threading.RLock()
@@ -742,6 +743,33 @@ def local_log():
 
 
 
+@app.get("/api/computer/tasks")
+def computer_tasks_api():
+    return jsonify(tasks=list_desktop_tasks(WORKSPACE))
+
+
+@app.post("/api/computer/task")
+def computer_create_task_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        task = create_desktop_task(WORKSPACE, body.get("goal", ""), body.get("max_steps", 24))
+        threading.Thread(target=run_desktop_task, args=(WORKSPACE, task["id"]), daemon=True, name="desktop-task-" + task["id"]).start()
+        return jsonify(task=task), 202
+    except (DesktopAgentError, TypeError, ValueError) as exc:
+        return jsonify(error=str(exc)), 400
+
+
+@app.post("/api/computer/tasks/<task_id>/resume")
+def computer_resume_task_api(task_id):
+    try:
+        # Validate the task and approval before starting background continuation.
+        thread = threading.Thread(target=resume_desktop_task, args=(WORKSPACE, task_id), daemon=True, name="desktop-resume-" + task_id)
+        thread.start()
+        return jsonify(status="resuming", task_id=task_id), 202
+    except DesktopAgentError as exc:
+        return jsonify(error=str(exc)), 400
+
+
 @app.get("/api/computer/status")
 def computer_status_api():
     return jsonify(computer=computer_status(WORKSPACE))
@@ -771,6 +799,10 @@ def computer_answer_approval_api(approval_id):
         return jsonify(error="choice must be yes or no"), 400
     try:
         item = answer_owner_approval(WORKSPACE, approval_id, choice)
+        if choice == "yes":
+            pending = next((task for task in list_desktop_tasks(WORKSPACE) if task.get("approval_id") == approval_id and task.get("status") == "waiting_approval"), None)
+            if pending:
+                threading.Thread(target=resume_desktop_task, args=(WORKSPACE, pending["id"]), daemon=True, name="desktop-approved-" + pending["id"]).start()
         return jsonify(approval=item)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
