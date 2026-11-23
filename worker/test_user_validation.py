@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime, timezone
-from user_validation import verify_usage_events
+from user_validation import verify_usage_events, load_usage_events
 
 class ProductUsageValidationTests(unittest.TestCase):
     def setUp(self):
@@ -41,6 +41,17 @@ class ProductUsageValidationTests(unittest.TestCase):
         report=verify_usage_events(events,now=self.now)
         self.assertEqual(report["distinct_production_users"],0)
         self.assertEqual(report["rejected_events"]["invalid_or_old_timestamp"],1)
+
+
+    def test_loads_jsonl_analytics_export(self):
+        from pathlib import Path
+        import tempfile, json
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"events.jsonl"
+            path.write_text(json.dumps(self.event("user-00000001"))+"\\n"+json.dumps(self.event("user-00000002")),encoding="utf-8")
+            loaded=load_usage_events(path)
+            self.assertEqual(len(loaded),2)
+            self.assertEqual(verify_usage_events(loaded,now=self.now)["distinct_production_users"],2)
 
     def test_report_uses_fingerprints_not_raw_user_ids(self):
         report=verify_usage_events([self.event("person@example.com")],now=self.now)
