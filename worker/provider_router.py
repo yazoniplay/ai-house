@@ -23,7 +23,7 @@ def gemini_chat_model_pool(catalog_ids, preferred=()):
     Exclude specialized audio, image, video, embedding, and realtime endpoints
     from ordinary text-agent requests.
     """
-    excluded=("embedding", "imagen", "image", "veo", "audio", "live", "transcribe", "tts", "robotics", "video", "speech", "translate", "music")
+    excluded=("embedding", "imagen", "image", "veo", "audio", "live", "transcribe", "tts", "robotics", "video", "speech", "translate", "music", "lyria", "nano-banana", "antigravity", "deep-research", "computer-use", "spatial")
     available=list(dict.fromkeys(str(x).strip().removeprefix("models/") for x in catalog_ids if str(x).strip()))
     available=[x for x in available if not any(token in x.lower() for token in excluded)]
     preferred_order=[x for x in model_pool("", ",".join(preferred)) if x in available]
@@ -39,7 +39,7 @@ def gemini_chat_model_pool(catalog_ids, preferred=()):
 
 def provider_chat_model_pool(provider, catalog_ids, preferred=(), free_ids=()):
     """Build a broad, text-chat-only provider pool from live catalog IDs."""
-    excluded=("embedding", "embed-", "-embed", "rerank", "whisper", "transcription", "transcribe", "tts", "text-to-speech", "speech", "audio", "image-generation", "text-to-image", "video-generation", "text-to-video", "moderation-only")
+    excluded=("embedding", "embed-", "-embed", "rerank", "whisper", "transcription", "transcribe", "tts", "text-to-speech", "speech", "audio", "image-generation", "text-to-image", "video-generation", "text-to-video", "moderation-only", "deep-research", "computer-use", "antigravity", "lyria", "nano-banana", "robotics")
     available=list(dict.fromkeys(str(x).strip() for x in catalog_ids if str(x).strip()))
     available=[x for x in available if not any(token in x.lower() for token in excluded)]
     available_set=set(available)
@@ -62,7 +62,8 @@ def is_model_specific_error(error):
         "model_not_found","model not found","unknown model","invalid model",
         "model does not exist","model_id_not_found","unsupported model",
         "404 not found","404 page not found","410","gone","end of life",
-        "retired","no such model"
+        "retired","no such model", "developer instruction is not enabled",
+        "not enabled for models", "unsupported developer instruction"
     ))
 
 def filter_model_pool(candidates, available=None, unavailable=(), allow_unlisted=()):
@@ -85,6 +86,10 @@ def is_unavailable_model_error(error):
 
 def cooldown_seconds(error, quota=900, billing=86400, config=3600, timeout=60, server=90):
     message=str(error).lower()
+    if any(token in message for token in ("1113", "insufficient balance", "no resource package", "please recharge", "requires a valid credit card", "credit card on file")):
+        return int(billing)
+    if any(token in message for token in ("50609", "system is too busy", "system too busy", "high demand")):
+        return int(server)
     if any(token in message for token in ("402","payment required","insufficient credits","pre-paid credits","billing limit","credits exhausted")):
         return int(billing)
     if any(token in message for token in ("401","403","unauthorized","invalid api key","authentication failed","permission denied")):
@@ -123,6 +128,10 @@ def is_openrouter_credit_model_error(provider,error):
 def is_provider_wide_error(provider,error):
     """Identify failures that cannot be fixed by switching model IDs."""
     message=str(error).lower()
+    if provider=="zai" and any(token in message for token in ("1113", "insufficient balance", "no resource package", "please recharge")):
+        return True
+    if provider=="vercel" and any(token in message for token in ("requires a valid credit card", "credit card on file")):
+        return True
     if any(token in message for token in (
         "402", "payment required", "insufficient credits", "pre-paid credits",
         "billing limit", "credits exhausted", "account balance",
@@ -158,4 +167,6 @@ def should_try_next_model(error):
         "pre-paid credits", "payment required", "billing limit",
         "free-models-per-day", "free models per day", "daily quota",
         "account quota", "monthly quota", "daily limit", "shared quota exhausted",
+        "1113", "insufficient balance", "no resource package", "please recharge",
+        "requires a valid credit card", "credit card on file",
     ))
