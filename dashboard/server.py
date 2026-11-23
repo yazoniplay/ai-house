@@ -28,7 +28,7 @@ ENGINE = WORKER_DIR / "autonomous_engine.py"
 HERE = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from worker.channel_connectors import connection_status, gumroad_products, youtube_channel, ConnectorError
+from worker.channel_connectors import connection_status, gumroad_products, gumroad_create_product, youtube_channel, youtube_upload_video, ConnectorError
 
 app = Flask(__name__)
 lock = threading.RLock()
@@ -751,6 +751,52 @@ def integrations_status_api():
             status["youtube"]["connected"] = False
             status["youtube"]["error"] = str(exc)
     return jsonify(connections=status)
+
+
+def leader_approved(approval_id):
+    approval = next((item for item in list_approvals(WORKSPACE, pending_only=False) if item.get("id") == approval_id), None)
+    return bool(approval and approval.get("status") == "approved" and approval.get("decision_actor") == "AI House Leader")
+
+
+@app.post("/api/integrations/gumroad/products")
+def gumroad_create_product_api():
+    body = request.get_json(silent=True) or {}
+    if not leader_approved(body.get("approval_id")):
+        return jsonify(error="A completed AI House Leader approval is required."), 403
+    try:
+        product = gumroad_create_product(body.get("name"), body.get("price_cents"), body.get("description", ""), published=bool(body.get("published", False)))
+        return jsonify(product={k: product.get(k) for k in ("id", "name", "price", "url", "published")}), 201
+    except ConnectorError as exc:
+        return jsonify(error=str(exc)), 503
+
+
+@app.post("/api/integrations/youtube/upload")
+def youtube_upload_api():
+    body = request.get_json(silent=True) or {}
+    approval_id = body.get("approval_id")
+    if not leader_approved(approval_id):
+        return jsonify(error="A completed AI House Leader approval is required."), 403
+    relative = Path(str(body.get("path", "")))
+    if not relative.parts or relative.is_absolute() or ".." in relative.parts:
+        return jsonify(error="Video path must be workspace-relative."), 400
+    video_path = (WORKSPACE / relative).resolve()
+    try:
+        video_path.relative_to(WORKSPACE)
+    except ValueError:
+        return jsonify(error="Video path must stay inside the workspace."), 400
+    suffix = video_path.suffix.lower()
+    if suffix not in (".mp4", ".mov", ".m4v", ".webm"):
+        return jsonify(error="Unsupported video file type."), 400
+    # Upload only a file listed as a deliverable of the Leader-approved project.
+    approval = next(item for item in list_approvals(WORKSPACE, pending_only=False) if item.get("id") == approval_id)
+    project = next((p for p in list_projects(WORKSPACE) if p.get("id") == approval.get("project_id")), None)
+    if not project or not any(str(a.get("path", "")) == relative.as_posix() for a in project.get("artifacts", [])):
+        return jsonify(error="Video must be a recorded deliverable of the approved Studio project."), 403
+    try:
+        result = youtube_upload_video(video_path, body.get("title", project.get("title", "")), body.get("description", ""), body.get("privacy_status", "private"))
+        return jsonify(upload=result), 201
+    except ConnectorError as exc:
+        return jsonify(error=str(exc)), 503
 
 
 @app.get("/api/integrations/gumroad/products")
