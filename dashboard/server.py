@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -43,6 +44,8 @@ engine_process = None
 engine_log_handle = None
 ask_rate_lock = threading.Lock()
 ask_last_question = 0.0
+provider_usage_cache_lock = threading.Lock()
+provider_usage_cache = {"at": 0.0, "payload": None}
 
 
 def read_json(path, fallback):
@@ -546,32 +549,84 @@ def outbox_path(relative_path):
     return candidate
 
 
+_ledger_lock = threading.Lock()
+_ledger_state = {
+    "offset": 0, "signature": b"", "cost": 0.0, "kinds": {},
+    "business": {}, "recent": deque(maxlen=200),
+}
+
+
+def _reset_ledger():
+    _ledger_state.update(
+        offset=0, signature=b"", cost=0.0, kinds={},
+        business={}, recent=deque(maxlen=200),
+    )
+
+
+def _ledger_signature(path, offset):
+    if offset <= 0:
+        return b""
+    try:
+        with path.open("rb") as handle:
+            start = max(0, offset - 64)
+            handle.seek(start)
+            return handle.read(offset - start)
+    except OSError:
+        return b""
+
+
+def _ledger_snapshot():
+    """Stream the action log once, then process only appended complete lines."""
+    with _ledger_lock:
+        state = _ledger_state
+        try:
+            size = ACTIONS_FILE.stat().st_size
+        except OSError:
+            size = 0
+        if size < state["offset"] or _ledger_signature(ACTIONS_FILE, state["offset"]) != state["signature"]:
+            _reset_ledger()
+        if size > state["offset"]:
+            try:
+                with ACTIONS_FILE.open("rb") as handle:
+                    handle.seek(state["offset"])
+                    while True:
+                        line = handle.readline()
+                        if not line or not line.endswith(bytes([10])):
+                            break
+                        state["offset"] += len(line)
+                        try:
+                            item = json.loads(line.decode("utf-8", errors="replace"))
+                            if not isinstance(item, dict):
+                                continue
+                            cost = float(item.get("cost_usd", 0) or 0)
+                            kind = str(item.get("kind", "unknown"))
+                            business = str(item.get("business", ""))
+                            state["cost"] += cost
+                            state["kinds"][kind] = state["kinds"].get(kind, 0) + 1
+                            if business:
+                                state["business"][business] = state["business"].get(business, 0.0) + cost
+                            state["recent"].append(item)
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            continue
+            except OSError:
+                pass
+        state["signature"] = _ledger_signature(ACTIONS_FILE, state["offset"])
+        return (
+            list(state["recent"]), state["cost"], dict(state["kinds"]),
+            dict(state["business"]),
+        )
+
+
 @app.get("/api/ledger")
 def action_ledger_api():
-    entries = []
-    total_cost = 0.0
-    kinds = {}
-    business_spend = {}
-    entries = read_jsonl_tail(ACTIONS_FILE, limit=12000)
-    for item in entries:
-        try:
-            cost = float(item.get("cost_usd", 0) or 0)
-            kind = str(item.get("kind", "unknown"))
-            business = str(item.get("business", ""))
-            total_cost += cost
-            kinds[kind] = kinds.get(kind, 0) + 1
-            if business:
-                business_spend[business] = business_spend.get(business, 0.0) + cost
-        except (TypeError, ValueError):
-            continue
-    newest = list(reversed(entries[-200:]))
+    entries, total_cost, kinds, business_spend = _ledger_snapshot()
     totals = {
         "cost_usd": round(total_cost, 6),
         "kinds": kinds,
         "business_spend_usd": {name: round(value, 6) for name, value in business_spend.items()},
         "business_budget_usd": dashboard_budget_settings(),
     }
-    return jsonify(entries=newest, totals=totals, history_truncated=jsonl_tail_truncated(ACTIONS_FILE))
+    return jsonify(entries=list(reversed(entries)), totals=totals, history_truncated=False)
 
 
 @app.get("/api/outbox")
@@ -655,6 +710,10 @@ def rooms_api():
 @app.get("/api/providers/usage")
 def provider_usage():
     """Aggregate observed provider/model activity without exposing credentials."""
+    with provider_usage_cache_lock:
+        cached = provider_usage_cache["payload"]
+        if cached is not None and time.time() - provider_usage_cache["at"] < 5:
+            return jsonify(cached)
     providers = {}
     def entry(name):
         name = str(name or "unknown")
@@ -709,7 +768,11 @@ def provider_usage():
         result.append(row)
     result.sort(key=lambda row: (row["calls"], row["provider"]), reverse=True)
     truncated = jsonl_tail_truncated(ACTIONS_FILE) or jsonl_tail_truncated(EVENT_FILE)
-    return jsonify(providers=result, total_calls=sum(row["calls"] for row in result), estimated_cost_usd=round(sum(row["estimated_cost_usd"] for row in result), 6), history_truncated=truncated, generated_at=datetime.now(timezone.utc).isoformat())
+    payload = dict(providers=result, total_calls=sum(row["calls"] for row in result), estimated_cost_usd=round(sum(row["estimated_cost_usd"] for row in result), 6), history_truncated=truncated, generated_at=datetime.now(timezone.utc).isoformat())
+    with provider_usage_cache_lock:
+        provider_usage_cache["payload"] = payload
+        provider_usage_cache["at"] = time.time()
+    return jsonify(payload)
 
 @app.get("/api/live")
 def live():

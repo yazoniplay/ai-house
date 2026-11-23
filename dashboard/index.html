@@ -512,7 +512,7 @@ leaderForm.addEventListener("submit",async event=>{
  leaderSend.disabled=true;
  leaderReply.textContent="Thinking…";
  try{
-  const result=await api("/api/ask","POST",JSON.stringify({text:question}));
+  const result=await api("/api/ask","POST",JSON.stringify({text:question}),120000);
   const reply=String(result.reply??"");
   leaderReply.textContent=reply;
   leaderReadReply(reply);
@@ -525,16 +525,16 @@ let roomList=[];
 let selectedRoom=localStorage.getItem("ai-house-room")||"";
 let ledgerData={entries:[],totals:{cost_usd:0,kinds:{},business_spend_usd:{},business_budget_usd:0}};
 let outboxFiles=[];
-async function api(path,method="GET",body=null){
+async function api(path,method="GET",body=null,timeoutMs=20000){
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),12000);
+  const timeout=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const response=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body,signal:controller.signal});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw Error(data.error||("HTTP "+response.status));
     return data;
   }catch(error){
-    if(error&&error.name==="AbortError")throw Error("Dashboard request timed out after 12 seconds: "+path);
+    if(error&&error.name==="AbortError")throw Error("Dashboard request timed out after "+Math.round(timeoutMs/1000)+"s: "+path);
     throw error;
   }finally{
     clearTimeout(timeout);
