@@ -24,6 +24,7 @@ from room_autonomy import normalize_room_plan
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
 SD=WORK/".ai-house"; SF=SD/"state.json"; LF=SD/"events.jsonl"; SBF=SD/"search-budget.json"
+DISCOVERY_STATE_FILE=SD/"discovery-state.json"
 BUSINESSES=WORK/"businesses"
 BDIR=WORK
 MAX_ROOMS=int(os.getenv("AI_HOUSE_MAX_ROOMS","3"))
@@ -529,7 +530,7 @@ def opportunity():
  past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in load_rooms()["past_businesses"]}
  queries=list(DISCOVERY_QUERIES)
  try:
-  planned=obj(ask("researcher",'Write up to 4 focused web search queries about current customer problems and market demand. Do not suggest businesses or business ideas. Return JSON {"queries":["..."]}.'))
+  planned=obj(ask("researcher",'Write up to 4 focused web search queries about current customer problems and market demand. Use the current year '+str(datetime.now(timezone.utc).year)+' for current trends; do not use stale years such as 2024 or 2025 unless explicitly comparing historical data. Do not suggest businesses or business ideas. Return JSON {"queries":["..."]}.'))
   queries.extend(str(q).strip()[:250] for q in planned.get("queries",[])[:2] if str(q).strip())
  except Exception as e:log("discovery_query_planning_error",error=str(e)[:180])
  results=[];seen=set();counts=[]
@@ -567,8 +568,12 @@ def opportunity():
   log("discovery_selection_error",error=str(e)[:180]);return None
  score=next((int(x.get("score",0)) for x in choice.get("scores",[]) if int(x.get("index",-1))==idx),0)
  domains={re.sub(r"^https?://(www\.)?","",u).split("/")[0] for u in selected.get("sources",[]) if u}
- if score<6 or len(domains)<2:
-  log("discovery_rejected_weak",name=selected.get("name"),score=score,domains=len(domains));return None
+ if score<7 or not selected.get("sources"):
+  log("discovery_rejected_weak",name=selected.get("name"),score=score,domains=len(domains),sources=len(selected.get("sources",[])));return None
+ if len(domains)<2:
+  selected["evidence_confidence"]="low"
+  selected["validation"]=str(selected.get("validation",""))+" Evidence is concentrated in one domain; treat this as a hypothesis and independently validate demand before spending money or publishing."
+  log("discovery_single_domain_accepted",name=selected.get("name"),score=score,sources=len(selected.get("sources",[])),domains=len(domains))
  key=re.sub(r"[^a-z0-9]+"," ",str(selected.get("name","")).lower()).strip()
  if not key or key in past:return None
  selected["score"]=score
@@ -1204,6 +1209,20 @@ def business_decision_text(business):
  lines.extend(["","Decision status","---------------","Selected to test. This is not a claim of revenue, customer demand, or business success.","",""])
  return "\n".join(lines)
 
+def global_discovery_retry():
+ try:
+  data=json.loads(DISCOVERY_STATE_FILE.read_text(encoding="utf-8"))
+  return str(data.get("retry_after","") or "")
+ except Exception:return ""
+def set_global_discovery_retry(retry_after):
+ SD.mkdir(parents=True,exist_ok=True)
+ tmp=DISCOVERY_STATE_FILE.with_suffix(".tmp")
+ tmp.write_text(json.dumps({"retry_after":str(retry_after),"updated_at":datetime.now(timezone.utc).isoformat()}),encoding="utf-8")
+ tmp.replace(DISCOVERY_STATE_FILE)
+def clear_global_discovery_retry():
+ try:DISCOVERY_STATE_FILE.unlink()
+ except FileNotFoundError:pass
+ except OSError:pass
 def cycle(s):
  BDIR.mkdir(parents=True,exist_ok=True)
  if isinstance(s.get("business"),dict):
@@ -1219,6 +1238,15 @@ def cycle(s):
   ensure_autonomous_room_projects(s)
  if s.get("business_completed"):learn_from_business(s);return
  if not s.get("business") or s.get("business_completed"):
+  house_retry=global_discovery_retry()
+  if house_retry:
+   try:
+    retry=datetime.fromisoformat(house_retry.replace("Z","+00:00"))
+    if datetime.now(timezone.utc)<retry:
+     set_activity("discovery_wait","House-wide discovery cooldown until "+retry.isoformat()+"; all rooms will wait together.","researcher")
+     log("discovery_wait_global",retry_after=house_retry)
+     return
+   except Exception:pass
   if s.get("discovery_retry_after"):
    try:
     retry=datetime.fromisoformat(str(s["discovery_retry_after"]).replace("Z","+00:00"))
@@ -1247,11 +1275,14 @@ def cycle(s):
    if business is None:
     retry_at=search_retry_at() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
     s["discovery_retry_after"]=retry_at.isoformat()
+    set_global_discovery_retry(retry_at.isoformat())
     wait_message="Search providers are paused by saved quota/credit cooldowns; retrying at "+retry_at.isoformat()+"." if not search_available() else "Insufficient source-backed opportunities; retrying discovery in 30 minutes using the no-key search fallback if needed."
     s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
     save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
    folder=f"businesses/{len(load_rooms().get('past_businesses',[]))+1:03d}-{slugify(business.get('name',''))}"
    s.pop("coding_project_id",None)
+  clear_global_discovery_retry()
+  s.pop("discovery_retry_after",None)
   s["business"]=business
   set_business_dir(folder)
   s["business_dir"]=folder
