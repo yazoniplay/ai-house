@@ -143,6 +143,29 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 @media(max-width:1050px){.department-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.department-grid{grid-template-columns:1fr}.department-card{padding:13px}.department-description{min-height:0}}
 
+
+/* Provider telemetry cards: observed calls and fallback health, not guessed quota percentages. */
+.provider-panel{background:linear-gradient(125deg,#111a2a,#121b2b 62%,#172132);border-color:#30425c}
+.provider-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 14px}
+.provider-summary>div{padding:12px 14px;border:1px solid #2a3a51;border-radius:12px;background:#0c1422}
+.provider-summary strong{display:block;font-size:23px;letter-spacing:-.04em;color:#eaf1ff;font-variant-numeric:tabular-nums}
+.provider-summary span{display:block;margin-top:3px;font-size:10px;color:#92a5bf;text-transform:uppercase;letter-spacing:.08em}
+.provider-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.provider-card{min-width:0;padding:13px;border:1px solid #2a3a51;border-radius:13px;background:linear-gradient(145deg,#182438,#101827);transition:transform .16s ease,border-color .16s ease}
+.provider-card:hover{transform:translateY(-2px);border-color:#536a8b}
+.provider-card.cooling{border-color:#8b633e;background:linear-gradient(145deg,#2b241f,#151b27)}
+.provider-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.provider-name{font-size:12px;font-weight:850;overflow-wrap:anywhere}
+.provider-state{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#92a8c4}
+.provider-card.cooling .provider-state{color:#f5bd83}
+.provider-stats{display:flex;gap:12px;margin-top:12px;padding-top:10px;border-top:1px solid #ffffff10}
+.provider-stats span{font-size:10px;color:#a9bad0}
+.provider-stats strong{font-size:15px;color:#eef4ff;margin-right:3px}
+.provider-model{margin-top:9px;color:#8fa4c0;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.provider-error{margin-top:8px;color:#eab47b;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+@media(max-width:950px){.provider-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.provider-grid{grid-template-columns:1fr}.provider-summary{gap:6px}.provider-summary>div{padding:10px}.provider-summary strong{font-size:19px}.provider-summary span{font-size:8px}}
+
 </style>
 </head>
 <body>
@@ -176,6 +199,11 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
   <section class="panel departments-panel">
     <div class="panel-head"><div><h2>Business departments</h2><div class="subtle">Live work grouped by function</div></div><span class="subtle">Operating structure</span></div>
     <div id="departmentGrid" class="department-grid"><div class="empty">Department assignments appear with the Leader's roadmap.</div></div>
+  </section>
+  <section class="panel provider-panel">
+    <div class="panel-head"><div><h2>Provider capacity</h2><div class="subtle">Observed model calls · automatic fallback</div></div><span class="subtle" id="providerUpdated">Waiting for usage</span></div>
+    <div class="provider-summary"><div><strong id="providerTotalCalls">0</strong><span>successful calls</span></div><div><strong id="providerTotalCost">$0.00</strong><span>estimated tracked spend</span></div><div><strong id="providerCount">0</strong><span>providers observed</span></div></div>
+    <div id="providerGrid" class="provider-grid"><div class="empty">Provider usage will appear after the first model call.</div></div>
   </section>
   <section class="panel station-panel">
     <div class="panel-head"><h2>The station</h2><span class="subtle">Pixel rooms · live roles</span></div>
@@ -620,7 +648,40 @@ function renderDepartmentOverview(tasks){
  });
 }
 
+
+async function refreshProviderUsage(){
+ try{
+  const data=await api("/api/providers/usage");
+  const total=$("providerTotalCalls");if(total)total.textContent=Number(data.total_calls||0).toLocaleString();
+  const cost=$("providerTotalCost");if(cost)cost.textContent="$"+Number(data.estimated_cost_usd||0).toFixed(4);
+  const count=$("providerCount");if(count)count.textContent=String((data.providers||[]).length);
+  const updated=$("providerUpdated");if(updated)updated.textContent="Updated "+new Date().toLocaleTimeString();
+  const grid=$("providerGrid");if(!grid)return;grid.replaceChildren();
+  const providers=data.providers||[];
+  if(!providers.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="No provider calls have been recorded yet.";grid.append(empty);return;}
+  providers.forEach(p=>{
+   const card=document.createElement("article");card.className="provider-card"+(p.status==="Cooling down"?" cooling":"");
+   const head=document.createElement("div");head.className="provider-card-head";
+   const name=document.createElement("div");name.className="provider-name";name.textContent=p.provider;
+   const state=document.createElement("span");state.className="provider-state";state.textContent=p.status;
+   head.append(name,state);
+   const stats=document.createElement("div");stats.className="provider-stats";
+   const calls=document.createElement("span");calls.innerHTML="<strong>"+Number(p.calls||0).toLocaleString()+"</strong> calls";
+   const costValue=document.createElement("span");costValue.innerHTML="<strong>$"+Number(p.estimated_cost_usd||0).toFixed(4)+"</strong> est.";
+   const fallbacks=document.createElement("span");fallbacks.innerHTML="<strong>"+Number(p.fallbacks||0)+"</strong> fallback";
+   stats.append(calls,costValue,fallbacks);
+   const model=document.createElement("div");model.className="provider-model";
+   const models=(p.models||[]).slice(0,3).map(x=>x.name+" · "+x.calls).join(" / ");
+   model.textContent=models?"Models: "+models:"No model-level call detail recorded yet";
+   card.append(head,stats,model);
+   if(p.cooldown_seconds_left){const err=document.createElement("div");err.className="provider-error";err.textContent="Cooling down "+Math.ceil(p.cooldown_seconds_left/60)+" min"+(p.last_error?": "+p.last_error:"");card.append(err);}
+   grid.append(card);
+  });
+ }catch(error){const updated=$("providerUpdated");if(updated)updated.textContent="Usage unavailable: "+error.message;}
+}
+
 function render(){
+  refreshProviderUsage();
   api("/api/local/state?room="+encodeURIComponent(selectedRoom)).then(s=>{
     const tasks=s.tasks||[],files=s.artifacts||[],events=s.events||[],memory=s.memory||{};
     renderDepartmentOverview(tasks);
