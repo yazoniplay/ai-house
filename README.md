@@ -104,3 +104,9 @@ The autonomous Leader roadmap now instructs software businesses to focus on one 
 ### Computer Room setup notes
 
 Open `http://127.0.0.1:8000/computer-room` while the local dashboard is running. The vision operator is currently Gemini-based and reads `GEMINI_API_KEY` from the local environment or `worker/.env`. To allow app launching, copy `worker/computer_apps.example.json` to `workspace/.ai-house/computer_apps.json` and replace the example paths with the exact executable paths on your PC. Only those aliases can be launched; the desktop agent does not receive a general shell tool. Desktop tasks are queued in local JSON, visible in the Computer Room, and pause/resume through the owner approval queue. For safety, use a dedicated desktop account or VM with only business files and channel accounts.
+
+
+
+## Coding Room — one flagship app
+
+Open `http://127.0.0.1:8000/coding-room` to submit a focused software-app brief. The queue permits one active app and at most two queued apps. When an engine room becomes available, the Leader claims the next project and creates a research-backed roadmap; specialist builders create the app artifacts, reviewers check them, and the project is marked complete after the roadmap finishes. A project brief includes the target user, problem, core workflow, and optional success metric. This prevents the system from scattering effort across dozens of shallow app ideas.
