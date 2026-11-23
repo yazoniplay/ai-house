@@ -11,7 +11,8 @@ def _month_reset(now):
  return datetime(year,month,1,tzinfo=timezone.utc)
 def classify_search_failure(error,now=None):
  message=str(error).lower();now=_utc(now)
- if any(x in message for x in ("402","payment required","credit exhausted","credits exhausted","out of credits","insufficient credits","billing limit","prepaid credits","pre-paid credits")):return "credits_exhausted",_month_reset(now)
+ if "monthly" in message and any(x in message for x in ("limit","quota","credit","usage","exhaust")):return "monthly_exhausted",_month_reset(now)
+ if any(x in message for x in ("402","payment required","credit exhausted","credits exhausted","out of credits","insufficient credits","billing limit","prepaid credits","pre-paid credits","credit balance")):return "credits_exhausted",_month_reset(now)
  if any(x in message for x in ("429","rate limit","quota","usage limit","daily limit","monthly limit","resource_exhausted")):return "quota_limited",datetime(now.year,now.month,now.day,tzinfo=timezone.utc)+timedelta(days=1)
  if any(x in message for x in ("401","403","unauthorized","invalid api key","authentication failed","forbidden")):return "configuration_error",now+timedelta(days=1)
  if any(x in message for x in ("timeout","timed out","connection error","temporarily unavailable","503","502","500")):return "temporary_failure",now+timedelta(minutes=20)
