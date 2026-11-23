@@ -21,7 +21,7 @@ In Discord Developer Portal, enable **Message Content Intent** for the bot. Give
 - Desktop/PC access and other risky tasks use the existing approval ledger. The Discord approval alert now includes **yes/no** buttons. The action still runs only after the approval is recorded and the local worker processes it.
 - Use `!status`, `!pending`, `!start`, or `!stop` for quick controls.
 
-Button interactions are restricted to the configured owner ID. Approval IDs are checked against pending requests; stale buttons cannot approve a different request.
+Button interactions are restricted to the configured owner ID. Approval IDs are checked against pending requests; stale buttons cannot approve a different request. Pending button views are restored from the local approval ledger after a bot restart, so a pending request does not lose its buttons just because the PC worker reconnects.
 
 ## Decision memo
 
