@@ -64,6 +64,16 @@ flowchart TD
 | **05 · Improve** | Rejected work receives concrete feedback and can be retried. |
 | **06 · Learn** | The North Face stores root causes, lessons, and operational rules for future work. |
 
+### Specialist intelligence and quality controls
+
+Every specialist receives a versioned professional operating brief plus a role-specific playbook. The shared delivery contract requires agents to inspect prior work, distinguish evidence from assumptions, cite source URLs and dates where available, create the actual artifact, and report only checks that really ran.
+
+For major roadmap decisions, the CEO requests two independent advisory memos:
+- **Strategy** challenges the customer/problem wedge, alternatives, assumptions, and validation threshold.
+- **Product management** defines the smallest useful product slice, core workflow, activation event, and acceptance checks.
+
+The CEO synthesizes those perspectives into the roadmap; consultation is advisory and never counts as customer validation or owner approval. Prompt telemetry records character counts and a rough token estimate per request so prompt growth can be monitored. The estimate is a sizing heuristic, not provider-reported token usage or billing data.
+
 ## 🚀 Get started
 
 ### Windows — quick start
