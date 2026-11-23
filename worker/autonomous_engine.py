@@ -652,6 +652,18 @@ def create_roadmap(s,mode="initial",failed=None):
    "\nReturn corrected JSON with strategy, success_metric, and 4-8 valid tasks using the required schema.")
   tasks=plan.get("tasks",[]);error=validate_roadmap(tasks)
  if error:raise RuntimeError("leader produced invalid roadmap: "+error)
+ business=s.get("business") if isinstance(s.get("business"),dict) else {}
+ business_text=" ".join(str(business.get(k,"")) for k in ("name","customer","problem","solution","revenue_model","validation","mvp")).lower()
+ software_product=bool(s.get("coding_project_id")) or any(term in business_text for term in ("software","web app","mobile app","saas","application","browser extension","productivity app","online tool","platform","dashboard app"))
+ if software_product:
+  usage_task=next((t for t in tasks if isinstance(t,dict) and (int(t.get("verification_target_users",0) or 0)>=10 or any(term in " ".join(str(t.get(k,"")) for k in ("title","objective","success_metric")).lower() for term in ("10 users","ten users","adoption verification","verify product usage","usage verification")))),None)
+  if usage_task:
+   usage_task["verification_target_users"]=max(10,int(usage_task.get("verification_target_users",10) or 10))
+   usage_task.setdefault("usage_events_path","reports/product-usage-events.jsonl")
+  else:
+   dependencies=[str(t.get("id")) for t in tasks if isinstance(t,dict) and (t.get("agent_role") in ("builder","architect","product_manager","qa_engineer","qa_tester","security_engineer") or any(term in str(t.get("title","")).lower() for term in ("instrument analytics","core action analytics")))]
+   tasks.append({"id":"verify-10-users","title":"Verify 10 real product users","objective":"Collect a genuine production analytics export and verify at least ten distinct external users performed a meaningful core action in the last 30 days. If under target, report the actual count and keep the milestone pending; never fabricate usage.","agent_role":"customer_success","priority":40,"depends_on":list(dict.fromkeys(dependencies)),"acceptance":["reports/product-usage-events.jsonl is an actual analytics export, not synthetic or manually invented events","The deterministic verifier reports at least 10 distinct production user accounts performing a qualifying core action","Owner, internal, test, bot, page-view, and marketing-click events are excluded","If fewer than 10 users are evidenced, the report clearly says pending and the milestone is not marked complete"],"deliverable":"reports/product-usage-events.jsonl and the deterministic usage_verification report in the task review","search":"none","needs_approval":False,"verification_target_users":10,"usage_events_path":"reports/product-usage-events.jsonl"})
+   log("mandatory_product_usage_task_added",task="verify-10-users",business=business.get("name"),dependencies=dependencies)
  adjusted=0;advanced_seen=False
  for t in tasks:
   choice=str(t.get("search","basic")).lower()
