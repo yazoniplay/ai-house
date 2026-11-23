@@ -67,6 +67,37 @@ class DiscoverySearchTests(unittest.TestCase):
                 spend.assert_called_once_with(engine.SPENDBF,0.002)
                 self.assertEqual(action.call_args.kwargs["cost_usd"],0.002)
 
+    def test_agentrouter_and_routeway_are_enabled_and_use_their_own_endpoints(self):
+        from unittest.mock import Mock
+        response=Mock(status_code=200)
+        response.json.return_value={"choices":[{"message":{"content":"{\"ok\":true}"}}],"usage":{"prompt_tokens":7,"completion_tokens":9}}
+        cases=[
+            ("agentrouter","ARK","https://agentrouter.org/v1/chat/completions","agent-key"),
+            ("routeway","RWK","https://api.routeway.ai/v1/chat/completions","routeway-key"),
+        ]
+        for provider,key_attr,url,key in cases:
+            with self.subTest(provider=provider), patch.object(engine,"HTTP") as http, \
+                 patch.object(engine,key_attr,key), patch.object(engine,"record_spend"), \
+                 patch.object(engine,"record_action"), patch.object(engine,"log"):
+                http.post.return_value=response
+                output=engine._raw_once(provider,"system","prompt","orchestrator","provider/model")
+                self.assertEqual(output,'{"ok":true}')
+                self.assertEqual(http.post.call_args.args[0],url)
+                self.assertEqual(http.post.call_args.kwargs["headers"]["Authorization"],"Bearer "+key)
+                self.assertEqual(http.post.call_args.kwargs["json"]["model"],"provider/model")
+
+    def test_agentrouter_and_routeway_join_provider_rotation_when_configured(self):
+        with patch.object(engine,"ARK","agent-key"), patch.object(engine,"RWK","routeway-key"), \
+             patch.object(engine,"PROVIDER_ROTATION",{"orchestrator":0}), patch.object(engine,"log"):
+            providers=engine.provider_order("orchestrator")
+        self.assertIn("agentrouter",providers)
+        self.assertIn("routeway",providers)
+
+    def test_leader_text_unwraps_nested_object_content(self):
+        self.assertEqual(engine.leader_text({"reply":{"content":"The house is running."}}),"The house is running.")
+        self.assertEqual(engine.leader_text("[object Object]"),"")
+        self.assertEqual(engine.leader_text({"message":{"text":"A readable answer"}}),"A readable answer")
+
     def test_gemini_catalog_attempts_are_capped_even_when_env_requests_40(self):
         models=["model-"+str(index) for index in range(34)]
         with patch.dict(engine.os.environ, {"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS": "40"}), \
