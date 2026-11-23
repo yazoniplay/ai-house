@@ -714,6 +714,16 @@ def create_roadmap(s,mode="initial",failed=None):
  decision_review.setdefault("expected_outcome",str(plan.get("success_metric",""))[:700])
  decision_review.setdefault("confidence","low")
  decision_review.setdefault("review_criteria","Compare expected outcome with actual task evidence and business success metric; keep, modify, or rollback.")
+ # AI House owns product selection and must create tangible room deliverables; owner input is never a product-selection gate.
+ business_name=str(s.get("business",{}).get("name","selected business"));cycle_id=int(s.get("cycle",0) or 0)
+ research_dependencies=[str(t.get("id")) for t in tasks if isinstance(t,dict) and t.get("agent_role") in ("researcher","customer_researcher","competitor_analyst")]
+ if not any("youtube video production" in (str(t.get("title",""))+" "+str(t.get("objective",""))).lower() for t in tasks):
+  tasks.append({"id":"auto-studio-video-"+str(cycle_id),"title":"YouTube video production — "+business_name[:70],"objective":"Produce one complete original YouTube video for the AI-selected business "+business_name+". Choose the strongest audience angle yourself from the business and research; do not ask the owner to pick the topic. Use cited current sources, create a compelling script, matching scenes, narration, edited video, captions, and thumbnail. Do not publish.","agent_role":"content_producer","priority":62,"depends_on":research_dependencies,"status":"pending","attempts":0,"acceptance":["A complete rendered video file, script, captions, and thumbnail exist as physical artifacts","All factual claims are supported by cited sources or clearly labeled assumptions","Original narration and properly licensed/retrieved visuals; no copied creator content","Publishing remains behind approval and channel permission gates"],"deliverable":"reports/youtube-production-cycle-"+str(cycle_id)+".md","search":"basic","needs_approval":False})
+ if not any(any(k in (str(t.get("title",""))+" "+str(t.get("objective",""))).lower() for k in ("marketing campaign","launch campaign","campaign assets","marketing assets")) for t in tasks if isinstance(t,dict)):
+  tasks.append({"id":"auto-studio-campaign-"+str(cycle_id),"title":"Marketing campaign production — "+business_name[:70],"objective":"AI House has already selected the business and product. Create the campaign assets autonomously: audience positioning, landing page copy, 3 truthful ad concepts, 5 organic social drafts, launch calendar, and one measurable feedback experiment. Do not ask the owner to choose the product or send/post anything.","agent_role":"growth","priority":58,"depends_on":research_dependencies,"status":"pending","attempts":0,"acceptance":["Complete campaign deliverable saved as a physical file","No fake testimonials, unsupported claims, spam, or unapproved outreach","Campaign includes a measurable response/feedback metric"],"deliverable":"reports/marketing-campaign-cycle-"+str(cycle_id)+".md","search":"none","needs_approval":False})
+ if not any(t.get("agent_role")=="builder" or "mvp build" in str(t.get("title","")).lower() for t in tasks if isinstance(t,dict)):
+  tasks.append({"id":"auto-flagship-mvp-"+str(cycle_id),"title":"Build the selected business MVP — "+business_name[:70],"objective":"Build the smallest useful, runnable first product for the AI-selected business "+business_name+". Decide the appropriate product format from the customer problem and solution, implement the core workflow, include setup/run instructions and meaningful tests. Do not ask the owner to choose features; use the business brief and evidence.","agent_role":"builder","priority":72,"depends_on":research_dependencies,"status":"pending","attempts":0,"acceptance":["Runnable source files and setup instructions are written to disk","The core customer workflow is implemented, not only a mockup or TODO list","Meaningful tests or deterministic validation are included and actual results reported","The product concept is tied to the selected customer problem and success metric"],"deliverable":"build/flagship-mvp/README.md","search":"none","needs_approval":False})
+
  s["roadmap"]={"strategy":plan.get("strategy",""),"success_metric":plan.get("success_metric",""),"decision_review":decision_review,"tasks":tasks,"created_at":datetime.now(timezone.utc).isoformat()}
  try:
   north_face_record_decision(SD/"north_face.json",{"id":"roadmap-"+str(s.get("cycle",0))+"-"+str(s.get("roadmap_replans",0)+int(mode!="initial")),"title":"Roadmap decision: "+str(s.get("business",{}).get("name","business"))+" ("+str(mode)+")","decision":"Use this execution strategy and dependency plan for the current business cycle.","goal":str(plan.get("success_metric",""))[:700],"rationale":str(decision_review.get("rationale",""))[:1200],"alternatives":decision_review.get("alternatives",[]),"expected_outcome":str(decision_review.get("expected_outcome",plan.get("success_metric","")))[:700],"success_metric":str(plan.get("success_metric",""))[:500],"evidence":decision_review.get("evidence",[]),"risks":decision_review.get("risks",[]),"confidence":decision_review.get("confidence","low")},{"decision":"pending","reason":str(decision_review.get("review_criteria",""))[:900],"observed_outcome":"Not yet observed; roadmap has just been created.","lesson":"","evidence_quality":"planning_evidence_not_outcome"})
@@ -1080,6 +1090,67 @@ def learn_from_business(s):
  s["learning_done_for"]=s.get("cycle");save(s)
  (BDIR/"LEADER_MEMORY.json").write_text(json.dumps({"north_face_file":os.path.relpath(SD/"north_face.json",BDIR),"lessons":s["lessons"],"postmortem":s["last_business_postmortem"],"updated_at":datetime.now(timezone.utc).isoformat()},indent=2,ensure_ascii=False),encoding="utf-8")
  log("north_face_business_postmortem",business=s.get("business",{}).get("name"),decision=outcome.get("decision"),lessons=len(postmortem["lessons"]))
+def ensure_autonomous_room_projects(s):
+ """AI House selects products and production missions; owner forms are not prerequisites."""
+ business=s.get("business") if isinstance(s.get("business"),dict) else {}
+ if not business:return
+ cycle=int(s.get("cycle",0) or 0)
+ prompt=("You are AI House's internal product and creative director. The owner delegated product selection. Choose a concrete app product, one original YouTube concept, one marketing campaign, and one safe local computer-room production mission based on this selected business. Do not ask the owner to choose a product. Favor a small useful product and do not claim validation beyond supplied evidence. Computer mission must be a local draft only: no publishing, sending, uploading, purchasing, deleting, installing, or account/security changes. Return JSON with coding_product {title,target_user,problem,brief,success_metric}, youtube {title,brief}, marketing {title,brief}, computer {mission}.\nBusiness: "+json.dumps(business,ensure_ascii=False)[:9000]+"\nCycle: "+str(cycle))
+ generated={}
+ try:generated=leader_json(prompt)
+ except Exception as e:log("room_product_planning_fallback",cycle=cycle,error=str(e)[:180])
+ plan=normalize_room_plan(business,generated,cycle)
+ s["room_missions"]={"cycle":cycle,"selected_by":"AI House Leader","coding_product":plan["coding_product"],"youtube":plan["youtube"],"marketing":plan["marketing"],"computer":{"mission":plan["computer"]["mission"],"status":"planned"}}
+ try:
+  from studio import create_project as studio_create,list_projects as studio_list,update_project as studio_update,move_stage as studio_move
+ except ModuleNotFoundError:
+  from worker.studio import create_project as studio_create,list_projects as studio_list,update_project as studio_update,move_stage as studio_move
+ business_rel=str(s.get("business_dir","")).strip("/")
+ studio_root=BDIR/"studio"/"auto";studio_root.mkdir(parents=True,exist_ok=True)
+ for kind,key,filename in (("youtube","youtube","youtube-brief"),("marketing","marketing","marketing-campaign")):
+  spec=plan[key];title=(str(spec["title"])+" — Cycle "+str(cycle))[:180];marker="AI_HOUSE_AUTONOMY_CYCLE:"+str(cycle)+":"+kind
+  brief=str(spec["brief"])+"\n\n"+marker+"\nSelected and planned autonomously by AI House. Owner product selection is not required."
+  try:
+   project=next((p for p in studio_list(WORK,kind) if marker in str(p.get("brief",""))),None)
+   if project is None:project=studio_create(WORK,kind,title,owner="AI House",brief=brief)
+   path=studio_root/(filename+"-"+str(cycle)+".md")
+   path.write_text("# "+str(spec["title"])+"\n\n"+str(spec["brief"])+"\n\n"+marker+"\n",encoding="utf-8")
+   artifact=(business_rel+"/"+path.relative_to(BDIR).as_posix()).strip("/")
+   artifacts=list(project.get("artifacts",[]))
+   if not any(x.get("path")==artifact for x in artifacts):artifacts.append({"path":artifact,"label":path.name})
+   studio_update(WORK,project["id"],{"artifacts":artifacts})
+   if project.get("stage") in ("idea","brief"):studio_move(WORK,project["id"],"research")
+   log("studio_project_auto_created",kind=kind,project=project.get("id"),title=title,artifact=artifact)
+  except Exception as e:log("studio_autonomy_error",kind=kind,error=str(e)[:220])
+ if not s.get("coding_project_id"):
+  try:
+   from coding_room import create_project as coding_create,list_projects as coding_list
+  except ModuleNotFoundError:
+   from worker.coding_room import create_project as coding_create,list_projects as coding_list
+  open_projects=[p for p in coding_list(WORK) if p.get("status") in ("queued","active")]
+  if not open_projects:
+   spec=plan["coding_product"]
+   try:
+    project=coding_create(WORK,spec["title"],spec["target_user"],spec["problem"],spec["brief"],spec["success_metric"])
+    log("coding_product_auto_selected",project=project.get("id"),title=project.get("title"),cycle=cycle)
+   except Exception as e:log("coding_room_autonomy_error",error=str(e)[:220])
+ try:
+  from computer_use import status as computer_status
+  from desktop_agent import create_task as desktop_create,run_task as desktop_run
+  desktop=computer_status(WORK);enabled=os.getenv("AI_HOUSE_COMPUTER_ROOM_AUTONOMY","1").strip().lower() not in ("0","false","no","off")
+  if enabled and desktop.get("configured_apps") and os.getenv("GEMINI_API_KEY") and int(s.get("computer_room_task_cycle",0) or 0)!=cycle:
+   mission=plan["computer"]["mission"]+"\nBusiness: "+str(business.get("name",""))+"\nAI-selected product: "+str(plan["coding_product"]["title"])+"\nTarget output folder: "+str((BDIR/"computer-room").resolve())+"\nConfigured app aliases: "+", ".join(desktop.get("configured_apps",[]))+"\nCreate and save one useful local draft. Do not publish, send, upload, purchase, delete, install, or change accounts/settings."
+   task=desktop_create(WORK,mission,max_steps=20);s["computer_room_task_id"]=task["id"];s["computer_room_task_cycle"]=cycle;s["room_missions"]["computer"]["status"]="running"
+   threading.Thread(target=desktop_run,args=(WORK,task["id"]),daemon=True,name="ai-house-computer-room-"+task["id"]).start()
+   log("computer_room_auto_mission_started",task=task["id"],cycle=cycle)
+  elif not desktop.get("configured_apps"):s["room_missions"]["computer"]["status"]="waiting_for_configured_apps"
+  elif not os.getenv("GEMINI_API_KEY"):s["room_missions"]["computer"]["status"]="waiting_for_gemini_vision_key"
+  elif not enabled:s["room_missions"]["computer"]["status"]="disabled_by_setting"
+  elif int(s.get("computer_room_task_cycle",0) or 0)==cycle:s["room_missions"]["computer"]["status"]="already_assigned"
+ except Exception as e:
+  s["room_missions"]["computer"]["status"]="not_started";log("computer_room_autonomy_error",error=str(e)[:220])
+ save(s);log("autonomous_rooms_planned",cycle=cycle,coding=plan["coding_product"]["title"],youtube=plan["youtube"]["title"],marketing=plan["marketing"]["title"])
+
 def business_decision_text(business):
  b=business if isinstance(business,dict) else {}
  def value(key,default="Not specified"):
@@ -1189,6 +1260,7 @@ def cycle(s):
    registry=load_rooms();registry.setdefault("past_businesses",[]).append(str(business.get("name","")));registry["past_businesses"]=registry["past_businesses"][-300:];save_rooms(registry)
   s.pop("discovery_retry_after",None)
   s["iteration"]=0;s["business_completed"]=False;s["roadmap"]=None;s["roadmap_replans"]=0;s["cycle"]=int(s.get("cycle",0))+1;save(s)
+  ensure_autonomous_room_projects(s)
   decision_file=BDIR/"BUSINESS_DECISION.txt"
   decision_file.write_text(business_decision_text(s["business"]),encoding="utf-8")
   legacy_decision=BDIR/"BUSINESS_DECISION.json"
