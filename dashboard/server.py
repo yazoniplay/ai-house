@@ -34,6 +34,7 @@ from channel_connectors import connection_status, gumroad_products, gumroad_crea
 from computer_use import ComputerUseError, execute as computer_execute, status as computer_status
 from approvals import list_requests as list_owner_approvals, answer as answer_owner_approval
 from desktop_agent import DesktopAgentError, create_task as create_desktop_task, run_task as run_desktop_task, resume_task as resume_desktop_task, list_tasks as list_desktop_tasks
+from coding_room import CodingRoomError, create_project as create_coding_project, list_projects as list_coding_projects, cancel_project as cancel_coding_project
 
 app = Flask(__name__)
 lock = threading.RLock()
@@ -745,6 +746,32 @@ def local_log():
 
 
 
+@app.get("/api/coding-room/projects")
+def coding_room_projects_api():
+    return jsonify(projects=list_coding_projects(WORKSPACE))
+
+
+@app.post("/api/coding-room/projects")
+def coding_room_create_project_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        project = create_coding_project(
+            WORKSPACE, body.get("title"), body.get("target_user"), body.get("problem"),
+            body.get("brief"), body.get("success_metric", ""),
+        )
+        return jsonify(project=project), 201
+    except CodingRoomError as exc:
+        return jsonify(error=str(exc)), 400
+
+
+@app.post("/api/coding-room/projects/<project_id>/cancel")
+def coding_room_cancel_project_api(project_id):
+    try:
+        return jsonify(project=cancel_coding_project(WORKSPACE, project_id))
+    except CodingRoomError as exc:
+        return jsonify(error=str(exc)), 400
+
+
 @app.get("/api/computer/tasks")
 def computer_tasks_api():
     return jsonify(tasks=list_desktop_tasks(WORKSPACE))
@@ -941,6 +968,11 @@ def studio_leader_review_api(approval_id):
 def studio_decide_approval_api(approval_id):
     return jsonify(error="Studio approvals are decided by the AI House Leader. Use the leader-review endpoint."), 403
 
+
+
+@app.get("/coding-room")
+def coding_room_page():
+    return send_from_directory(HERE, "coding_room.html")
 
 
 @app.get("/computer-room")
