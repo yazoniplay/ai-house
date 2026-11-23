@@ -49,7 +49,7 @@ if GM in ("llama-3.3-70b-versatile","llama-3.1-8b-instant"):GM="openai/gpt-oss-1
 if GFM in ("llama-3.1-8b-instant","llama-3.3-70b-versatile"):GFM="openai/gpt-oss-20b"
 HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507")
 NM=os.getenv("NVIDIA_MODEL","nvidia/nemotron-3-ultra-550b-a55b")
-NVIDIA_MODELS=[m.strip() for m in os.getenv("NVIDIA_MODELS","nvidia/nemotron-3-ultra-550b-a55b,z-ai/glm-5.3-flash,moonshotai/kimi-k3.1-pro").split(",") if m.strip()]
+NVIDIA_MODELS=[m.strip() for m in os.getenv("AI_HOUSE_NVIDIA_MODELS",os.getenv("NVIDIA_MODELS","nvidia/nemotron-3-ultra-550b-a55b,z-ai/glm-5.3-flash,moonshotai/kimi-k3.1-pro").split(",") if m.strip()]
 MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-v4.1-flash:free")
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
@@ -235,7 +235,7 @@ def raw(p,sys,ask,role):
    data=r.json();out=data["choices"][0]["message"].get("content") or ""
    if not out or not str(out).strip():raise RuntimeError(p+" empty reply")
    record_usage("openrouter",data.get("usage"))
-   log("model_call_ok",provider="openrouter",model=ORM,role=role);return out
+   log("model_call_ok",provider="openrouter",model=model_id,role=role);return out
   except Exception as e:
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
@@ -253,15 +253,15 @@ def raw(p,sys,ask,role):
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
- elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(configured_model_pool("groq_fast",GFM,"GROQ_FAST_MODELS")[0] if role=="fast" else configured_model_pool("groq",GM,"GROQ_MODELS")[0])
- elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",configured_model_pool("hf",HM,"HF_MODELS")[0]
- elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",configured_model_pool("tokenharbor",TM,"TOKEN_HARBOR_MODELS")[0]
- elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",configured_model_pool("sambanova",SNM,"SAMBANOVA_MODELS")[0]
+ elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(configured_model_pool("groq_fast",GFM,"AI_HOUSE_GROQ_FAST_MODELS")[0] if role=="fast" else configured_model_pool("groq",GM,"AI_HOUSE_GROQ_MODELS")[0])
+ elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",configured_model_pool("hf",HM,"AI_HOUSE_HF_MODELS")[0]
+ elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",configured_model_pool("tokenharbor",TM,"AI_HOUSE_TOKEN_HARBOR_MODELS")[0]
+ elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",configured_model_pool("sambanova",SNM,"AI_HOUSE_SAMBANOVA_MODELS")[0]
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
   worker_model=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite")
-  model_id=leader_model if role=="orchestrator" else worker_model
+  model_id=(configured_model_pool("gemini_leader",leader_model,"AI_HOUSE_GEMINI_LEADER_MODELS")[0] if role=="orchestrator" else configured_model_pool("gemini_worker",worker_model,"AI_HOUSE_GEMINI_WORKER_MODELS")[0])
   url=f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
   r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=55)
   if r.status_code>=400:raise RuntimeError(r.text[:220])
@@ -274,7 +274,7 @@ def raw(p,sys,ask,role):
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
  if p=="nvidia":
-  for nvidia_model in NVIDIA_MODELS:
+  for nvidia_model in configured_model_pool("nvidia",NM,"AI_HOUSE_NVIDIA_MODELS"):
    try:
     nvidia_payload={"model":nvidia_model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
     r=HTTP.post(url,headers={"Authorization":"Bearer "+N,"Content-Type":"application/json"},json=nvidia_payload,timeout=35)
