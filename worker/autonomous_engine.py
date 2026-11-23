@@ -63,11 +63,8 @@ TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
 OR=os.getenv("OPENROUTER_API_KEY","");ORM=os.getenv("OPENROUTER_MODEL","openrouter/free")
 SK=os.getenv("SAMBANOVA_API_KEY","");SNM=os.getenv("SAMBANOVA_MODEL","deepseek-ai/DeepSeek-V3.2")
-VG=os.getenv("AI_GATEWAY_API_KEY","");VGM=os.getenv("AI_GATEWAY_MODEL","openai/gpt-oss-120b");VGB=os.getenv("AI_GATEWAY_BASE_URL","https://ai-gateway.vercel.sh/v1").rstrip("/")
-ZK=os.getenv("ZAI_API_KEY","");ZM=os.getenv("ZAI_MODEL","glm-5.3-flash");ZB=os.getenv("ZAI_BASE_URL","https://api.z.ai/api/paas/v4").rstrip("/")
-SFK=os.getenv("SILICONFLOW_API_KEY","");SFM=os.getenv("SILICONFLOW_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507");SFB=os.getenv("SILICONFLOW_BASE_URL","https://api.siliconflow.com/v1").rstrip("/")
 EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"; SEARCH_PROVIDER_STATE=SD/"search-provider-state.json"
-PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0,"vercel":0.0,"zai":0.0,"siliconflow":0.0}
+PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0}
 PAID_PROVIDERS=set(x.strip() for x in os.getenv("AI_HOUSE_PAID_PROVIDERS","").split(",") if x.strip())
 SPENDBF=SD/"search-budget.json"
 def estimate_cost(provider,usage):
@@ -241,10 +238,10 @@ def ollama_chat(sys,ask):
  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
 PROVIDER_ROTATION={"orchestrator":0,"worker":0}
 def provider_order(role):
- has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK),"vercel":bool(VG),"zai":bool(ZK),"siliconflow":bool(SFK)}
+ has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK)}
  # Keep Gemini as the preferred primary, but rotate the backup order per role
  # so NVIDIA and the other configured providers are genuinely exercised on failures.
- base=["gemini","groq","nvidia","tokenharbor","hf","sambanova","openrouter","vercel","zai","siliconflow","ollama"]
+ base=["gemini","groq","nvidia","tokenharbor","hf","sambanova","openrouter","ollama"]
  available=[p for p in base if has[p]]
  primary=["gemini"] if "gemini" in available else []
  backups=[p for p in available if p not in primary]
@@ -295,13 +292,6 @@ def provider_model_catalog(provider):
    if response.status_code>=400:raise RuntimeError("OpenRouter model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
    OPENROUTER_FREE_MODELS[:]=openrouter_free_model_ids(rows)
-   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
-  elif provider in ("vercel","zai","siliconflow"):
-   key,base={"vercel":(VG,VGB),"zai":(ZK,ZB),"siliconflow":(SFK,SFB)}[provider]
-   if not key:return None
-   response=HTTP.get(base+"/models",headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},timeout=12)
-   if response.status_code>=400:raise RuntimeError(provider+" model catalog HTTP "+str(response.status_code))
-   rows=response.json().get("data",[])
    ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
   else:
    return None
@@ -364,9 +354,6 @@ def _raw_once(p,sys,ask,role,model_override=None):
  elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",model_override or configured_model_pool("hf",HM,"AI_HOUSE_HF_MODELS")[0]
  elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",model_override or configured_model_pool("tokenharbor",TM,"AI_HOUSE_TOKEN_HARBOR_MODELS")[0]
  elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",model_override or configured_model_pool("sambanova",SNM,"AI_HOUSE_SAMBANOVA_MODELS")[0]
- elif p=="vercel":key,url,model=VG,VGB+"/chat/completions",model_override or configured_model_pool("vercel",VGM,"AI_HOUSE_VERCEL_MODELS")[0]
- elif p=="zai":key,url,model=ZK,ZB+"/chat/completions",model_override or configured_model_pool("zai",ZM,"AI_HOUSE_ZAI_MODELS")[0]
- elif p=="siliconflow":key,url,model=SFK,SFB+"/chat/completions",model_override or configured_model_pool("siliconflow",SFM,"AI_HOUSE_SILICONFLOW_MODELS")[0]
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
@@ -426,9 +413,6 @@ def model_candidates(provider,role):
  elif provider=="tokenharbor":primary=TM;env_name="AI_HOUSE_TOKEN_HARBOR_MODELS"
  elif provider=="openrouter":primary=ORM;env_name="AI_HOUSE_OPENROUTER_MODELS"
  elif provider=="sambanova":primary=SNM;env_name="AI_HOUSE_SAMBANOVA_MODELS"
- elif provider=="vercel":primary=VGM;env_name="AI_HOUSE_VERCEL_MODELS"
- elif provider=="zai":primary=ZM;env_name="AI_HOUSE_ZAI_MODELS"
- elif provider=="siliconflow":primary=SFM;env_name="AI_HOUSE_SILICONFLOW_MODELS"
  elif provider=="ollama":primary=OM;env_name="AI_HOUSE_OLLAMA_MODELS"
  else:return []
  configured=route_model_pool(primary,NVIDIA_MODELS if provider=="nvidia" else os.getenv(env_name,""))
@@ -441,10 +425,7 @@ def model_candidates(provider,role):
   "groq":["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3-32b","meta-llama/llama-4-scout-17b-16e-instruct"],
   # OpenRouter's free router is a provider-level alias, followed by explicitly
   # catalog-verified model IDs so the router can still fail over if the free pool is down.
-  "openrouter":["openrouter/free","openrouter/auto","google/gemini-3.5-flash-lite","google/gemini-3.1-flash-lite","google/gemma-4-31b-it"],
-  "vercel":["openai/gpt-oss-120b","google/gemini-3.5-flash-lite","openai/gpt-oss-20b"],
-  "zai":["glm-5.3-flash","glm-5.3","glm-5.2","glm-5.1","glm-4.7","glm-4.6"],
-  "siliconflow":["Qwen/Qwen3-30B-A3B-Instruct-2507","deepseek-ai/DeepSeek-V3.2","Qwen/Qwen3-32B","Qwen/Qwen2.5-72B-Instruct"]
+  "openrouter":["openrouter/free","openrouter/auto","google/gemini-3.5-flash-lite","google/gemini-3.1-flash-lite","google/gemma-4-31b-it"]
  }
  if provider=="gemini":
   # Keep an explicitly custom model first, but migrate the old default worker model
@@ -476,7 +457,7 @@ def model_candidates(provider,role):
    # configured or paid catalog models. Paid slugs remain available as fallbacks.
    aliases={"openrouter/free","openrouter/auto"}
    candidates=[x for x in candidates if x in aliases]+provider_chat_model_pool(provider,catalog,candidates,OPENROUTER_FREE_MODELS)
-  elif provider in ("nvidia","groq","vercel","zai","siliconflow"):
+  elif provider in ("nvidia","groq"):
    candidates=provider_chat_model_pool(provider,catalog,candidates)
   else:
    candidates=filter_model_pool(candidates,catalog)
@@ -489,12 +470,12 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  defaults={"gemini":40,"nvidia":40,"openrouter":40,"groq":40,"vercel":40,"zai":40,"siliconflow":40}
-  env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS"}
+  defaults={"gemini":40,"nvidia":40,"openrouter":40,"groq":40}
+  env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS"}
   if p in defaults:max_attempts=max(1,min(50,int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(12,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","8"))))
- except Exception:max_attempts={"gemini":40,"nvidia":40,"openrouter":40,"groq":40,"vercel":40,"zai":40,"siliconflow":40}.get(p,8)
- if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow") and len(candidates)>max_attempts:
+ except Exception:max_attempts={"gemini":40,"nvidia":40,"openrouter":40,"groq":40}.get(p,8)
+ if p in ("gemini","nvidia","openrouter","groq") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
   # reach every eligible model instead of always truncating to the same prefix.
@@ -1610,7 +1591,7 @@ def write_daily_summary(registry):
 def notify(kind,text):
  try:
   safe=str(text)[:1800]
-  for secret in (G,H,M,N,T,TK,OK,OR,SK,VG,ZK,SFK,EX):
+  for secret in (G,H,M,N,T,TK,OK,OR,SK,EX):
    if secret:safe=safe.replace(secret,"[redacted]")
   enqueue_alert(WORK,kind,safe)
  except Exception:pass
@@ -1813,9 +1794,9 @@ def run_schedules(registry):
 
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
- if not any((G,H,M,N,TK,OK,OR,SK,VG,ZK,SFK)):print("Add at least one AI provider key to worker/.env (for example GEMINI_API_KEY, AI_GATEWAY_API_KEY, ZAI_API_KEY or SILICONFLOW_API_KEY)");return 2
+ if not any((G,H,M,N,TK,OK,OR,SK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
- log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,vercel_enabled=bool(VG),zai_enabled=bool(ZK),siliconflow_enabled=bool(SFK),exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS,active_hours=ACTIVE_HOURS,summary_time=SUMMARY_TIME,max_new_businesses_per_day=MAX_NEW_BUSINESSES_PER_DAY,business_budget_usd=BUSINESS_BUDGET_USD,business_budget_max_usd=BUSINESS_BUDGET_MAX_USD)
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS,active_hours=ACTIVE_HOURS,summary_time=SUMMARY_TIME,max_new_businesses_per_day=MAX_NEW_BUSINESSES_PER_DAY,business_budget_usd=BUSINESS_BUDGET_USD,business_budget_max_usd=BUSINESS_BUDGET_MAX_USD)
  print("Workspace:",WORK)
  registry=load_rooms()
  if not isinstance(registry.get("rooms"),list) or not registry["rooms"]:registry["rooms"]=[{"id":"room-001","name":"Room 1","state_file":str(SF),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}]
