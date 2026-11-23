@@ -1,4 +1,13 @@
-"""Normalize AI House's internally selected product and room missions."""
+"""Normalize autonomous room missions and department leadership."""
+ROOM_DEPARTMENTS={
+ "coding":{"department":"Product Engineering","semi_leader":"Engineering Lead","role":"Computer nerd / senior software engineer","responsibilities":["turn the selected business problem into a useful product","delegate coding, architecture, UX and QA tasks","request desktop execution when a configured app materially helps"]},
+ "studio":{"department":"Studio & Content","semi_leader":"Creative Producer","role":"Video producer and creative director","responsibilities":["own YouTube concept, script, visuals and finished video package","coordinate marketing assets with the Marketing Room","request Computer Room production work when an app is needed"]},
+ "marketing":{"department":"Marketing & Growth","semi_leader":"Marketing Specialist","role":"Growth and campaign specialist","responsibilities":["own positioning, campaign strategy and channel plans","create landing copy, social drafts and campaign assets","request Computer Room work for design, editing or production"]},
+ "computer":{"department":"Computer Room / Desktop Operations","semi_leader":"Desktop Operations Lead","role":"Computer nerd / desktop automation specialist","responsibilities":["execute immediate structured handoffs from other rooms","operate only configured app aliases in the AI House workspace","save tangible local deliverables and return completion evidence","pause for owner approval on risky actions"]}
+}
+def room_org_chart():
+ return {key:{"department":value["department"],"semi_leader":value["semi_leader"],"role":value["role"],"responsibilities":list(value["responsibilities"])} for key,value in ROOM_DEPARTMENTS.items()}
+
 def _text(value,fallback,limit=1200):
  value=" ".join(str(value or "").split()).strip()
  return (value or fallback)[:limit]
