@@ -584,15 +584,19 @@ def search_available():
 def search_retry_at():
  return search_provider_next_retry(SEARCH_PROVIDER_STATE,["tavily","exa"])
 def search(q,depth=None):
- if T and search_provider_ready(SEARCH_PROVIDER_STATE,"tavily") and search_allowed(SBF):
-  tav=tavily_search(q,depth=depth)
-  if tav:return tav
- ex=exa_search(q)
- if ex:log("search_fallback_exa",query=str(q)[:240],results=len(ex))
- if ex:return ex
- free=duckduckgo_search(q)
- if free:log("search_fallback_free",query=str(q)[:240],results=len(free))
- return free
+ out=[];seen=set();calls=[]
+ if T and search_provider_ready(SEARCH_PROVIDER_STATE,"tavily") and search_allowed(SBF):calls.append(("tavily",lambda:tavily_search(q,depth)))
+ if EX and search_provider_ready(SEARCH_PROVIDER_STATE,"exa") and exa_allowed():calls.append(("exa",lambda:exa_search(q)))
+ if os.getenv("AI_HOUSE_FREE_SEARCH","1").lower() not in ("0","false","no","off"):calls.append(("duckduckgo",lambda:duckduckgo_search(q)))
+ for provider,fn in calls:
+  try:items=fn() or []
+  except Exception as e:log("search_provider_call_error",provider=provider,error=str(e)[:160]);items=[]
+  added=0
+  for item in items:
+   u=str(item.get("url","")).strip()
+   if u and u not in seen:seen.add(u);out.append(item);added+=1
+  log("search_provider_result",provider=provider,query=str(q)[:150],results=len(items),unique_added=added)
+ return out
 def claim_numbers(text):
  nums=set()
  for m in re.finditer(r"\d[\d,]*(?:\.\d+)?",str(text)):
@@ -649,10 +653,18 @@ def opportunity():
   if not evidence or not key or key in past:continue
   validation_sources=" ".join(str(by_url.get(e.get("url"),{}).get("content","")) for e in evidence)
   if not numbers_supported(c.get("validation",""),validation_sources):
-   log("validation_number_mismatch",name=c.get("name"));continue
+   log("validation_number_mismatch",name=c.get("name"),action="keep_hypothesis")
+   c["validation"]="Generated validation included unsupported numeric claims. Treat this as an unvalidated hypothesis; verify customer demand before spending or publishing."
   c["evidence"]=evidence;c["sources"]=list(dict.fromkeys(e["url"] for e in evidence));valid.append(c)
  if not valid:return None
- set_activity("opportunity_selection","Strategist is scoring cited candidates.","strategist")
+ set_activity("opportunity_selection","Customer Researcher is challenging the shortlist before the Strategist decides.","customer_researcher")
+ try:
+  peer=obj(ask("customer_researcher",'Review these candidates independently. Pick the index with clearest customer pain and cheapest validation test; use only supplied source evidence. Return JSON {"candidate_index":0,"concerns":"..."}.\\n'+json.dumps(valid,ensure_ascii=False)[:9000]))
+  peer_index=int(peer.get("candidate_index",-1))
+  log("discovery_peer_review",candidate=valid[peer_index].get("name") if 0<=peer_index<len(valid) else None,concerns=str(peer.get("concerns",""))[:350])
+ except Exception as peer_error:
+  peer_index=-1;log("discovery_peer_review_error",error=str(peer_error)[:160])
+ set_activity("opportunity_selection","Strategist is scoring cited candidates with the independent customer review.","strategist")
  try:
   choice=obj(ask("strategist",'Score every candidate from 0 to 10 for real demand evidence, low startup cost, and buildability, using only the cited evidence. Then pick the best. Return JSON {"scores":[{"index":0,"score":0,"reason":"..."}],"candidate_index":0}.\n'+json.dumps(valid,ensure_ascii=False)[:14000]))
   idx=int(choice.get("candidate_index",0))
@@ -661,12 +673,13 @@ def opportunity():
   log("discovery_selection_error",error=str(e)[:180]);return None
  score=next((int(x.get("score",0)) for x in choice.get("scores",[]) if int(x.get("index",-1))==idx),0)
  domains={re.sub(r"^https?://(www\.)?","",u).split("/")[0] for u in selected.get("sources",[]) if u}
- if score<7 or not selected.get("sources"):
-  log("discovery_rejected_weak",name=selected.get("name"),score=score,domains=len(domains),sources=len(selected.get("sources",[])));return None
- if len(domains)<2:
+ if not selected.get("sources"):
+  log("discovery_rejected_no_sources",name=selected.get("name"));return None
+ if score<7 or len(domains)<2 or len(selected.get("sources",[]))<2:
   selected["evidence_confidence"]="low"
-  selected["validation"]=str(selected.get("validation",""))+" Evidence is concentrated in one domain; treat this as a hypothesis and independently validate demand before spending money or publishing."
-  log("discovery_single_domain_accepted",name=selected.get("name"),score=score,sources=len(selected.get("sources",[])),domains=len(domains))
+  selected["validation"]="Low-confidence source-linked hypothesis. First deliverable must validate customer pain with real potential customers. No spending, outreach, or publishing without owner approval."
+  selected["mvp"]="Validation-first: create a small mockup/prototype and customer interview/test plan; do not assume demand or claim revenue."
+  log("discovery_low_confidence_selected",name=selected.get("name"),score=score,sources=len(selected.get("sources",[])),domains=len(domains))
  key=re.sub(r"[^a-z0-9]+"," ",str(selected.get("name","")).lower()).strip()
  if not key or key in past:return None
  selected["score"]=score
@@ -1340,16 +1353,7 @@ def cycle(s):
   ensure_autonomous_room_projects(s)
  if s.get("business_completed"):learn_from_business(s);return
  if not s.get("business") or s.get("business_completed"):
-  house_retry=global_discovery_retry()
-  if house_retry:
-   try:
-    retry=datetime.fromisoformat(house_retry.replace("Z","+00:00"))
-    if datetime.now(timezone.utc)<retry:
-     set_activity("discovery_wait","House-wide discovery cooldown until "+retry.isoformat()+"; all rooms will wait together.","researcher")
-     log("discovery_wait_global",retry_after=house_retry)
-     return
-   except Exception:pass
-  if s.get("discovery_retry_after"):
+  # Ignore legacy house-wide discovery cooldowns; one failed room must not freeze the house.\n  if s.get("discovery_retry_after"):
    try:
     retry=datetime.fromisoformat(str(s["discovery_retry_after"]).replace("Z","+00:00"))
     if datetime.now(timezone.utc)<retry:
@@ -1376,12 +1380,11 @@ def cycle(s):
     log("daily_business_limit_reached",limit=MAX_NEW_BUSINESSES_PER_DAY);notify("daily_limit","The daily new-business limit was reached.");return
    business=opportunity()
    if business is None:
-    retry_at=search_retry_at() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
+    retry_at=search_retry_at() if not search_available() else datetime.now(timezone.utc)+timedelta(seconds=90)
     s["discovery_retry_after"]=retry_at.isoformat()
-    set_global_discovery_retry(retry_at.isoformat())
-    wait_message="Paid search providers are paused by saved quota/credit cooldowns. The no-key fallback was also attempted but did not return enough usable evidence; retrying at "+retry_at.isoformat()+"." if not search_available() else "Tavily, Exa, and the no-key DuckDuckGo fallback were attempted, but none produced enough source-backed evidence for a responsible business selection. Discovery will retry in 30 minutes."
+    wait_message="Search providers are cooling down; this room retries when available." if not search_available() else "Research did not find a cited hypothesis after the search retry. Retrying in 90 seconds; other rooms are not blocked."
     s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
-    save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
+    save(s);log("discovery_wait",seconds=max(0,int((retry_at-datetime.now(timezone.utc)).total_seconds())),retry_after=s["discovery_retry_after"],global_block=False);return
    folder=f"businesses/{len(load_rooms().get('past_businesses',[]))+1:03d}-{slugify(business.get('name',''))}"
    s.pop("coding_project_id",None)
   clear_global_discovery_retry()
