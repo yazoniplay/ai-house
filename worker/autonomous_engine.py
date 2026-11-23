@@ -1383,12 +1383,12 @@ def cycle(s):
   ensure_autonomous_room_projects(s)
  if s.get("business_completed"):learn_from_business(s);return
  if not s.get("business") or s.get("business_completed"):
-  # Ignore legacy house-wide discovery cooldowns; one failed room must not freeze the house.\n  if s.get("discovery_retry_after"):
+  # Ignore legacy house-wide discovery cooldowns; one failed room must not freeze the house.
+  if s.get("discovery_retry_after"):
    try:
     retry=datetime.fromisoformat(str(s["discovery_retry_after"]).replace("Z","+00:00"))
     if datetime.now(timezone.utc)<retry:
-     set_global_discovery_retry(retry.isoformat())
-     set_activity("discovery_wait","Waiting until "+retry.isoformat()+" before searching for evidence again.","researcher")
+     set_activity("discovery_wait","This room is briefly cooling down; other rooms remain free to research.","researcher")
      return
    except Exception:pass
   set_activity("market_research","The house is starting a fresh business cycle.")
