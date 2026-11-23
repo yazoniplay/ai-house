@@ -256,13 +256,14 @@ def raw(p,sys,ask,role):
  if p=="ollama":
   if not OK:raise RuntimeError("OLLAMA_API_KEY missing")
   if not OM:raise RuntimeError("OLLAMA_MODEL not configured")
-  r=HTTP.post("https://ollama.com/api/chat",headers={"Authorization":"Bearer "+OK,"Content-Type":"application/json"},json={"model":OM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"stream":False,"format":"json"},timeout=60)
+  model_id=configured_model_pool("ollama",OM,"AI_HOUSE_OLLAMA_MODELS")[0]
+  r=HTTP.post("https://ollama.com/api/chat",headers={"Authorization":"Bearer "+OK,"Content-Type":"application/json"},json={"model":model_id,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"stream":False,"format":"json"},timeout=60)
   if r.status_code>=400:raise RuntimeError("ollama "+str(r.status_code)+": "+r.text[:220])
   try:
    data=r.json();out=data["message"]["content"]
    if not out or not str(out).strip():raise RuntimeError(p+" empty reply")
    record_usage("ollama",data.get("usage"))
-   log("model_call_ok",provider="ollama",model=OM,role=role);return out
+   log("model_call_ok",provider="ollama",model=model_id,role=role);return out
   except Exception as e:
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
