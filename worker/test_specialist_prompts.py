@@ -1,5 +1,5 @@
 import unittest
-from specialist_prompts import PLAYBOOKS, UNIVERSAL, specialist_system_prompt
+from specialist_prompts import PLAYBOOKS, UNIVERSAL, PROMPT_VERSION, DELIVERY_CONTRACT, CONSULTATION_PROTOCOL, specialist_system_prompt
 import autonomous_engine as engine
 
 class SpecialistPromptTests(unittest.TestCase):
@@ -13,6 +13,15 @@ class SpecialistPromptTests(unittest.TestCase):
                 self.assertIn(UNIVERSAL,prompt)
                 self.assertIn(playbook,prompt)
                 self.assertIn("SPECIALIST OPERATING BRIEF",prompt)
+
+    def test_prompts_are_versioned_and_include_delivery_contract(self):
+        self.assertEqual(PROMPT_VERSION, "2.0.0")
+        for role in PLAYBOOKS:
+            prompt=specialist_system_prompt(role)
+            self.assertIn(DELIVERY_CONTRACT,prompt)
+            self.assertIn("evidence ledger",prompt.lower())
+        self.assertIn(CONSULTATION_PROTOCOL,specialist_system_prompt("orchestrator"))
+        self.assertNotIn(CONSULTATION_PROTOCOL,specialist_system_prompt("builder"))
 
     def test_playbooks_preserve_truthfulness_and_external_action_boundaries(self):
         prompt=specialist_system_prompt("sales_drafter").lower()
