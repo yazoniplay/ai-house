@@ -134,19 +134,10 @@ def local_active_now(window):
 
 
 def read_events(limit=100):
-    if not EVENT_FILE.exists():
-        return []
-    try:
-        lines = EVENT_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-limit:]
-        events = []
-        for line in lines:
-            try:
-                events.append(json.loads(line))
-            except Exception:
-                continue
-        return list(reversed(events))
-    except Exception:
-        return []
+    # Read only the recent tail. The event log can grow for weeks; reading the
+    # entire JSONL file on every dashboard poll made the initial status request
+    # appear to hang on larger workspaces.
+    return list(reversed(read_event_tail(limit)))
 
 
 def pid_is_running(pid):
@@ -802,7 +793,7 @@ def local_state():
             "experiments": memory.get("experiments", [])[-20:],
             "updated_at": memory.get("updated_at"),
         },
-        events=[event for event in read_events(1000) if str(event.get('room', 'room-001')) == room_id][-100:],
+        events=[event for event in read_event_tail(1000) if str(event.get('room', 'room-001')) == room_id][-100:],
         artifacts=artifacts,
         workspace=str(WORKSPACE),
     )
