@@ -5,15 +5,16 @@ small action at a time, verifies the next screen, and pauses on owner approvals.
 """
 import json
 import os
+import sys
 import secrets
 import time
 from pathlib import Path
 import httpx
 
-try:
-    from worker.computer_use import execute, ComputerUseError
-except ModuleNotFoundError:
-    from computer_use import execute, ComputerUseError
+WORKER_PATH = Path(__file__).resolve().parent
+if str(WORKER_PATH) not in sys.path:
+    sys.path.insert(0, str(WORKER_PATH))
+from computer_use import execute, ComputerUseError
 
 API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -163,10 +164,7 @@ def resume_task(workspace, task_id):
     if data.get("status") != "waiting_approval":
         raise DesktopAgentError("Desktop task is not waiting for approval")
     approval_id = data.get("approval_id")
-    try:
-        from worker.approvals import get_answer
-    except ModuleNotFoundError:
-        from approvals import get_answer
+    from approvals import get_answer
     choice = get_answer(workspace, approval_id)
     if choice is None:
         return data
