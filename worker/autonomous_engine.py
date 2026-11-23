@@ -35,6 +35,8 @@ MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-v4.1-flash:free")
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
 OR=os.getenv("OPENROUTER_API_KEY","");ORM=os.getenv("OPENROUTER_MODEL","openrouter/free")
+SK=os.getenv("SAMBANOVA_API_KEY","");SNM=os.getenv("SAMBANOVA_MODEL","deepseek-ai/DeepSeek-V3.2")
+EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"
 ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","architect":"Product architect. Break the business goal into a coherent MVP architecture and acceptance criteria.","builder":"Senior engineer. Return complete functional files, not TODOs.","growth":"Ethical growth strategist. Draft truthful positioning, organic acquisition and customer feedback assets; no spam.","finance":"Bootstrapped finance analyst. Estimate pricing and unit economics transparently; label every assumption, never invent actual revenue.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness.","orchestrator":"Autonomous leader/orchestrator. Approve quality, reject unsafe actions, and return concrete improvement instructions.",
 "copywriter":"Direct-response copywriter. Write clear, truthful sales copy, headlines, and product descriptions. Never invent testimonials, numbers, or guarantees.",
 "designer":"Product and brand designer. Produce layouts, specifications, and HTML/CSS mockups as files. You cannot render images; describe visuals precisely in files.",
@@ -99,10 +101,10 @@ def ollama_chat(sys,ask):
  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
 WORKER_ROTATION=[0]
 def provider_order(role):
- has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR)}
- if role=="orchestrator":order=["gemini","nvidia","groq","tokenharbor","openrouter","hf"]
+ has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK)}
+ if role=="orchestrator":order=["gemini","nvidia","groq","tokenharbor","openrouter","sambanova","hf"]
  else:
-  base=["nvidia","groq","tokenharbor","gemini","hf","openrouter"]
+  base=["nvidia","groq","tokenharbor","gemini","hf","openrouter","sambanova"]
   i=WORKER_ROTATION[0]%len(base);WORKER_ROTATION[0]+=1
   order=base[i:]+base[:i]
  return [p for p in order if has[p]]
@@ -121,6 +123,7 @@ def raw(p,sys,ask,role):
  elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(GFM if role=="fast" else GM)
  elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",HM
  elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",TM
+ elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",SNM
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
@@ -249,7 +252,33 @@ def task_search_depth(t,role):
  if chosen=="advanced" and search_credits_left()-2<SEARCH_ADVANCED_RESERVE:
   log("search_downgraded",task=t.get("id"),reason="advanced_reserve_protected");chosen="basic"
  return chosen
-def search(q,depth=None):
+def exa_monthly_limit():
+ return int(os.getenv("AI_HOUSE_EXA_MONTHLY_LIMIT","900"))
+def _exa_budget_data():
+ month=datetime.now(timezone.utc).date().isoformat()[:7]
+ try:data=json.loads(EBF.read_text(encoding="utf-8"))
+ except Exception:data={}
+ if data.get("month")!=month:data={"month":month,"count":0}
+ return data
+def exa_allowed():
+ return int(_exa_budget_data().get("count",0))<exa_monthly_limit()
+def exa_record():
+ data=_exa_budget_data();data["count"]=int(data.get("count",0))+1
+ EBF.parent.mkdir(parents=True,exist_ok=True);EBF.write_text(json.dumps(data),encoding="utf-8")
+def exa_search(q):
+ if not EX:return []
+ if not exa_allowed():
+  log("exa_budget_reached",monthly_limit=exa_monthly_limit());return []
+ exa_record()
+ try:
+  r=HTTP.post("https://api.exa.ai/search",headers={"x-api-key":EX,"Content-Type":"application/json"},json={"query":str(q)[:300],"numResults":5,"contents":{"text":{"maxCharacters":700}}},timeout=30)
+  if r.status_code>=400:
+   log("exa_error",query=str(q)[:240],status=r.status_code,error=r.text[:180]);return []
+  data=r.json();items=data.get("results") or (data.get("data") or {}).get("results") or []
+  return [{"title":x.get("title",""),"url":x.get("url",""),"content":str(x.get("text") or x.get("highlights") or "")[:700],"published_date":x.get("publishedDate")} for x in items if isinstance(x,dict) and x.get("url")]
+ except Exception as e:
+  log("exa_error",query=str(q)[:240],error=str(e)[:180]);return []
+def tavily_search(q,depth=None):
  if not T:return []
  depth=(depth or SEARCH_DEPTH).lower()
  if depth not in ("basic","advanced"):depth="basic"
@@ -264,6 +293,12 @@ def search(q,depth=None):
   return [{"title":x.get("title",""),"url":x.get("url",""),"content":x.get("content","")[:700],"published_date":x.get("published_date") or x.get("published") or x.get("date")} for x in r.json().get("results",[]) if x.get("url")]
  except Exception as e:
   log("tavily_error",query=str(q)[:240],error=str(e)[:180]);return []
+def search(q,depth=None):
+ results=tavily_search(q,depth=depth) if T else []
+ if results:return results
+ fallback=exa_search(q)
+ if fallback:log("search_fallback_exa",query=str(q)[:240],results=len(fallback))
+ return fallback
 def opportunity():
  set_activity("market_research","Searching Tavily for evidence-backed business opportunities.","researcher")
  past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in state().get("past_businesses",[])}
@@ -623,9 +658,9 @@ def cycle(s):
  build(s)
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
- if not any((G,H,M,N,TK,OK,OR)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
+ if not any((G,H,M,N,TK,OK,OR,SK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
- log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T))
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX))
  print("Workspace:",WORK);s=state()
  if s.get("business_dir"):set_business_dir(s["business_dir"])
  recovered=[]
