@@ -245,7 +245,7 @@ def configured_model_pool(provider,default_model,env_name):
  ordered=pool[index:]+pool[:index]
  log("model_pool_selected",provider=provider,model=ordered[0],pool_size=len(pool),rotation=index)
  return ordered
-def _raw_once(p,sys,ask,role):
+def _raw_once(p,sys,ask,role,model_override=None):
  def record_usage(provider,usage):
   try:record_spend(SPENDBF,estimate_cost(provider,usage))
   except Exception as spend_error:
@@ -255,7 +255,7 @@ def _raw_once(p,sys,ask,role):
   except Exception:pass
  if p=="openrouter":
   if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
-  model_id=configured_model_pool("openrouter",ORM,"AI_HOUSE_OPENROUTER_MODELS")[0]
+  model_id=model_override or configured_model_pool("openrouter",ORM,"AI_HOUSE_OPENROUTER_MODELS")[0]
   r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":model_id,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
   if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
   try:
@@ -269,7 +269,7 @@ def _raw_once(p,sys,ask,role):
  if p=="ollama":
   if not OK:raise RuntimeError("OLLAMA_API_KEY missing")
   if not OM:raise RuntimeError("OLLAMA_MODEL not configured")
-  model_id=configured_model_pool("ollama",OM,"AI_HOUSE_OLLAMA_MODELS")[0]
+  model_id=model_override or configured_model_pool("ollama",OM,"AI_HOUSE_OLLAMA_MODELS")[0]
   r=HTTP.post("https://ollama.com/api/chat",headers={"Authorization":"Bearer "+OK,"Content-Type":"application/json"},json={"model":model_id,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"stream":False,"format":"json"},timeout=60)
   if r.status_code>=400:raise RuntimeError("ollama "+str(r.status_code)+": "+r.text[:220])
   try:
@@ -281,15 +281,15 @@ def _raw_once(p,sys,ask,role):
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
- elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(configured_model_pool("groq_fast",GFM,"AI_HOUSE_GROQ_FAST_MODELS")[0] if role=="fast" else configured_model_pool("groq",GM,"AI_HOUSE_GROQ_MODELS")[0])
- elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",configured_model_pool("hf",HM,"AI_HOUSE_HF_MODELS")[0]
- elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",configured_model_pool("tokenharbor",TM,"AI_HOUSE_TOKEN_HARBOR_MODELS")[0]
- elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",configured_model_pool("sambanova",SNM,"AI_HOUSE_SAMBANOVA_MODELS")[0]
+ elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(model_override or (configured_model_pool("groq_fast",GFM,"AI_HOUSE_GROQ_FAST_MODELS")[0] if role=="fast" else configured_model_pool("groq",GM,"AI_HOUSE_GROQ_MODELS")[0]))
+ elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",model_override or configured_model_pool("hf",HM,"AI_HOUSE_HF_MODELS")[0]
+ elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",model_override or configured_model_pool("tokenharbor",TM,"AI_HOUSE_TOKEN_HARBOR_MODELS")[0]
+ elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",model_override or configured_model_pool("sambanova",SNM,"AI_HOUSE_SAMBANOVA_MODELS")[0]
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
   worker_model=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite")
-  model_id=(configured_model_pool("gemini_leader",leader_model,"AI_HOUSE_GEMINI_LEADER_MODELS")[0] if role=="orchestrator" else configured_model_pool("gemini_worker",worker_model,"AI_HOUSE_GEMINI_WORKER_MODELS")[0])
+  model_id=model_override or (configured_model_pool("gemini_leader",leader_model,"AI_HOUSE_GEMINI_LEADER_MODELS")[0] if role=="orchestrator" else configured_model_pool("gemini_worker",worker_model,"AI_HOUSE_GEMINI_WORKER_MODELS")[0])
   url=f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
   r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=55)
   if r.status_code>=400:raise RuntimeError(r.text[:220])
@@ -301,26 +301,7 @@ def _raw_once(p,sys,ask,role):
   except Exception as e:
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
- if p=="nvidia":
-  nvidia_last_error=None
-  for nvidia_model in configured_model_pool("nvidia",NM,"AI_HOUSE_NVIDIA_MODELS"):
-   try:
-    nvidia_payload={"model":nvidia_model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
-    r=HTTP.post(url,headers={"Authorization":"Bearer "+N,"Content-Type":"application/json"},json=nvidia_payload,timeout=35)
-    if r.status_code>=400:raise RuntimeError("HTTP "+str(r.status_code)+": "+r.text[:180])
-    try:data=r.json();out=data["choices"][0]["message"].get("content","")
-    except Exception as decode_error:raise RuntimeError("response could not be decoded: "+str(decode_error)[:120])
-    if not out or not str(out).strip():raise RuntimeError("empty reply")
-    record_usage("nvidia",data.get("usage"))
-    log("model_call_ok",provider="nvidia",model=nvidia_model,role=role);return out
-   except Exception as nvidia_error:
-    nvidia_last_error=nvidia_error
-    log("nvidia_model_failed",model=nvidia_model,role=role,error=str(nvidia_error)[:160])
-    if provider_cooldown_seconds("nvidia",nvidia_error) and not is_model_specific_error(nvidia_error):
-     log("nvidia_provider_exhausted",role=role,error=str(nvidia_error)[:180])
-     break
-  if nvidia_last_error:raise RuntimeError("nvidia models exhausted: "+str(nvidia_last_error)[:220])
-  raise RuntimeError("nvidia: all models failed")
+ model=model_override or model
  if not key:raise RuntimeError(p+" key missing")
  payload={"model":model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
  if p=="groq":
@@ -365,21 +346,28 @@ def model_candidates(provider,role):
  elif provider=="sambanova":primary=SNM;env_name="AI_HOUSE_SAMBANOVA_MODELS"
  elif provider=="ollama":primary=OM;env_name="AI_HOUSE_OLLAMA_MODELS"
  else:return []
- return route_model_pool(primary,os.getenv(env_name,""))
+ configured=route_model_pool(primary,os.getenv(env_name,""))
+ defaults={
+  "nvidia":["nvidia/nemotron-3-super-120b-a12b","nvidia/nemotron-3.5-lightning-30b-a3b","z-ai/glm-5.3-flash","openai/gpt-oss-20b","moonshotai/kimi-k3"],
+  "gemini":["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.1-flash-lite"],
+  "groq":["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
+ }
+ return list(dict.fromkeys(configured+defaults.get(provider,[])))
 def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
- # NVIDIA already tests its entire configured catalogue in one call.
- attempts=1 if p=="nvidia" else max(1,len(candidates))
+ if not candidates:raise RuntimeError(p+" has no configured model")
  last_error=None
- for attempt in range(attempts):
+ for index,candidate in enumerate(candidates,1):
   try:
-   return _raw_once(p,sys,ask,role)
+   log("model_attempt_started",provider=p,model=candidate,role=role,attempt=index,total=len(candidates))
+   return _raw_once(p,sys,ask,role,candidate)
   except Exception as error:
-   last_error=error
-   if not is_model_specific_error(error):
-    raise
-   log("model_specific_fallback",provider=p,role=role,attempt=attempt+1,total=attempts,error=str(error)[:180])
- if last_error:raise last_error
+   last_error=error;message=str(error).lower()
+   fatal=any(token in message for token in ("401","403","402","invalid api key","authentication failed","unauthorized","permission denied","insufficient credits","billing limit","payment required"))
+   log("model_attempt_failed",provider=p,model=candidate,role=role,attempt=index,total=len(candidates),provider_fatal=fatal,error=str(error)[:180])
+   if fatal:break
+   if index<len(candidates):log("model_fallback_next",provider=p,failed_model=candidate,next_model=candidates[index],role=role)
+ if last_error:raise RuntimeError(p+" models exhausted after "+str(index)+" attempts: "+str(last_error)[:220])
  raise RuntimeError(p+" has no configured model")
 def groq_fast_review(role,task,output,checks):
  # Lightweight triage still routes across every configured provider; quota on Groq must not disable this review.
