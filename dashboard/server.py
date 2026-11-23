@@ -696,6 +696,17 @@ def outbox_file_api():
 
 
 
+@app.get("/api/outbox/download")
+def outbox_download_api():
+    relative_path = request.args.get("path", "")
+    candidate = outbox_path(relative_path)
+    if candidate is None:
+        return jsonify(error="Path must identify a file inside a business reports, build, or drafts folder."), 400
+    if not candidate.is_file():
+        return jsonify(error="Outbox file not found."), 404
+    return send_file(candidate, as_attachment=True, download_name=candidate.name, conditional=True)
+
+
 @app.get("/api/rooms")
 def rooms_api():
     registry = room_registry()
