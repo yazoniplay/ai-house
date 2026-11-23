@@ -81,7 +81,8 @@ def is_unavailable_model_error(error):
     return any(token in message for token in (
         "410","gone","end of life","reached its end of life","retired",
         "model_not_found","model not found","unknown model","unsupported model",
-        "404","does not exist","no such model"
+        "404","does not exist","no such model", "developer instruction is not enabled",
+        "not enabled for models", "unsupported developer instruction"
     ))
 
 def cooldown_seconds(error, quota=900, billing=86400, config=3600, timeout=60, server=90):
