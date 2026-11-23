@@ -89,7 +89,7 @@ def _model_step(goal, history, screenshot_b64):
     )
     payload = {"contents": [{"parts": [
         {"text": prompt},
-        {"inline_data": {"mime_type": "image/png", "data": screenshot_b64}},
+        {"inlineData": {"mimeType": "image/png", "data": screenshot_b64}},
     ]}], "generationConfig": {"responseMimeType": "application/json", "temperature": 0.15}}
     response = httpx.post(API.format(model=model), params={"key": key}, json=payload, timeout=90)
     if response.is_error:
