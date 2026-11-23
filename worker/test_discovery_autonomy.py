@@ -46,21 +46,25 @@ class DiscoverySearchTests(unittest.TestCase):
     def test_gateway_chat_requests_use_their_own_keys_and_endpoints(self):
         from unittest.mock import Mock
         response=Mock(status_code=200)
-        response.json.return_value={"choices":[{"message":{"content":"{\"ok\":true}"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}
+        response.json.return_value={"choices":[{"message":{"content":"{\"ok\":true}"}}],"usage":{"prompt_tokens":10,"completion_tokens":5,"cost_usd":0.002}}
         cases=[
             ("orcarouter","ORCAROUTER_API_KEY","https://api.orcarouter.ai/v1/chat/completions","orca-key"),
             ("bazaarlink","BAZAARLINK_API_KEY","https://api.bazaarlink.ai/v1/chat/completions","bazaar-key"),
         ]
         for provider,env_name,url,key in cases:
             with self.subTest(provider=provider), patch.object(engine,"HTTP") as http, \
-                 patch.object(engine,"record_spend"), patch.object(engine,"record_action"), patch.object(engine,"log"):
+                 patch.object(engine,"record_spend") as spend, patch.object(engine,"record_action") as action, patch.object(engine,"log"):
                 http.post.return_value=response
                 output=engine._raw_once(provider,"system","prompt","orchestrator","provider/model")
                 self.assertEqual(output,'{"ok":true}')
                 args=http.post.call_args
                 self.assertEqual(args.args[0],url)
                 self.assertEqual(args.kwargs["headers"]["Authorization"],"Bearer "+key)
+                if provider=="orcarouter":
+                    self.assertEqual(args.kwargs["headers"]["X-OrcaRouter-Include-Cost"],"true")
                 self.assertEqual(args.kwargs["json"]["model"],"provider/model")
+                spend.assert_called_once_with(engine.SPENDBF,0.002)
+                self.assertEqual(action.call_args.kwargs["cost_usd"],0.002)
 
     def test_gemini_catalog_attempts_are_capped_even_when_env_requests_40(self):
         models=["model-"+str(index) for index in range(34)]
