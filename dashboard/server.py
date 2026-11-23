@@ -161,9 +161,16 @@ def read_jsonl_tail(path, limit=150, max_bytes=8 * 1024 * 1024):
         return []
 
 
-def jsonl_tail_truncated(path, max_bytes=8 * 1024 * 1024):
+def jsonl_tail_truncated(path, max_bytes=8 * 1024 * 1024, max_lines=12000):
     try:
-        return path.exists() and path.stat().st_size > max_bytes
+        if not path.exists():
+            return False
+        size = path.stat().st_size
+        if size > max_bytes:
+            return True
+        with path.open("rb") as handle:
+            data = handle.read(max_bytes)
+        return data.count(b"\\n") > max_lines
     except OSError:
         return False
 
