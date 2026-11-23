@@ -995,6 +995,59 @@ def learn_from_business(s):
  s["learning_done_for"]=s.get("cycle");save(s)
  (BDIR/"LEADER_MEMORY.json").write_text(json.dumps({"north_face_file":os.path.relpath(SD/"north_face.json",BDIR),"lessons":s["lessons"],"postmortem":s["last_business_postmortem"],"updated_at":datetime.now(timezone.utc).isoformat()},indent=2,ensure_ascii=False),encoding="utf-8")
  log("north_face_business_postmortem",business=s.get("business",{}).get("name"),decision=outcome.get("decision"),lessons=len(postmortem["lessons"]))
+def business_decision_text(business):
+ b=business if isinstance(business,dict) else {}
+ def value(key,default="Not specified"):
+  item=b.get(key,default)
+  if isinstance(item,(list,dict)):return json.dumps(item,ensure_ascii=False,indent=2)
+  return str(item if item not in (None,"") else default)
+ sources=b.get("sources",[])
+ if not isinstance(sources,list):sources=[sources]
+ alternatives=b.get("alternatives",b.get("rejected_alternatives",[]))
+ if not isinstance(alternatives,list):alternatives=[alternatives]
+ risks=b.get("risks",[])
+ if not isinstance(risks,list):risks=[risks]
+ lines=[
+  "AI HOUSE — BUSINESS DECISION",
+  "="*72,
+  "",
+  "Decision: SELECTED FOR VALIDATION (not yet proven successful)",
+  "Business: "+value("name"),
+  "Target customer: "+value("customer"),
+  "",
+  "Customer problem",
+  "--------------",
+  value("problem"),
+  "",
+  "Proposed solution",
+  "-----------------",
+  value("solution"),
+  "",
+  "Market validation / evidence",
+  "----------------------------",
+  value("validation"),
+  "",
+  "Revenue model",
+  "-------------",
+  value("revenue_model"),
+  "",
+  "Selection rationale",
+  "-------------------",
+  "Opportunity score: "+value("score"),
+  "Owner success metric: "+value("owner_success_metric"),
+  "Reasoning: "+value("rationale",value("validation")),
+  "",
+  "Alternatives considered",
+  "-----------------------",
+ ]
+ lines.extend(["- "+str(x) for x in alternatives] if alternatives else ["- No explicit alternatives were supplied in the research output."])
+ lines.extend(["","Risks and open assumptions","--------------------------"])
+ lines.extend(["- "+str(x) for x in risks] if risks else ["- Validate demand, willingness to pay, delivery cost, and acquisition before treating this as a proven business."])
+ lines.extend(["","Sources","-------"])
+ lines.extend(["- "+str(x) for x in sources] if sources else ["- No source URLs recorded; treat this as an owner brief or unverified hypothesis."])
+ lines.extend(["","Decision status","---------------","Selected to test. This is not a claim of revenue, customer demand, or business success.","",""])
+ return "\\n".join(lines)
+
 def cycle(s):
  BDIR.mkdir(parents=True,exist_ok=True)
  if s.get("business_completed"):learn_from_business(s);return
@@ -1042,8 +1095,13 @@ def cycle(s):
    registry=load_rooms();registry.setdefault("past_businesses",[]).append(str(business.get("name","")));registry["past_businesses"]=registry["past_businesses"][-300:];save_rooms(registry)
   s.pop("discovery_retry_after",None)
   s["iteration"]=0;s["business_completed"]=False;s["roadmap"]=None;s["roadmap_replans"]=0;s["cycle"]=int(s.get("cycle",0))+1;save(s)
-  (BDIR/"BUSINESS_DECISION.json").write_text(json.dumps(s["business"],indent=2,ensure_ascii=False),encoding="utf-8")
-  log("artifact_created",path=str(Path(s["business_dir"])/"BUSINESS_DECISION.json"),bytes=(BDIR/"BUSINESS_DECISION.json").stat().st_size)
+  decision_file=BDIR/"BUSINESS_DECISION.txt"
+  decision_file.write_text(business_decision_text(s["business"]),encoding="utf-8")
+  log("artifact_created",path=str(Path(s["business_dir"])/"BUSINESS_DECISION.txt"),bytes=decision_file.stat().st_size)
+  try:
+   business=s["business"]
+   north_face_record_decision(SD/"north_face.json",{"id":"business-selection-"+str(s.get("cycle")),"title":"Business selection: "+str(business.get("name","")),"decision":"Select this opportunity for validation; do not treat it as proven success.","goal":str(business.get("problem",""))[:700],"rationale":str(business.get("validation",business.get("rationale","")))[:1200],"alternatives":business.get("alternatives",business.get("rejected_alternatives",[])),"expected_outcome":"Evidence-backed validation of customer demand and the owner success metric.","success_metric":str(business.get("owner_success_metric","Validate demand and measurable outcome"))[:500],"evidence":business.get("sources",[]),"risks":business.get("risks",[]),"confidence":"medium" if business.get("sources") else "low"},{"decision":"keep","reason":"New opportunity selected for a test cycle; reassess against real customer evidence and outcomes.","evidence_quality":"source_backed" if business.get("sources") else "unverified"})
+  except Exception as decision_error:log("north_face_business_decision_error",error=type(decision_error).__name__)
   log("opportunity_chosen",name=s["business"].get("name"),score=s["business"].get("score"),validation=s["business"].get("validation"))
  build(s)
 def write_daily_summary(registry):
@@ -1097,7 +1155,7 @@ def discord_command(text):
    index=int(parts[2]);options=item.get("options",["yes","no"])
    if index<0 or index>=len(options):return "Invalid answer option."
    answered=answer(WORK,parts[1],options[index])
-   log("discord_owner_answer",approval_id=answered.get("id"),choice=str(options[index])[:160],kind=answered.get("kind))
+   log("discord_owner_answer",approval_id=answered.get("id"),choice=str(options[index])[:160],kind=answered.get("kind"))
    return "Answered "+str(answered.get("id"))+": "+str(options[index])
   except Exception as e:return str(e)
  if command in ("!approve","!deny"):
