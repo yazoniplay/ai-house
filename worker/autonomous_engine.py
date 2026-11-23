@@ -330,11 +330,18 @@ def configured_model_pool(provider,default_model,env_name):
  return ordered
 def _raw_once(p,sys,ask,role,model_override=None):
  def record_usage(provider,usage):
-  try:record_spend(SPENDBF,estimate_cost(provider,usage))
+  reported_cost=None
+  if isinstance(usage,dict):
+   for cost_key in ("cost_usd","cost","costUsd"):
+    try:
+     if usage.get(cost_key) is not None:reported_cost=max(0.0,float(usage[cost_key]));break
+    except (TypeError,ValueError):pass
+  actual_cost=reported_cost if reported_cost is not None else estimate_cost(provider,usage)
+  try:record_spend(SPENDBF,actual_cost)
   except Exception as spend_error:
    try:log("spend_record_error",provider=provider,error=str(spend_error)[:180])
    except Exception:pass
-  try:record_action("model_call",cost_usd=estimate_cost(provider,usage),provider=provider,role=role)
+  try:record_action("model_call",cost_usd=actual_cost,provider=provider,role=role)
   except Exception:pass
  if p=="openrouter":
   if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
@@ -403,7 +410,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  last_error=None
  for candidate in candidates:
   payload["model"]=candidate
-  r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},json=payload,timeout=timeout_seconds)
+  r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json",**({"X-OrcaRouter-Include-Cost":"true"} if p=="orcarouter" else {})},json=payload,timeout=timeout_seconds)
   if r.status_code in (400,404) and candidate!=candidates[-1] and is_model_specific_error(r.text):
    log("groq_model_auto_fallback",unavailable_model=candidate,next_model=candidates[candidates.index(candidate)+1],status=r.status_code)
    continue
