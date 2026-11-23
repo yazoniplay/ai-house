@@ -48,7 +48,7 @@ def parse_approval_alert(message):
  return match.group(1) if match and match.group(1)==match.group(2) else None
 
 def parse_brief_alert(message):
- match=re.search(r"!brief\\s+([0-9a-fA-F]+)",str(message))
+ match=re.search(r"!brief\s+([0-9a-fA-F]+)",str(message))
  return match.group(1) if match else None
 
 def start_discord_bot(workspace,command_handler,chat_handler=None):
