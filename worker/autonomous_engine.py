@@ -1180,6 +1180,8 @@ def discord_command(text):
  if command=="!status":
   pending=len(list_requests(WORK,True))
   return "House running: "+("yes" if house_running() else "no")+"\nActive now: "+("yes" if active_now() else "no")+"\nPending approvals: "+str(pending)
+ if command=="!pending-json":
+  return json.dumps(list_requests(WORK,True),ensure_ascii=False)
  if command=="!pending":
   requests=list_requests(WORK,True)
   if not requests:return "No pending approvals."
