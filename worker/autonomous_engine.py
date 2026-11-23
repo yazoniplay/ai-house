@@ -15,6 +15,7 @@ from briefs import create_brief, get_brief_answer
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
+from provider_router import rotate as route_rotate, cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
 SD=WORK/".ai-house"; SF=SD/"state.json"; LF=SD/"events.jsonl"; SBF=SD/"search-budget.json"
@@ -95,20 +96,12 @@ HTTP=httpx.Client(timeout=120)
 # Provider cooldowns prevent repeated quota/rate-limit calls while the engine keeps working.
 PROVIDER_COOLDOWN={}
 def provider_cooldown_seconds(provider,error):
- msg=str(error).lower()
- # Billing / credits errors will not heal by retrying every cycle.
- if "402" in msg or "payment required" in msg or "pre-paid credits" in msg or "insufficient credits" in msg:
-  return int(os.getenv("AI_HOUSE_BILLING_COOLDOWN_SECONDS","86400"))
- # Invalid model IDs and authorization errors need configuration, not rapid retries.
- if "model_not_found" in msg or "does not exist or you do not have access" in msg or "401" in msg or "403" in msg:
-  return int(os.getenv("AI_HOUSE_CONFIG_COOLDOWN_SECONDS","3600"))
- if "429" in msg or "quota" in msg or "rate limit" in msg or "resource_exhausted" in msg:
-  return int(os.getenv("AI_HOUSE_QUOTA_COOLDOWN_SECONDS","900"))
- if "timeout" in msg or "timed out" in msg or "read operation" in msg:
-  return int(os.getenv("AI_HOUSE_TIMEOUT_COOLDOWN_SECONDS","60"))
- if "503" in msg or "502" in msg or "500" in msg or "temporarily unavailable" in msg:
-  return int(os.getenv("AI_HOUSE_ERROR_COOLDOWN_SECONDS","90"))
- return 0
+ return route_cooldown(error,
+  quota=int(os.getenv("AI_HOUSE_QUOTA_COOLDOWN_SECONDS","900")),
+  billing=int(os.getenv("AI_HOUSE_BILLING_COOLDOWN_SECONDS","86400")),
+  config=int(os.getenv("AI_HOUSE_CONFIG_COOLDOWN_SECONDS","3600")),
+  timeout=int(os.getenv("AI_HOUSE_TIMEOUT_COOLDOWN_SECONDS","60")),
+  server=int(os.getenv("AI_HOUSE_ERROR_COOLDOWN_SECONDS","90")))
 def provider_available(provider):
  if provider in PAID_PROVIDERS and not spend_allowed(SBF):return False
  return time.monotonic()>=PROVIDER_COOLDOWN.get(provider,0)
@@ -205,15 +198,19 @@ def ollama_chat(sys,ask):
  if r.status_code>=400:raise RuntimeError("ollama "+str(r.status_code)+": "+r.text[:220])
  try:return r.json()["message"]["content"]
  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
-WORKER_ROTATION=[0]
+PROVIDER_ROTATION={"orchestrator":0,"worker":0}
 def provider_order(role):
  has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK)}
- if role=="orchestrator":order=["gemini","nvidia","groq","tokenharbor","openrouter","sambanova","hf"]
+ if role=="orchestrator":
+  base=["gemini","nvidia","groq","tokenharbor","openrouter","sambanova","hf","ollama"]
  else:
-  base=["nvidia","groq","tokenharbor","gemini","hf","openrouter","sambanova"]
-  i=WORKER_ROTATION[0]%len(base);WORKER_ROTATION[0]+=1
-  order=base[i:]+base[:i]
- return [p for p in order if has[p]]
+  base=["nvidia","groq","tokenharbor","gemini","hf","openrouter","sambanova","ollama"]
+ key="orchestrator" if role=="orchestrator" else "worker"
+ order=route_rotate(base,PROVIDER_ROTATION[key])
+ PROVIDER_ROTATION[key]+=1
+ available=[p for p in order if has[p]]
+ log("provider_route_order",role=role,providers=available,rotation=PROVIDER_ROTATION[key]-1)
+ return available
 def openrouter_chat(sys,ask):
  if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
  r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":configured_model_pool("openrouter",ORM,"AI_HOUSE_OPENROUTER_MODELS")[0],"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
@@ -232,7 +229,7 @@ def configured_model_pool(provider,default_model,env_name):
  ordered=pool[index:]+pool[:index]
  log("model_pool_selected",provider=provider,model=ordered[0],pool_size=len(pool),rotation=index)
  return ordered
-def raw(p,sys,ask,role):
+def _raw_once(p,sys,ask,role):
  def record_usage(provider,usage):
   try:record_spend(SPENDBF,estimate_cost(provider,usage))
   except Exception as spend_error:
@@ -289,6 +286,7 @@ def raw(p,sys,ask,role):
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
  if p=="nvidia":
+  nvidia_last_error=None
   for nvidia_model in configured_model_pool("nvidia",NM,"AI_HOUSE_NVIDIA_MODELS"):
    try:
     nvidia_payload={"model":nvidia_model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
@@ -300,7 +298,9 @@ def raw(p,sys,ask,role):
     record_usage("nvidia",data.get("usage"))
     log("model_call_ok",provider="nvidia",model=nvidia_model,role=role);return out
    except Exception as nvidia_error:
+    nvidia_last_error=nvidia_error
     log("nvidia_model_failed",model=nvidia_model,role=role,error=str(nvidia_error)[:160])
+  if nvidia_last_error:raise RuntimeError("nvidia models exhausted: "+str(nvidia_last_error)[:220])
   raise RuntimeError("nvidia: all models failed")
  if not key:raise RuntimeError(p+" key missing")
  payload={"model":model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
@@ -333,6 +333,35 @@ def raw(p,sys,ask,role):
    break
  if last_error:raise last_error
  raise RuntimeError(p+" did not return a completion")
+def model_candidates(provider,role):
+ if provider=="gemini":
+  primary=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite") if role=="orchestrator" else os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite")
+  env_name="AI_HOUSE_GEMINI_LEADER_MODELS" if role=="orchestrator" else "AI_HOUSE_GEMINI_WORKER_MODELS"
+ elif provider=="groq" and role=="fast":primary=GFM;env_name="AI_HOUSE_GROQ_FAST_MODELS"
+ elif provider=="groq":primary=GM;env_name="AI_HOUSE_GROQ_MODELS"
+ elif provider=="nvidia":primary=NM;env_name="AI_HOUSE_NVIDIA_MODELS"
+ elif provider=="hf":primary=HM;env_name="AI_HOUSE_HF_MODELS"
+ elif provider=="tokenharbor":primary=TM;env_name="AI_HOUSE_TOKEN_HARBOR_MODELS"
+ elif provider=="openrouter":primary=ORM;env_name="AI_HOUSE_OPENROUTER_MODELS"
+ elif provider=="sambanova":primary=SNM;env_name="AI_HOUSE_SAMBANOVA_MODELS"
+ elif provider=="ollama":primary=OM;env_name="AI_HOUSE_OLLAMA_MODELS"
+ else:return []
+ return route_model_pool(primary,os.getenv(env_name,""))
+def raw(p,sys,ask,role):
+ candidates=model_candidates(p,role)
+ # NVIDIA already tests its entire configured catalogue in one call.
+ attempts=1 if p=="nvidia" else max(1,len(candidates))
+ last_error=None
+ for attempt in range(attempts):
+  try:
+   return _raw_once(p,sys,ask,role)
+  except Exception as error:
+   last_error=error
+   if not is_model_specific_error(error):
+    raise
+   log("model_specific_fallback",provider=p,role=role,attempt=attempt+1,total=attempts,error=str(error)[:180])
+ if last_error:raise last_error
+ raise RuntimeError(p+" has no configured model")
 def groq_fast_review(role,task,output,checks):
  # Groq handles lightweight triage and concise summaries; the stronger leader still makes final approval decisions.
  if not G or not provider_available("groq"):
