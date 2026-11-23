@@ -6,6 +6,9 @@ class SearchFallbackTests(unittest.TestCase):
  def test_credit_failure_waits_until_next_month(self):
   now=datetime(2026,11,23,12,tzinfo=timezone.utc);reason,until=classify_search_failure("402 insufficient credits",now)
   self.assertEqual(reason,"credits_exhausted");self.assertEqual(until,datetime(2026,12,1,tzinfo=timezone.utc))
+ def test_monthly_usage_limit_waits_until_next_month(self):
+  now=datetime(2026,11,23,12,tzinfo=timezone.utc);reason,until=classify_search_failure("monthly usage limit reached",now)
+  self.assertEqual(reason,"monthly_exhausted");self.assertEqual(until,datetime(2026,12,1,tzinfo=timezone.utc))
  def test_quota_failure_waits_until_next_day(self):
   now=datetime(2026,11,23,12,tzinfo=timezone.utc);reason,until=classify_search_failure("429 quota exceeded",now)
   self.assertEqual(reason,"quota_limited");self.assertEqual(until,datetime(2026,11,24,tzinfo=timezone.utc))
