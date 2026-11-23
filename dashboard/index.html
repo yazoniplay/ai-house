@@ -175,6 +175,21 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 .usage-progress span{display:block;height:100%;width:0;border-radius:20px;background:linear-gradient(90deg,#69d8b8,#89a9ff);transition:width .35s ease}
 .usage-footnote{margin-top:10px;color:#8095b1;font-size:10px;line-height:1.5}
 
+
+.decision-audit-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:16px 0 8px;padding-top:12px;border-top:1px solid #ffffff12}
+.decision-audit-head strong{font-size:12px;color:#dce8fa}
+.decision-audit-head span{font-size:10px;color:#8fa4bf}
+.decision-audit{display:grid;gap:8px;max-height:460px;overflow:auto;padding-right:2px}
+.decision-card{padding:12px;border:1px solid #293a50;border-radius:12px;background:linear-gradient(140deg,#172438,#101827)}
+.decision-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.decision-card-title{font-size:12px;font-weight:800;color:#e7efff;line-height:1.4}
+.decision-verdict{flex:0 0 auto;border:1px solid #41536b;border-radius:20px;padding:4px 7px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#a9bed8}
+.decision-verdict.keep{color:#9be2c5;border-color:#376d5a}
+.decision-verdict.modify{color:#f4c88c;border-color:#80603e}
+.decision-verdict.rollback{color:#f1a2a8;border-color:#75434a}
+.decision-card p{margin:8px 0 0;font-size:10px;line-height:1.5;color:#9eb1cb;overflow-wrap:anywhere}
+.decision-card p b{color:#d5e2f6}
+
 </style>
 </head>
 <body>
@@ -284,6 +299,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
           <div class="memory-stat"><small>Postmortems</small><strong id="memoryPostmortems">0</strong></div>
         </div>
         <p class="note" id="memoryUpdated">Lessons are saved after reviews and business outcomes.</p>
+        <div class="decision-audit-head"><strong>Decision audit trail</strong><span id="decisionAuditCount">0 reviews</span></div>
+        <div id="decisionAudit" class="decision-audit"><div class="empty">Roadmap and business decisions will appear here with their evidence-based reviews.</div></div>
       </section>
     </div>
   </section>
@@ -696,6 +713,29 @@ async function refreshProviderUsage(){
 }
 
 
+
+function renderDecisionAudit(memory){
+ const box=$("decisionAudit"),count=$("decisionAuditCount");if(!box||!count)return;
+ const items=(memory&&memory.decision_reviews||[]).slice(-10).reverse();
+ count.textContent=(memory&&memory.decision_reviews||[]).length+" reviews";box.replaceChildren();
+ if(!items.length){addEmpty(box,"No audited decisions yet. The first roadmap and business decisions will appear here.");return;}
+ items.forEach(item=>{
+  const card=document.createElement("article");card.className="decision-card";
+  const top=document.createElement("div");top.className="decision-card-top";
+  const title=document.createElement("div");title.className="decision-card-title";title.textContent=item.title||"Leader decision";
+  const verdict=document.createElement("span");const state=String(item.review||"review").toLowerCase();verdict.className="decision-verdict "+state;verdict.textContent=state;
+  top.append(title,verdict);card.append(top);
+  const addLine=(label,value)=>{if(!value)return;const p=document.createElement("p");const b=document.createElement("b");b.textContent=label+": ";p.append(b,document.createTextNode(String(value)));card.append(p);};
+  addLine("Why",item.rationale||item.review_reason);
+  addLine("Expected",item.expected_outcome);
+  addLine("Observed",item.observed_outcome);
+  addLine("Lesson",item.lesson);
+  const alternatives=Array.isArray(item.alternatives)?item.alternatives.join(" · "):item.alternatives;
+  addLine("Alternatives",alternatives);
+  box.append(card);
+ });
+}
+
 function renderUsageMilestone(tasks){
  const status=$("usageStatus"),count=$("usageCount"),source=$("usageSource"),fill=$("usageProgressFill");
  if(!status||!count||!source||!fill)return;
@@ -715,6 +755,7 @@ function render(){
     const tasks=s.tasks||[],files=s.artifacts||[],events=s.events||[],memory=s.memory||{};
     renderDepartmentOverview(tasks);
     renderUsageMilestone(tasks);
+    renderDecisionAudit(memory);
     const completed=tasks.filter(t=>t.status==="completed").length;
     const total=tasks.length,active=tasks.find(t=>t.status==="running");
     const running=!!s.running,enabled=!!s.autonomy_enabled;
