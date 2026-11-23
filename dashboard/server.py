@@ -736,6 +736,9 @@ def local_state():
         configured=configured(),
         cycle=state.get("cycle", 0),
         business=state.get("business"),
+        room_missions=state.get("room_missions") or {},
+        computer_room_task_id=state.get("computer_room_task_id"),
+        computer_room_task_cycle=state.get("computer_room_task_cycle"),
         business_completed=state.get("business_completed", False),
         roadmap=roadmap,
         tasks=tasks,
@@ -818,7 +821,8 @@ def local_log():
 
 @app.get("/api/coding-room/projects")
 def coding_room_projects_api():
-    return jsonify(projects=list_coding_projects(WORKSPACE))
+    state = read_json(STATE_FILE, {})
+    return jsonify(projects=list_coding_projects(WORKSPACE), business=state.get("business"), room_missions=state.get("room_missions") or {}, autonomous=True)
 
 
 @app.post("/api/coding-room/projects")
