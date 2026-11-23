@@ -269,7 +269,7 @@ def provider_model_catalog(provider):
    response=HTTP.get("https://api.groq.com/openai/v1/models",headers={"Authorization":"Bearer "+G},timeout=10)
    if response.status_code>=400:raise RuntimeError("Groq model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
-   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id")}
+   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
   elif provider=="gemini" and M:
    response=HTTP.get("https://generativelanguage.googleapis.com/v1beta/models",headers={"x-goog-api-key":M},timeout=10)
    if response.status_code>=400:raise RuntimeError("Gemini model catalog HTTP "+str(response.status_code))
