@@ -25,13 +25,14 @@ def is_model_specific_error(error):
         "retired","no such model"
     ))
 
-def filter_model_pool(candidates, available=None, unavailable=()):
+def filter_model_pool(candidates, available=None, unavailable=(), allow_unlisted=()):
     """Keep candidate order while filtering to live catalog IDs and cached dead IDs."""
     values=list(dict.fromkeys(str(x).strip() for x in candidates if str(x).strip()))
     blocked=set(unavailable or ())
+    allowed_unlisted=set(allow_unlisted or ())
     if available is not None:
         allowed=set(available or ())
-        values=[x for x in values if x in allowed]
+        values=[x for x in values if x in allowed or x in allowed_unlisted]
     return [x for x in values if x not in blocked]
 
 def is_unavailable_model_error(error):

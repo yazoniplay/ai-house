@@ -22,6 +22,14 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertEqual(filter_model_pool(candidates,available),["gemini-3.5-flash-lite","google/gemma-4-31b-it"])
         self.assertEqual(filter_model_pool(candidates,None,{"old-model"}),["gemini-3.5-flash-lite","google/gemma-4-31b-it"])
 
+    def test_openrouter_router_aliases_survive_live_model_catalog_filter(self):
+        candidates=["openrouter/free","openrouter/auto","google/gemini-3.5-flash-lite","retired/model"]
+        available={"google/gemini-3.5-flash-lite"}
+        self.assertEqual(
+            filter_model_pool(candidates,available,allow_unlisted={"openrouter/free","openrouter/auto"}),
+            ["openrouter/free","openrouter/auto","google/gemini-3.5-flash-lite"],
+        )
+
     def test_retired_model_errors_are_marked_unavailable(self):
         self.assertTrue(is_unavailable_model_error("NVIDIA 410 Gone: model reached end of life"))
         self.assertTrue(is_unavailable_model_error("HTTP 404 page not found"))

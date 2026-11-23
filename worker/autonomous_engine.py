@@ -219,7 +219,7 @@ def provider_order(role):
  has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK)}
  # Gemini is the configured primary for both leader and worker calls. Other providers
  # are failover only; do not rotate away from Gemini on healthy requests.
- base=["gemini","groq","nvidia","tokenharbor","hf","openrouter","sambanova","ollama"]
+ base=["gemini","openrouter","groq","nvidia","tokenharbor","hf","sambanova","ollama"]
  available=[p for p in base if has[p]]
  log("provider_route_order",role=role,providers=available,rotation=0)
  return available
@@ -258,6 +258,11 @@ def provider_model_catalog(provider):
     methods=item.get("supportedGenerationMethods") or []
     name=str(item.get("name","")).removeprefix("models/").strip()
     if name and "generateContent" in methods:ids.add(name)
+  elif provider=="openrouter" and OR:
+   response=HTTP.get("https://openrouter.ai/api/v1/models",headers={"Authorization":"Bearer "+OR},timeout=10)
+   if response.status_code>=400:raise RuntimeError("OpenRouter model catalog HTTP "+str(response.status_code))
+   rows=response.json().get("data",[])
+   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id")}
   else:
    return None
   if not ids:raise RuntimeError(provider+" returned an empty model catalog")
@@ -290,7 +295,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  if p=="openrouter":
   if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
   model_id=model_override or configured_model_pool("openrouter",ORM,"AI_HOUSE_OPENROUTER_MODELS")[0]
-  r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":model_id,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
+  r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":model_id,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=35)
   if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
   try:
    data=r.json();out=data["choices"][0]["message"].get("content") or ""
@@ -387,7 +392,10 @@ def model_candidates(provider,role):
   "nvidia":["google/gemma-4-31b-it","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-ultra-550b-a55b","nvidia/nemotron-3.5-bolt-e4b","z-ai/glm-5.3-flash","moonshotai/kimi-k3.1-pro","nvidia/nemotron-3.5-super-vl-120b-a12b","meta/muse-glimmer-30b"],
   # Flash Lite first for both CEO and workers; preserve a custom configured model after it.
   "gemini":["gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.5-flash"],
-  "groq":["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3-32b","meta-llama/llama-4-scout-17b-16e-instruct"]
+  "groq":["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3-32b","meta-llama/llama-4-scout-17b-16e-instruct"],
+  # OpenRouter's free router is a provider-level alias, followed by explicitly
+  # catalog-verified model IDs so the router can still fail over if the free pool is down.
+  "openrouter":["openrouter/free","openrouter/auto","google/gemini-3.5-flash-lite","google/gemini-3.1-flash-lite","google/gemma-4-31b-it"]
  }
  if provider=="gemini":
   # Keep an explicitly custom model first, but migrate the old default worker model
@@ -399,11 +407,19 @@ def model_candidates(provider,role):
  elif provider=="nvidia":
   # Prefer known current endpoints (Gemma first); user-configured IDs remain fallbacks.
   candidates=list(dict.fromkeys(defaults.get(provider,[])+configured))
+ elif provider=="openrouter":
+  candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
  else:
   candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
  catalog=provider_model_catalog(provider)
  if catalog:
-  candidates=filter_model_pool(candidates,catalog)
+  if provider=="openrouter":
+   # OpenRouter's free/auto router aliases are valid even though they are not
+   # regular model IDs in /models; all concrete model slugs must be catalog-listed.
+   aliases={"openrouter/free","openrouter/auto"}
+   candidates=[x for x in candidates if x in aliases]+filter_model_pool([x for x in candidates if x not in aliases],catalog)
+  else:
+   candidates=filter_model_pool(candidates,catalog)
  now=time.monotonic()
  unavailable=[model for model,until in MODEL_UNAVAILABLE_UNTIL.items() if until>now]
  candidates=filter_model_pool(candidates,None,unavailable)
