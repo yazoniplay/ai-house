@@ -75,7 +75,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
 
  class ChoiceView(discord.ui.View):
   def __init__(self,request_id,options,owner):
-   super().__init__(timeout=7*24*60*60)
+   super().__init__(timeout=None)
    self.request_id=str(request_id);self.owner=str(owner)
    for index,option in enumerate(list(options)[:5]):
     label=str(option).strip()[:80] or "Option "+str(index+1)
@@ -102,6 +102,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
     content+="\n\nDecision needed: "+str(req.get("question",""))[:500]
     if req.get("summary"):content+="\n"+str(req.get("summary",""))[:400]
     view=ChoiceView(req["id"],req["options"],owner_id)
+    client.add_view(view)
     await channel.send(content[:1800],view=view);return
    await channel.send(content);return
   content=redact(str(payload or ""))[:1800]
@@ -124,12 +125,22 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
      request_id=parse_approval_alert(message)
      if request_id:
       view=ChoiceView(request_id,["yes","no"],owner_id)
+      client.add_view(view)
       await channel.send(redact(message)[:1700],view=view)
      else:await channel.send(redact(message)[:1900])
     except Exception:_ALERTS.put(item);break
 
  @client.event
- async def on_ready():_LOG.info("discord_bot_ready")
+ async def on_ready():
+  _LOG.info("discord_bot_ready")
+  try:
+   pending_raw=await asyncio.to_thread(command_handler,"!pending-json")
+   pending=json.loads(str(pending_raw))
+   for request in pending if isinstance(pending,list) else []:
+    if request.get("id") and request.get("options"):
+     client.add_view(ChoiceView(request["id"],request["options"],owner_id))
+   _LOG.info("discord_persistent_views_registered count=%s",len(pending) if isinstance(pending,list) else 0)
+  except Exception as view_error:_LOG.error("discord_persistent_views_error %s",type(view_error).__name__)
  @client.event
  async def on_message(message):
   if message.author.bot or message.author.id==client.user.id:return
