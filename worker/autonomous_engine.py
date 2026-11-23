@@ -558,7 +558,7 @@ def roadmap_prompt(s,mode="initial",failed=None):
  "\nLessons learned:\n"+json.dumps(lessons,ensure_ascii=False)[:5000]+
  "\nFailure context:\n"+json.dumps(failed or {},ensure_ascii=False)[:5000]+
  "\nProven recipes you may reuse as a starting point; adapt them to this business:\n"+recipe_for_prompt(WORK)+
- "\nCreate a practical roadmap of 4-8 atomic tasks. Focus first on validating demand and the smallest useful product, then build, verify, and prepare honest distribution. For software, focus on ONE flagship app: finish its core workflow, usability, tests, security, and deployment-quality checks before starting another app; do not scatter effort across many shallow apps. For a business with a strong content-marketing fit, include at most one original YouTube video production task in this roadmap after evidence research; name it clearly \"YouTube video production\" so the local studio can render it. Use exact cited source URLs and require a real finished video deliverable, not only a script. For Gumroad digital products, require evidence of a specific buyer problem, competitor/alternative analysis, a genuinely useful complete product, examples/previews, clear instructions, truthful claims, and a researched acquisition plan; reject generic low-value AI filler. Marketing must be channel-specific, searchable, audience-led, and measurable, not spam. Use legal_risk before any task that publishes, sells, or collects customer data. Use sales_drafter only to draft outreach as files; never plan a task that sends messages. Search budget left today: `"+str(search_credits_left())+"` credits. For each task that needs live web facts, set \"search\" to \"basic\" (1 credit, for quick facts, current names, or prices) or \"advanced\" (2 credits, for deep research on evidence that matters most). Use \"none\" when the task needs no live facts. Prefer basic. Use at most one advanced search per roadmap. Each task must have id (short unique slug), title, objective, agent_role (researcher|strategist|architect|builder|growth|finance|copywriter|designer|qa_tester|sales_drafter|analyst|legal_risk), priority (1-100), depends_on (list of task ids), acceptance (2-5 observable checks), deliverable (specific artifact/output), search (none|basic|advanced), and needs_approval (true for any task that spends money, publishes anything publicly, contacts a person, or changes a live account; otherwise false). Include needs_owner_decision only when a task truly cannot proceed without an owner choice, as {\"question\":\"...\",\"options\":[\"...\",\"...\"]} with 2-4 short options. Include a measurable business success_metric and a short strategy. Avoid vague tasks like 'research more'. No new business suggestions to the owner; decide and execute internally. Do not include tasks outside this business or the user's excluded existing projects. Return JSON: {\"strategy\":\"...\",\"success_metric\":\"...\",\"tasks\":[...]}")
+ "\nCreate a practical roadmap of 4-8 atomic tasks. Focus first on validating demand and the smallest useful product, then build, verify, and prepare honest distribution. For software, focus on ONE flagship app: finish its core workflow, usability, tests, security, and deployment-quality checks before starting another app; do not scatter effort across many shallow apps. For a business with a strong content-marketing fit, include at most one original YouTube video production task in this roadmap after evidence research; name it clearly \"YouTube video production\" so the local studio can render it. Use exact cited source URLs and require a real finished video deliverable, not only a script. For Gumroad digital products, require evidence of a specific buyer problem, competitor/alternative analysis, a genuinely useful complete product, examples/previews, clear instructions, truthful claims, and a researched acquisition plan; reject generic low-value AI filler. Marketing must be channel-specific, searchable, audience-led, and measurable, not spam. Use legal_risk before any task that publishes, sells, or collects customer data. Use sales_drafter only to draft outreach as files; never plan a task that sends messages. Search budget left today: `"+str(search_credits_left())+"` credits. For each task that needs live web facts, set \"search\" to \"basic\" (1 credit, for quick facts, current names, or prices) or \"advanced\" (2 credits, for deep research on evidence that matters most). Use \"none\" when the task needs no live facts. Prefer basic. Use at most one advanced search per roadmap. Each task must have id (short unique slug), title, objective, optional desktop_goal (a short specific goal for the local Computer Room only when an installed GUI app is truly required; no credentials or risky publish/send actions), agent_role (researcher|strategist|architect|builder|growth|finance|copywriter|designer|qa_tester|sales_drafter|analyst|legal_risk), priority (1-100), depends_on (list of task ids), acceptance (2-5 observable checks), deliverable (specific artifact/output), search (none|basic|advanced), and needs_approval (true for any task that spends money, publishes anything publicly, contacts a person, or changes a live account; otherwise false). Include needs_owner_decision only when a task truly cannot proceed without an owner choice, as {\"question\":\"...\",\"options\":[\"...\",\"...\"]} with 2-4 short options. Include a measurable business success_metric and a short strategy. Avoid vague tasks like 'research more'. No new business suggestions to the owner; decide and execute internally. Do not include tasks outside this business or the user's excluded existing projects. Return JSON: {\"strategy\":\"...\",\"success_metric\":\"...\",\"tasks\":[...]}")
 def validate_roadmap(tasks):
  if not isinstance(tasks,list) or not 4<=len(tasks)<=8:return "roadmap must contain 4 to 8 tasks"
  ids=set()
@@ -654,6 +654,23 @@ def run_roadmap_task(s,t):
    t["status"]="failed";t["last_error"]="Owner declined this step"
    log("task_declined",task=t.get("id"),approval_id=approval_id)
    save(s);return
+ if t.get("desktop_task_id") and not t.get("desktop_done"):
+  try:
+   try:
+    from desktop_agent import get_task as get_desktop_task
+   except ModuleNotFoundError:
+    from worker.desktop_agent import get_task as get_desktop_task
+   desktop_state=get_desktop_task(WORK,t["desktop_task_id"])
+   if desktop_state.get("status") in ("queued","running","waiting_approval"):
+    t["status"]="pending";save(s)
+    set_activity("desktop_task_waiting","A desktop task is running or waiting for your risk approval.",t.get("agent_role"),t.get("id"))
+    return
+   if desktop_state.get("status")=="completed":
+    t["desktop_done"]=True;t["desktop_result"]=str(desktop_state.get("summary",""))[:1200];t["desktop_task_id"]=None;save(s)
+   else:
+    t["status"]="failed";t["last_error"]="Desktop task "+str(desktop_state.get("status"))+": "+str(desktop_state.get("summary",""))[:700];save(s);return
+  except Exception as desktop_error:
+   t["status"]="failed";t["last_error"]="Desktop task state error: "+str(desktop_error)[:700];save(s);return
  b=s["business"];role=t["agent_role"];attempt=int(t.get("attempts",0))+1
  owner_skills=skills_for_role(WORK,role,str(t.get("objective",""))+" "+str(t.get("title","")))
  t["status"]="running";t["attempts"]=attempt;save(s)
@@ -701,6 +718,25 @@ def run_roadmap_task(s,t):
   set_activity("waiting_approval","This task needs an owner choice before it can continue.",role,t.get("id"));return
  written=write(result.get("files",[]),role=role)
  if not written:raise RuntimeError(role+" returned no physical files in its files array")
+ desktop_goal=str(t.get("desktop_goal","")).strip()
+ if desktop_goal and not t.get("desktop_done"):
+  if len(desktop_goal)>4000:raise RuntimeError("desktop_goal must be under 4000 characters")
+  try:
+   try:
+    from desktop_agent import create_task as create_desktop_task, run_task as run_desktop_task
+   except ModuleNotFoundError:
+    from worker.desktop_agent import create_task as create_desktop_task, run_task as run_desktop_task
+   desktop_task=create_desktop_task(WORK,desktop_goal,max_steps=24)
+   t["desktop_task_id"]=desktop_task["id"];t["status"]="pending";save(s)
+   desktop_state=run_desktop_task(WORK,desktop_task["id"])
+   if desktop_state.get("status")=="completed":
+    t["desktop_done"]=True;t["desktop_result"]=str(desktop_state.get("summary",""))[:1200];t["desktop_task_id"]=None;save(s)
+   else:
+    t["status"]="pending";save(s)
+    set_activity("desktop_task_waiting","A desktop task paused for owner approval or completion.",role,t.get("id"))
+    return
+  except Exception as desktop_error:
+   raise RuntimeError("Desktop task failed: "+str(desktop_error)[:700]) from desktop_error
  video_result=None
  if video_task:
   recipe=result.get("video_recipe")
@@ -714,7 +750,7 @@ def run_roadmap_task(s,t):
    if video_result.get(key):written.append(video_result[key])
   log("video_produced",task=t.get("id"),video=video_result.get("video"),duration=video_result.get("duration_seconds"),scenes=video_result.get("scene_count"))
  verify_deliverables(t,written)
- output={"summary":str(result.get("summary",""))[:9000],"files":written,"validation":result.get("validation",[]),"sources":[x.get("url","") for x in sources],"video_production":video_result}
+ output={"summary":str(result.get("summary",""))[:9000],"files":written,"validation":result.get("validation",[]),"sources":[x.get("url","") for x in sources],"video_production":video_result,"desktop_result":t.get("desktop_result")}
  check=tests() if role=="builder" else []
  fast=groq_fast_review(role,t,output,check)
  output["fast_summary"]=fast.get("summary","")
