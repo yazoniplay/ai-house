@@ -1192,8 +1192,19 @@ def discord_command(text):
    index=int(parts[2]);options=item.get("options",["yes","no"])
    if index<0 or index>=len(options):return "Invalid answer option."
    answered=answer(WORK,parts[1],options[index])
+   result_text="Answered "+str(answered.get("id"))+": "+str(options[index])
+   if str(answered.get("kind","")).startswith("desktop_action_"):
+    try:
+     from desktop_agent import list_tasks as list_desktop_tasks, resume_task as resume_desktop_task
+     desktop_task=next((x for x in list_desktop_tasks(WORK) if str(x.get("approval_id"))==str(answered.get("id"))),None)
+     if desktop_task:
+      resumed=resume_desktop_task(WORK,desktop_task["id"])
+      result_text+="\\nPC task "+str(resumed.get("status","updated"))+": "+str(resumed.get("summary",""))[:700]
+    except Exception as desktop_resume_error:
+     log("discord_desktop_resume_error",approval_id=answered.get("id"),error=type(desktop_resume_error).__name__)
+     result_text+="\\nPC task will retry locally; "+type(desktop_resume_error).__name__
    log("discord_owner_answer",approval_id=answered.get("id"),choice=str(options[index])[:160],kind=answered.get("kind"))
-   return "Answered "+str(answered.get("id"))+": "+str(options[index])
+   return result_text
   except Exception as e:return str(e)
  if command in ("!approve","!deny"):
   if len(parts)!=2:return "Usage: "+command+" <id>"
