@@ -514,7 +514,14 @@ leaderForm.addEventListener("submit",async event=>{
  leaderReply.textContent="Thinking…";
  try{
   const result=await api("/api/ask","POST",JSON.stringify({text:question}),120000);
-  const reply=String(result.reply??"");
+  let reply=typeof result.reply==="string"?result.reply:"The leader returned a response in an unexpected format.";
+  const decision=result.request&&typeof result.request==="object"?result.request:null;
+  if(decision){
+   const question=typeof decision.question==="string"?decision.question:"";
+   const options=Array.isArray(decision.options)?decision.options.filter(x=>typeof x==="string"&&x.trim()).join(" · "):"";
+   const summary=typeof decision.summary==="string"?decision.summary:"";
+   reply+="\n\nDecision needed"+(question?": "+question:"")+(summary?"\n"+summary:"")+(options?"\nOptions: "+options:"");
+  }
   leaderReply.textContent=reply;
   leaderReadReply(reply);
  }catch(error){
