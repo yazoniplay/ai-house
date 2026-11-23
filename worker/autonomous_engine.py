@@ -1046,7 +1046,7 @@ def business_decision_text(business):
  lines.extend(["","Sources","-------"])
  lines.extend(["- "+str(x) for x in sources] if sources else ["- No source URLs recorded; treat this as an owner brief or unverified hypothesis."])
  lines.extend(["","Decision status","---------------","Selected to test. This is not a claim of revenue, customer demand, or business success.","",""])
- return "\\n".join(lines)
+ return "\n".join(lines)
 
 def cycle(s):
  BDIR.mkdir(parents=True,exist_ok=True)
