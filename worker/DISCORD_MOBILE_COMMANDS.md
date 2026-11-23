@@ -15,7 +15,7 @@ In Discord Developer Portal, enable **Message Content Intent** for the bot. Give
 ## Phone workflow
 
 - Send a normal message in the configured channel to talk to the Leader.
-- The Leader replies normally. When a genuine owner decision is needed, it sends a question with buttons and a short explanation.
+- The Leader replies normally. When a genuine owner decision is needed, it sends a question with buttons and a short explanation. Specialist task briefs that previously appeared only in the dashboard also arrive as multi-choice buttons.
 - Choose an option from the buttons. The answer is saved in the local approval ledger and the Leader is called again with that answer in context.
 - Choose **Other / type a reply** when offered, then type the detail in the channel.
 - Desktop/PC access and other risky tasks use the existing approval ledger. The Discord approval alert now includes **yes/no** buttons. The action still runs only after the approval is recorded and the local worker processes it.
