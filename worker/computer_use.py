@@ -107,6 +107,8 @@ def _clean_action(action):
 def _risk_reason(action):
     kind = action["kind"]
     intent = (action.get("intent", "") + " " + action.get("target", "")).lower()
+    if kind in ("click", "type") and (not action.get("intent", "").strip() or not action.get("target", "").strip()):
+        return "Desktop action lacks a specific intent and target; owner review required."
     tokens = {word.strip(".,:;!?()[]{}") for word in intent.split()}
     if tokens & HIGH_RISK_WORDS:
         return "High-impact desktop action: " + ", ".join(sorted(tokens & HIGH_RISK_WORDS))
