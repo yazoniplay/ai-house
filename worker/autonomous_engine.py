@@ -17,6 +17,7 @@ from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
 from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error, is_provider_wide_error, gemini_chat_model_pool, provider_chat_model_pool
 from user_validation import verify_usage_events, load_usage_events
+from task_validation import is_usage_verification_task
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
 from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
 from free_search import parse_results as parse_free_search_results
@@ -903,11 +904,9 @@ def validate_roadmap(tasks):
  if normalized:log("leader_task_roles_normalized",changes=normalized[:12],count=len(normalized))
  ids=set()
  for t in tasks:
-  if isinstance(t,dict):
-   usage_text=" ".join(str(t.get(k,"")) for k in ("title","objective","success_metric","acceptance")).lower()
-   if any(term in usage_text for term in ("10 users","ten users","user adoption verification","verify product usage","verify usage","usage verification","adoption verification","verify adoption")):
-    t.setdefault("verification_target_users",10)
-    t.setdefault("usage_events_path","reports/product-usage-events.jsonl")
+  if isinstance(t,dict) and is_usage_verification_task(t):
+   t.setdefault("verification_target_users",10)
+   t.setdefault("usage_events_path","reports/product-usage-events.jsonl")
  for t in tasks:
   if not isinstance(t,dict):return "task must be an object"
   tid=str(t.get("id","")).strip()
@@ -952,16 +951,16 @@ def create_roadmap(s,mode="initial",failed=None):
  business_text=" ".join(str(business.get(k,"")) for k in ("name","customer","problem","solution","revenue_model","validation","mvp")).lower()
  software_product=bool(s.get("coding_project_id")) or any(term in business_text for term in ("software","web app","mobile app","saas","application","browser extension","productivity app","online tool","platform","dashboard app"))
  if software_product:
-  def declared_usage_target(task):
-   try:return int(task.get("verification_target_users",0) or 0)
-   except (TypeError,ValueError):return 0
-  usage_task=next((t for t in tasks if isinstance(t,dict) and (declared_usage_target(t)>=10 or any(term in " ".join(str(t.get(k,"")) for k in ("title","objective","success_metric")).lower() for term in ("10 users","ten users","adoption verification","verify product usage","usage verification")))),None)
+  usage_task=next((t for t in tasks if isinstance(t,dict) and is_usage_verification_task(t)),None)
   if usage_task:
-   usage_task["verification_target_users"]=max(10,declared_usage_target(usage_task))
+   try:declared_target=int(usage_task.get("verification_target_users",0) or 0)
+   except (TypeError,ValueError):declared_target=0
+   usage_task["verification_target_users"]=max(10,declared_target)
    usage_task.setdefault("usage_events_path","reports/product-usage-events.jsonl")
+   usage_task["deliverable"]="reports/product-usage-verification.md"
   else:
    dependencies=[str(t.get("id")) for t in tasks if isinstance(t,dict) and (t.get("agent_role") in ("builder","architect","product_manager","qa_engineer","qa_tester","security_engineer") or any(term in str(t.get("title","")).lower() for term in ("instrument analytics","core action analytics")))]
-   tasks.append({"id":"verify-10-users","title":"Verify 10 real product users","objective":"Collect a genuine production analytics export and verify at least ten distinct external users performed a meaningful core action in the last 30 days. If under target, report the actual count and keep the milestone pending; never fabricate usage.","agent_role":"customer_success","priority":40,"depends_on":list(dict.fromkeys(dependencies)),"acceptance":["reports/product-usage-events.jsonl is an actual analytics export, not synthetic or manually invented events","The deterministic verifier reports at least 10 distinct production user accounts performing a qualifying core action","Owner, internal, test, bot, page-view, and marketing-click events are excluded","If fewer than 10 users are evidenced, the report clearly says pending and the milestone is not marked complete"],"deliverable":"reports/product-usage-events.jsonl and the deterministic usage_verification report in the task review","search":"none","needs_approval":False,"verification_target_users":10,"usage_events_path":"reports/product-usage-events.jsonl"})
+   tasks.append({"id":"verify-10-users","title":"Verify 10 real product users","objective":"Collect a genuine production analytics export and verify at least ten distinct external users performed a meaningful core action in the last 30 days. If under target, report the actual count and keep the milestone pending; never fabricate usage.","agent_role":"customer_success","priority":40,"depends_on":list(dict.fromkeys(dependencies)),"acceptance":["Create reports/product-usage-verification.md documenting the actual verification result and source export availability","Use only a genuine production analytics export at reports/product-usage-events.jsonl; never fabricate or create synthetic events","The deterministic verifier reports at least 10 distinct production user accounts performing a qualifying core action, or the report clearly states the actual count and that adoption remains pending","Owner, internal, test, bot, page-view, and marketing-click events are excluded","Completing the verification report does not mean the 10-user adoption milestone was achieved"],"deliverable":"reports/product-usage-verification.md","search":"none","needs_approval":False,"verification_target_users":10,"usage_events_path":"reports/product-usage-events.jsonl"})
    log("mandatory_product_usage_task_added",task="verify-10-users",business=business.get("name"),dependencies=dependencies)
  adjusted=0;advanced_seen=False
  for t in tasks:
@@ -1166,11 +1165,11 @@ def run_roadmap_task(s,t):
   log("video_produced",task=t.get("id"),video=video_result.get("video"),duration=video_result.get("duration_seconds"),scenes=video_result.get("scene_count"))
  verify_deliverables(t,written)
  usage_gate=None
- try:usage_target=int(t.get("verification_target_users",0) or 0)
- except (TypeError,ValueError):usage_target=0
- usage_target=max(10,usage_target) if usage_target>0 else 0
- if usage_target>=10:
-  usage_rel=str(t.get("usage_events_path") or "reports/product-usage-events.jsonl")
+ usage_target=0
+ usage_rel=str(t.get("usage_events_path") or "reports/product-usage-events.jsonl")
+ if is_usage_verification_task(t):
+  try:usage_target=max(10,int(t.get("verification_target_users",10) or 10))
+  except (TypeError,ValueError):usage_target=10
   usage_file=None
   try:
    usage_file,_=filesafe(usage_rel)
@@ -1196,13 +1195,15 @@ def run_roadmap_task(s,t):
   except Exception as e:file_evidence.append({"path":rel,"read_error":str(e)[:180]})
  review=leader_json("Review this task as the accountable CEO. Verify required deliverable files physically exist at exact paths, inspect the actual file contents below, and verify every acceptance criterion. Never approve based only on the agent summary. Do not accept claims of live outreach, customers or revenue without evidence. Groq fast triage is advisory only; verify independently. Groq triage: "+json.dumps(fast,ensure_ascii=False)+"\nTask:\n"+
   json.dumps(t,ensure_ascii=False)+"\nOutput metadata:\n"+json.dumps(output,ensure_ascii=False)+"\nActual file contents:\n"+json.dumps(file_evidence,ensure_ascii=False)[:24000]+"\nAutomated checks:\n"+json.dumps(check,ensure_ascii=False)+"\nDeterministic 10-user production validation (must not be overridden):\n"+json.dumps(usage_gate,ensure_ascii=False)+
+  "\nFor the dedicated adoption-verification task, a pending count is an honest verification result, not a reason to reject the report. Approve the report if it accurately records the actual count and explicitly leaves adoption pending; do not claim the 10-user milestone was achieved."+
   '\nReturn JSON {"decision":"approve|improve|block","score":0-100,"criteria_results":[{"criterion":"...","passed":true,"evidence":"..."}],"issues":["..."],"fix_instruction":"...","reason":"...","learning":{"root_cause":"...","lesson":"...","improvement_rule":"...","confidence":"low|medium|high"}}')
  decision=str(review.get("decision","block")).lower()
  if usage_gate and usage_gate.get("status")!="verified":
-  decision="improve" if attempt<=2 else "block"
-  review.setdefault("issues",[]).append("10-user milestone not verified: "+str(usage_gate.get("distinct_production_users",0))+"/"+str(usage_target)+" distinct production users. Do not claim success.")
-  review["fix_instruction"]="Continue authorized product activation and distribution, obtain a real production analytics export at "+str(usage_rel)+", then rerun verification. Never fabricate or count owner/test/bot/page-view events."
-  review["reason"]="The deterministic production usage gate remains pending; keep the adoption milestone open."
+  review["usage_milestone_status"]="pending"
+  review.setdefault("issues",[]).append("Adoption remains pending: "+str(usage_gate.get("distinct_production_users",0))+"/"+str(usage_target)+" distinct production users. The verification report may be completed, but the adoption milestone must not be claimed as achieved.")
+  if "reports/product-usage-verification.md" not in written:
+   decision="improve" if attempt<=2 else "block"
+   review["fix_instruction"]="Create reports/product-usage-verification.md with the actual deterministic count, whether a genuine production export exists, the 30-day window, and a clear pending status. Never fabricate events."
  review["usage_verification"]=usage_gate
  log("leader_review_completed",task=t.get("id"),decision=decision,score=review.get("score"),usage_status=(usage_gate or {}).get("status"))
  learning_status="completed" if decision=="approve" else ("retry" if decision=="improve" and attempt<=2 else "failed")
