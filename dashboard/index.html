@@ -115,6 +115,34 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 .outbox-row strong,.outbox-row small{display:block;overflow-wrap:anywhere}.outbox-row small{color:var(--muted);font-size:10px;margin-top:3px}.outbox-row .outbox-meta{font-size:10px;color:#aebed5;white-space:nowrap}
 .outbox-preview{margin-top:12px}.outbox-preview-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.ledger-summary{color:#c7d5e9;font-size:11px;overflow-wrap:anywhere;margin-bottom:12px}.ledger-table-wrap{overflow-x:auto}.ledger-table{width:100%;border-collapse:collapse;font-size:10px;min-width:560px}.ledger-table th,.ledger-table td{text-align:left;padding:8px;border-bottom:1px solid #26344a;overflow-wrap:anywhere}.ledger-table th{color:var(--muted);text-transform:uppercase;font-size:9px;letter-spacing:.08em}.station-budget{font-size:10px;color:#c4b5fd;margin:4px 0 10px}
 @media(max-width:520px){.schedule-status{width:100%;max-width:none;text-align:left;order:5}.station-desks{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Executive dashboard visual system */
+.departments-panel{position:relative;overflow:hidden;background:linear-gradient(125deg,#111b2c 0%,#101827 56%,#17162b 100%);border-color:#34445f}
+.departments-panel:before{content:"";position:absolute;right:-90px;top:-145px;width:290px;height:290px;border-radius:50%;background:radial-gradient(circle,#8b5cf633,transparent 68%);pointer-events:none}
+.department-grid{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
+.department-card{min-width:0;position:relative;overflow:hidden;border:1px solid #2b3a52;border-radius:14px;padding:14px;background:linear-gradient(145deg,#182438,#101827);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.department-card:hover{transform:translateY(-3px);border-color:#617aa2;box-shadow:0 12px 28px #0003}
+.department-card:after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dept-accent,#8b9cf6);opacity:.8}
+.department-card.active{border-color:#426d88;background:linear-gradient(145deg,#192d40,#101827)}
+.department-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.department-icon{width:34px;height:34px;border:1px solid #ffffff12;border-radius:11px;display:grid;place-items:center;background:#ffffff08;font-size:17px}
+.department-state{font-size:9px;font-weight:900;letter-spacing:.08em;color:#90a4bd;text-transform:uppercase}
+.department-card.active .department-state{color:#83e6cb}
+.department-name{font-size:12px;font-weight:850;letter-spacing:-.01em;margin:11px 0 4px}
+.department-description{font-size:10px;color:#9eafc7;line-height:1.45;min-height:29px}
+.department-metrics{display:flex;align-items:center;gap:13px;margin-top:13px;padding-top:10px;border-top:1px solid #ffffff0c}
+.department-metric{font-size:10px;color:#b7c5d9}
+.department-metric strong{font-size:15px;color:#edf3ff;margin-right:4px}
+.department-bar{height:4px;background:#27364b;border-radius:20px;overflow:hidden;margin-top:10px}
+.department-bar span{height:100%;display:block;border-radius:20px;background:var(--dept-accent,#8b9cf6);transition:width .4s ease}
+.hero{background:radial-gradient(ellipse at 82% 10%,#6d5dd52b,transparent 36%),linear-gradient(115deg,#1b2942,#131c2f 58%,#1b1b35);border-color:#3b4c6c}
+.hero .live-card{box-shadow:0 12px 34px #0003}
+.stat{position:relative;overflow:hidden;transition:transform .16s ease,border-color .16s ease}
+.stat:hover{transform:translateY(-2px);border-color:#465b7a}
+.panel-head h2{letter-spacing:.12em}
+@media(max-width:1050px){.department-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.department-grid{grid-template-columns:1fr}.department-card{padding:13px}.department-description{min-height:0}}
+
 </style>
 </head>
 <body>
@@ -145,6 +173,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
     </div>
   </section>
 
+  <section class="panel departments-panel">
+    <div class="panel-head"><div><h2>Business departments</h2><div class="subtle">Live work grouped by function</div></div><span class="subtle">Operating structure</span></div>
+    <div id="departmentGrid" class="department-grid"><div class="empty">Department assignments appear with the Leader's roadmap.</div></div>
+  </section>
   <section class="panel station-panel">
     <div class="panel-head"><h2>The station</h2><span class="subtle">Pixel rooms · live roles</span></div>
     <div id="stationRooms"><div class="empty">Loading room stations…</div></div>
@@ -551,9 +583,47 @@ async function refreshLive(){
   catch(error){$("liveUpdated").textContent="Live feed unavailable: "+error.message;}
 }
 
+
+function renderDepartmentOverview(tasks){
+ const grid=$("departmentGrid");if(!grid)return;grid.replaceChildren();
+ const groups=[
+  {name:"Executive & Operations",icon:"✦",accent:"#a78bfa",desc:"Direction, planning, coordination",roles:["orchestrator","operations_manager","strategist"]},
+  {name:"Research & Strategy",icon:"⌕",accent:"#67c8f5",desc:"Market evidence and customer insight",roles:["researcher","customer_researcher","competitor_analyst","analyst","legal_risk","platform_rules"]},
+  {name:"Product & Engineering",icon:"⌘",accent:"#65e5c1",desc:"Product scope, design, build and QA",roles:["product_manager","architect","builder","designer","ux_designer","qa_engineer","security_engineer","coding_room"]},
+  {name:"Growth & Marketing",icon:"↗",accent:"#f2c477",desc:"Content, discovery and acquisition",roles:["growth","copywriter","seo_specialist","content_producer","community_manager"]},
+  {name:"Sales & Customer Success",icon:"◎",accent:"#f49ab6",desc:"Conversion, onboarding and retention",roles:["sales_drafter","sales_strategist","customer_success"]},
+  {name:"Finance & Resources",icon:"▤",accent:"#8fafff",desc:"Unit economics, budgets and provider capacity",roles:["finance","budget_controller","provider_manager"]},
+  {name:"Quality & Governance",icon:"✓",accent:"#9bd38e",desc:"Independent review, risk and verification",roles:["reviewer","qa_tester","decision_auditor","experiment_designer"]},
+  {name:"North Face Intelligence",icon:"⌁",accent:"#c3a6ff",desc:"Learning, experiments and decision improvement",roles:["north_face","learning_analyst"]}
+ ];
+ const normalized=role=>String(role||"").toLowerCase().replace(/\s+/g,"_");
+ groups.forEach(g=>{
+  const matched=tasks.filter(t=>g.roles.includes(normalized(t.agent_role)));
+  const done=matched.filter(t=>t.status==="completed").length;
+  const active=matched.filter(t=>t.status==="running").length;
+  const queued=matched.filter(t=>["pending","retry","blocked"].includes(t.status)).length;
+  const total=matched.length,percent=total?Math.round(done/total*100):0;
+  const card=document.createElement("article");card.className="department-card"+(active?" active":"");card.style.setProperty("--dept-accent",g.accent);
+  const top=document.createElement("div");top.className="department-top";
+  const icon=document.createElement("div");icon.className="department-icon";icon.textContent=g.icon;
+  const state=document.createElement("span");state.className="department-state";state.textContent=active?"Active":total?(done===total?"Complete":queued?"In queue":"Review"):"Standby";
+  top.append(icon,state);
+  const title=document.createElement("div");title.className="department-name";title.textContent=g.name;
+  const desc=document.createElement("div");desc.className="department-description";desc.textContent=g.desc;
+  const metrics=document.createElement("div");metrics.className="department-metrics";
+  const tasksMetric=document.createElement("span");tasksMetric.className="department-metric";tasksMetric.innerHTML="<strong>"+total+"</strong> tasks";
+  const doneMetric=document.createElement("span");doneMetric.className="department-metric";doneMetric.innerHTML="<strong>"+done+"</strong> approved";
+  metrics.append(tasksMetric,doneMetric);
+  const bar=document.createElement("div");bar.className="department-bar";
+  const fill=document.createElement("span");fill.style.width=percent+"%";bar.append(fill);
+  card.append(top,title,desc,metrics,bar);grid.append(card);
+ });
+}
+
 function render(){
   api("/api/local/state?room="+encodeURIComponent(selectedRoom)).then(s=>{
     const tasks=s.tasks||[],files=s.artifacts||[],events=s.events||[],memory=s.memory||{};
+    renderDepartmentOverview(tasks);
     const completed=tasks.filter(t=>t.status==="completed").length;
     const total=tasks.length,active=tasks.find(t=>t.status==="running");
     const running=!!s.running,enabled=!!s.autonomy_enabled;
