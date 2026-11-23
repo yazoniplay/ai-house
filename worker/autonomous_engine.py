@@ -78,6 +78,19 @@ for _r in ("strategist","copywriter"):LOADOUTS[_r]["write_folders"]=["drafts","r
 LOADOUTS["reviewer"]["tools"]=["read_files","run_tests"]
 LOADOUTS["orchestrator"]={"tools":["search","read_files","write_files","run_tests","plan","review"],"write_folders":["reports","build","drafts"],"providers":["gemini","nvidia","groq","tokenharbor","hf","openrouter","sambanova"]}
 LOADOUTS["sales_drafter"]={"tools":["read_files","write_files"],"write_folders":["drafts"],"providers":["gemini","nvidia","groq","tokenharbor","hf","openrouter","sambanova"]}
+# Expanded business departments receive explicit least-privilege tools and folders.
+for _r in ("product_manager","customer_researcher","competitor_analyst","seo_specialist","sales_strategist"):
+ LOADOUTS[_r]["tools"]=["search","read_files","write_files"]
+for _r in ("product_manager","customer_researcher","competitor_analyst","operations_manager","budget_controller","decision_auditor","experiment_designer","provider_manager"):
+ LOADOUTS[_r]["write_folders"]=["reports"]
+for _r in ("ux_designer","security_engineer","qa_engineer"):
+ LOADOUTS[_r]["write_folders"]=["build","reports"]
+ LOADOUTS[_r]["tools"]=["read_files","write_files","run_tests"]
+for _r in ("seo_specialist","content_producer","community_manager","customer_success","sales_strategist"):
+ LOADOUTS[_r]["write_folders"]=["drafts","reports"]
+for _r in ("customer_success","content_producer","community_manager"):
+ LOADOUTS[_r]["tools"]=["read_files","write_files"]
+
 HTTP=httpx.Client(timeout=120)
 # Provider cooldowns prevent repeated quota/rate-limit calls while the engine keeps working.
 PROVIDER_COOLDOWN={}
