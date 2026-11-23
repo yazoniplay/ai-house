@@ -47,6 +47,10 @@ def parse_approval_alert(message):
  match=re.search(r"!approve\s+([0-9a-fA-F]+).*?!deny\s+([0-9a-fA-F]+)",str(message),re.S)
  return match.group(1) if match and match.group(1)==match.group(2) else None
 
+def parse_brief_alert(message):
+ match=re.search(r"!brief\\s+([0-9a-fA-F]+)",str(message))
+ return match.group(1) if match else None
+
 def start_discord_bot(workspace,command_handler,chat_handler=None):
  global _STARTED
  token=os.getenv("DISCORD_BOT_TOKEN","").strip()
@@ -74,9 +78,9 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
  client=discord.Client(intents=intents)
 
  class ChoiceView(discord.ui.View):
-  def __init__(self,request_id,options,owner):
+  def __init__(self,request_id,options,owner,answer_command="!answer"):
    super().__init__(timeout=None)
-   self.request_id=str(request_id);self.owner=str(owner)
+   self.request_id=str(request_id);self.owner=str(owner);self.answer_command=str(answer_command)
    for index,option in enumerate(list(options)[:5]):
     label=str(option).strip()[:80] or "Option "+str(index+1)
     button=discord.ui.Button(label=label,style=discord.ButtonStyle.primary if index==0 else discord.ButtonStyle.secondary,custom_id="aihouse:"+self.request_id+":"+str(index))
@@ -87,7 +91,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
     if str(interaction.user.id)!=self.owner:
      await interaction.response.send_message("Only the AI House owner can answer this.",ephemeral=True);return
     await interaction.response.defer()
-    result=await asyncio.to_thread(command_handler,"!answer "+self.request_id+" "+str(index))
+    result=await asyncio.to_thread(command_handler,self.answer_command+" "+self.request_id+" "+str(index))
     await interaction.message.edit(content=redact(str(result))[:1800],view=None)
     if chat_handler is not None and str(result).startswith("Answered "):
      follow=await asyncio.to_thread(chat_handler,"The owner answered request "+self.request_id+" with option "+str(index)+". Continue from that answer and ask another question only if necessary.")
@@ -124,21 +128,29 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
     try:
      request_id=parse_approval_alert(message)
      if request_id:
-      view=ChoiceView(request_id,["yes","no"],owner_id)
+      view=ChoiceView(request_id,["yes","no"],owner_id,"!answer")
       client.add_view(view)
       await channel.send(redact(message)[:1700],view=view)
-     else:await channel.send(redact(message)[:1900])
+     else:
+      brief_id=parse_brief_alert(message)
+      if brief_id:
+       raw_brief=await asyncio.to_thread(command_handler,"!brief-json "+brief_id)
+       brief=json.loads(str(raw_brief))
+       view=ChoiceView(brief_id,brief.get("options",[]),owner_id,"!brief-answer")
+       client.add_view(view)
+       await channel.send(redact(message)[:1700],view=view)
+      else:await channel.send(redact(message)[:1900])
     except Exception:_ALERTS.put(item);break
 
  @client.event
  async def on_ready():
   _LOG.info("discord_bot_ready")
   try:
-   pending_raw=await asyncio.to_thread(command_handler,"!pending-json")
+   pending_raw=await asyncio.to_thread(command_handler,"!discord-pending-json")
    pending=json.loads(str(pending_raw))
    for request in pending if isinstance(pending,list) else []:
     if request.get("id") and request.get("options"):
-     client.add_view(ChoiceView(request["id"],request["options"],owner_id))
+     client.add_view(ChoiceView(request["id"],request["options"],owner_id,request.get("answer_command","!answer")))
    _LOG.info("discord_persistent_views_registered count=%s",len(pending) if isinstance(pending,list) else 0)
   except Exception as view_error:_LOG.error("discord_persistent_views_error %s",type(view_error).__name__)
  @client.event
