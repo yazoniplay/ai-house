@@ -229,7 +229,8 @@ def raw(p,sys,ask,role):
   except Exception:pass
  if p=="openrouter":
   if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
-  r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":ORM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
+  model_id=configured_model_pool("openrouter",ORM,"AI_HOUSE_OPENROUTER_MODELS")[0]
+  r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":model_id,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
   if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
   try:
    data=r.json();out=data["choices"][0]["message"].get("content") or ""
