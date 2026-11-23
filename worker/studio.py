@@ -6,6 +6,7 @@ production/publishing adapters.
 """
 import json
 import re
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -171,7 +172,7 @@ def move_stage(workspace, project_id, stage):
     return project
 
 
-def decide_approval(workspace, approval_id, decision, note=""):
+def decide_approval(workspace, approval_id, decision, note="", actor="leader"):
     if decision not in ("approve", "reject"):
         raise StudioError("decision must be approve or reject")
     path = _store(workspace)
@@ -182,6 +183,7 @@ def decide_approval(workspace, approval_id, decision, note=""):
     if approval.get("status") != "pending":
         raise StudioError("approval has already been decided")
     approval["status"] = "approved" if decision == "approve" else "rejected"
+    approval["decision_actor"] = str(actor or "leader")[:80]
     approval["decision_note"] = str(note or "")[:2000]
     approval["decided_at"] = _now()
     project = next((p for p in data["projects"] if p.get("id") == approval.get("project_id")), None)
@@ -193,3 +195,65 @@ def decide_approval(workspace, approval_id, decision, note=""):
         project["updated_at"] = _now()
     _write(path, data)
     return approval
+
+
+
+def leader_review_approval(workspace, approval_id):
+    """Ask the actual AI House orchestrator to review Studio work and record its decision."""
+    path = _store(workspace)
+    data = _read(path)
+    approval = next((a for a in data["approvals"] if a.get("id") == approval_id), None)
+    if approval is None:
+        raise StudioError("approval not found")
+    if approval.get("status") != "pending":
+        raise StudioError("approval has already been decided")
+    project = next((p for p in data["projects"] if p.get("id") == approval.get("project_id")), None)
+    if project is None:
+        raise StudioError("project not found")
+    root = Path(workspace).resolve()
+    evidence = []
+    for item in project.get("artifacts", []):
+        rel = Path(str(item.get("path", "")))
+        if not rel.parts or rel.is_absolute() or ".." in rel.parts:
+            continue
+        target = (root / rel).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            continue
+        if not target.is_file():
+            evidence.append({"path": rel.as_posix(), "exists": False})
+            continue
+        try:
+            raw = target.read_text(encoding="utf-8", errors="replace")
+            evidence.append({"path": rel.as_posix(), "exists": True, "content": raw[:12000]})
+        except OSError:
+            evidence.append({"path": rel.as_posix(), "exists": False})
+    prompt = (
+        "Review this AI House Studio approval as the accountable Leader/CEO. "
+        "You, not the owner, decide routine production quality. Inspect evidence and reject or return work "
+        "for revision when deliverables are missing, unsafe, misleading, infringing, or not ready. "
+        "Do not claim external publishing happened. For publishing requests, approve only if the requested "
+        "asset is complete and the connected channel is intended; the actual publisher still must enforce "
+        "channel permissions and use private/unlisted defaults where applicable. "
+        "Return strict JSON with decision (approve|reject), reason, and required_changes.\n"
+        "Approval: " + json.dumps(approval, ensure_ascii=False) +
+        "\nProject: " + json.dumps(project, ensure_ascii=False) +
+        "\nPhysical artifact evidence: " + json.dumps(evidence, ensure_ascii=False)[:30000]
+    )
+    try:
+        worker_dir = str(Path(__file__).resolve().parent)
+        if worker_dir not in sys.path:
+            sys.path.insert(0, worker_dir)
+        import autonomous_engine
+        result = autonomous_engine.leader_json(prompt)
+        decision = str(result.get("decision", "")).lower()
+        if decision not in ("approve", "reject"):
+            decision = "reject"
+        note = str(result.get("reason", ""))[:1800]
+        changes = result.get("required_changes", [])
+        if changes:
+            note += "\\nRequired changes: " + json.dumps(changes, ensure_ascii=False)[:1000]
+        return decide_approval(workspace, approval_id, decision, note, actor="AI House Leader")
+    except Exception as exc:
+        raise StudioError("Leader review could not complete; approval remains pending: " + str(exc)[:300])
