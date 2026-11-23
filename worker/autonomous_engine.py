@@ -69,9 +69,11 @@ ZK=os.getenv("ZAI_API_KEY","");ZM=os.getenv("ZAI_MODEL","glm-5.3-flash");ZB=os.g
 SFK=os.getenv("SILICONFLOW_API_KEY","");SFM=os.getenv("SILICONFLOW_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507");SFB=os.getenv("SILICONFLOW_BASE_URL","https://api.siliconflow.com/v1").rstrip("/")
 ORK=os.getenv("ORCAROUTER_API_KEY","");ORMODEL=os.getenv("ORCAROUTER_MODEL","orcarouter/auto");ORB=os.getenv("ORCAROUTER_BASE_URL","https://api.orcarouter.ai/v1").rstrip("/")
 BLK=os.getenv("BAZAARLINK_API_KEY","");BLMODEL=os.getenv("BAZAARLINK_MODEL","auto:free");BLB=os.getenv("BAZAARLINK_BASE_URL","https://api.bazaarlink.ai/v1").rstrip("/")
+ARK=os.getenv("AGENTROUTER_API_KEY","");ARM=os.getenv("AGENTROUTER_MODEL","deepseek-v4-flash");ARB=os.getenv("AGENTROUTER_BASE_URL","https://agentrouter.org/v1").rstrip("/")
+RWK=os.getenv("ROUTEWAY_API_KEY","");RWM=os.getenv("ROUTEWAY_MODEL","deepseek-v4-flash:free");RWB=os.getenv("ROUTEWAY_BASE_URL","https://api.routeway.ai/v1").rstrip("/")
 CFK=os.getenv("CLOUDFLARE_API_TOKEN","");CF_ACCOUNT_ID=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip();CFM=os.getenv("CLOUDFLARE_WORKERS_AI_MODEL","@cf/meta/llama-3.3-70b-instruct-fp8-fast");CFB=os.getenv("CLOUDFLARE_BASE_URL",("https://api.cloudflare.com/client/v4/accounts/"+CF_ACCOUNT_ID+"/ai/v1") if CF_ACCOUNT_ID else "").rstrip("/")
 EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"; SEARCH_PROVIDER_STATE=SD/"search-provider-state.json"
-PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0,"vercel":0.0,"zai":0.0,"siliconflow":0.0,"orcarouter":0.0,"bazaarlink":0.0}
+PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0,"vercel":0.0,"zai":0.0,"siliconflow":0.0,"orcarouter":0.0,"bazaarlink":0.0,"agentrouter":0.0,"routeway":0.0}
 PAID_PROVIDERS=set(x.strip() for x in os.getenv("AI_HOUSE_PAID_PROVIDERS","").split(",") if x.strip())
 SPENDBF=SD/"search-budget.json"
 def estimate_cost(provider,usage):
@@ -246,10 +248,10 @@ def ollama_chat(sys,ask):
  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
 PROVIDER_ROTATION={"orchestrator":0,"worker":0}
 def provider_order(role):
- has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK),"vercel":bool(VG),"zai":bool(ZK),"siliconflow":bool(SFK),"orcarouter":bool(ORK),"bazaarlink":bool(BLK),"cloudflare":bool(CFK and CF_ACCOUNT_ID)}
+ has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK),"vercel":bool(VG),"zai":bool(ZK),"siliconflow":bool(SFK),"orcarouter":bool(ORK),"bazaarlink":bool(BLK),"cloudflare":bool(CFK and CF_ACCOUNT_ID),"agentrouter":bool(ARK),"routeway":bool(RWK)}
  # Keep Gemini as the preferred primary, but rotate the backup order per role
  # so NVIDIA and the other configured providers are genuinely exercised on failures.
- base=["gemini","groq","nvidia","tokenharbor","hf","sambanova","openrouter","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","ollama"]
+ base=["gemini","groq","nvidia","tokenharbor","hf","sambanova","openrouter","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","ollama"]
  available=[p for p in base if has[p]]
  primary=["gemini"] if "gemini" in available else []
  backups=[p for p in available if p not in primary]
@@ -301,10 +303,10 @@ def provider_model_catalog(provider):
    rows=response.json().get("data",[])
    OPENROUTER_FREE_MODELS[:]=openrouter_free_model_ids(rows)
    ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
-  elif provider in ("vercel","zai","siliconflow","orcarouter","bazaarlink"):
-   key,base={"vercel":(VG,VGB),"zai":(ZK,ZB),"siliconflow":(SFK,SFB),"orcarouter":(ORK,ORB),"bazaarlink":(BLK,BLB)}[provider]
+  elif provider in ("vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter","routeway"):
+   key,base={"vercel":(VG,VGB),"zai":(ZK,ZB),"siliconflow":(SFK,SFB),"orcarouter":(ORK,ORB),"bazaarlink":(BLK,BLB),"agentrouter":(ARK,ARB),"routeway":(RWK,RWB)}[provider]
    if not key:return None
-   response=HTTP.get(base+"/models",headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},timeout=12)
+   response=HTTP.get(base+"/models",headers={"Authorization":"Bearer "+key,"Content-Type":"application/json",**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if provider=="routeway" else {})},timeout=12)
    if response.status_code>=400:raise RuntimeError(provider+" model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
    ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
@@ -382,6 +384,8 @@ def _raw_once(p,sys,ask,role,model_override=None):
  elif p=="orcarouter":key,url,model=ORK,ORB+"/chat/completions",model_override or configured_model_pool("orcarouter",ORMODEL,"AI_HOUSE_ORCAROUTER_MODELS")[0]
  elif p=="bazaarlink":key,url,model=BLK,BLB+"/chat/completions",model_override or configured_model_pool("bazaarlink",BLMODEL,"AI_HOUSE_BAZAARLINK_MODELS")[0]
  elif p=="cloudflare":key,url,model=CFK,CFB+"/chat/completions",model_override or configured_model_pool("cloudflare",CFM,"AI_HOUSE_CLOUDFLARE_MODELS")[0]
+ elif p=="agentrouter":key,url,model=ARK,ARB+"/chat/completions",model_override or configured_model_pool("agentrouter",ARM,"AI_HOUSE_AGENTROUTER_MODELS")[0]
+ elif p=="routeway":key,url,model=RWK,RWB+"/chat/completions",model_override or configured_model_pool("routeway",RWM,"AI_HOUSE_ROUTEWAY_MODELS")[0]
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
@@ -412,7 +416,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  last_error=None
  for candidate in candidates:
   payload["model"]=candidate
-  r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json",**({"X-OrcaRouter-Include-Cost":"true"} if p=="orcarouter" else {})},json=payload,timeout=timeout_seconds)
+  r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json",**({"X-OrcaRouter-Include-Cost":"true"} if p=="orcarouter" else {}),**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if p=="routeway" else {})},json=payload,timeout=timeout_seconds)
   if r.status_code in (400,404) and candidate!=candidates[-1] and is_model_specific_error(r.text):
    log("groq_model_auto_fallback",unavailable_model=candidate,next_model=candidates[candidates.index(candidate)+1],status=r.status_code)
    continue
@@ -447,6 +451,8 @@ def model_candidates(provider,role):
  elif provider=="orcarouter":primary=ORMODEL;env_name="AI_HOUSE_ORCAROUTER_MODELS"
  elif provider=="bazaarlink":primary=BLMODEL;env_name="AI_HOUSE_BAZAARLINK_MODELS"
  elif provider=="cloudflare":primary=CFM;env_name="AI_HOUSE_CLOUDFLARE_MODELS"
+ elif provider=="agentrouter":primary=ARM;env_name="AI_HOUSE_AGENTROUTER_MODELS"
+ elif provider=="routeway":primary=RWM;env_name="AI_HOUSE_ROUTEWAY_MODELS"
  elif provider=="ollama":primary=OM;env_name="AI_HOUSE_OLLAMA_MODELS"
  else:return []
  configured=route_model_pool(primary,NVIDIA_MODELS if provider=="nvidia" else os.getenv(env_name,""))
@@ -465,7 +471,9 @@ def model_candidates(provider,role):
   "siliconflow":["Qwen/Qwen3-30B-A3B-Instruct-2507","deepseek-ai/DeepSeek-V3.2","Qwen/Qwen3-32B","Qwen/Qwen2.5-72B-Instruct"],
   "orcarouter":["orcarouter/auto","google/gemini-3-flash-preview","openai/gpt-6.1-sol","anthropic/claude-sonnet-4.6"],
   "bazaarlink":["auto:free","openai/gpt-4o-mini","google/gemini-2.5-flash"],
-   "cloudflare":["@cf/meta/llama-3.3-70b-instruct-fp8-fast","@cf/meta/llama-3.1-8b-instruct"]
+   "cloudflare":["@cf/meta/llama-3.3-70b-instruct-fp8-fast","@cf/meta/llama-3.1-8b-instruct"],
+  "agentrouter":["deepseek-v4-flash","gpt-6.1-sol","gpt-6-astra"],
+  "routeway":["deepseek-v4-flash:free","deepseek-v4-flash","qwen3.8-27b"]
  }
  if provider=="gemini":
   # Keep an explicitly custom model first, but migrate the old default worker model
@@ -513,15 +521,15 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  defaults={"gemini":3,"nvidia":3,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2}
-  env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS","orcarouter":"AI_HOUSE_ORCAROUTER_MAX_MODEL_ATTEMPTS","bazaarlink":"AI_HOUSE_BAZAARLINK_MAX_MODEL_ATTEMPTS","cloudflare":"AI_HOUSE_CLOUDFLARE_MAX_MODEL_ATTEMPTS"}
+  defaults={"gemini":3,"nvidia":3,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}
+  env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS","orcarouter":"AI_HOUSE_ORCAROUTER_MAX_MODEL_ATTEMPTS","bazaarlink":"AI_HOUSE_BAZAARLINK_MAX_MODEL_ATTEMPTS","cloudflare":"AI_HOUSE_CLOUDFLARE_MAX_MODEL_ATTEMPTS","agentrouter":"AI_HOUSE_AGENTROUTER_MAX_MODEL_ATTEMPTS","routeway":"AI_HOUSE_ROUTEWAY_MAX_MODEL_ATTEMPTS"}
   if p in defaults:
    # Environment values may lower the budget, but cannot re-enable dozens of
    # retries against one provider during a single agent request.
    max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
- except Exception:max_attempts={"gemini":3,"nvidia":3,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2}.get(p,3)
- if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare") and len(candidates)>max_attempts:
+ except Exception:max_attempts={"gemini":3,"nvidia":3,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}.get(p,3)
+ if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
   # reach every eligible model instead of always truncating to the same prefix.
