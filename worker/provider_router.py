@@ -16,6 +16,27 @@ def model_pool(primary, configured=""):
             values.append(value)
     return values
 
+def gemini_chat_model_pool(catalog_ids, preferred=()):
+    """Order all catalog-verified Gemini/Gemma chat models for task fallback.
+
+    The caller's catalog is already filtered to generateContent-capable models.
+    Exclude specialized audio, image, video, embedding, and realtime endpoints
+    from ordinary text-agent requests.
+    """
+    excluded=("embedding", "imagen", "image", "veo", "audio", "live", "transcribe", "tts", "robotics", "video", "speech", "translate", "music")
+    available=list(dict.fromkeys(str(x).strip().removeprefix("models/") for x in catalog_ids if str(x).strip()))
+    available=[x for x in available if not any(token in x.lower() for token in excluded)]
+    preferred_order=[x for x in model_pool("", ",".join(preferred)) if x in available]
+    rest=[x for x in available if x not in preferred_order]
+    def rank(model):
+        name=model.lower()
+        if "flash-lite" in name:return (0,name)
+        if "flash" in name:return (1,name)
+        if "gemma" in name:return (2,name)
+        if "pro" in name:return (3,name)
+        return (4,name)
+    return preferred_order+sorted(rest,key=rank)
+
 def is_model_specific_error(error):
     message=str(error).lower()
     return any(token in message for token in (

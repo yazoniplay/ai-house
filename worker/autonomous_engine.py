@@ -15,7 +15,7 @@ from briefs import create_brief, get_brief_answer, answer_brief, list_briefs
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
-from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error
+from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool
 from user_validation import verify_usage_events, load_usage_events
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
 from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
@@ -439,6 +439,12 @@ def model_candidates(provider,role):
   candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
  catalog=provider_model_catalog(provider)
  if catalog:
+  if provider=="gemini":
+   # Google's catalog can contain dozens of generateContent-capable models. Keep
+   # the preferred Flash models first, then dynamically append every other
+   # general chat/text model available to this API key.
+   candidates=gemini_chat_model_pool(catalog,candidates)
+   log("gemini_dynamic_fallback_pool",role=role,preferred_count=len(configured),catalog_text_model_count=len(candidates),models=candidates[:20])
   if provider=="openrouter":
    # OpenRouter's free/auto router aliases are valid even though they are not
    # regular model IDs in /models; all concrete model slugs must be catalog-listed.
@@ -454,8 +460,17 @@ def model_candidates(provider,role):
 def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
- try:max_attempts=max(1,min(12,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","8"))))
- except Exception:max_attempts=8
+ try:
+  if p=="gemini":max_attempts=max(1,min(50,int(os.getenv("AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","20"))))
+  else:max_attempts=max(1,min(12,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","8"))))
+ except Exception:max_attempts=20 if p=="gemini" else 8
+ if p=="gemini" and len(candidates)>max_attempts:
+  # Rotate the attempt window so a large catalog is covered across calls, not
+  # permanently truncated to the same first few models.
+  rotation_key="gemini_attempt_offset:"+str(role)
+  offset=MODEL_ROTATION.get(rotation_key,0)%len(candidates)
+  candidates=candidates[offset:]+candidates[:offset]
+  MODEL_ROTATION[rotation_key]=(offset+max_attempts)%len(candidates)
  if len(candidates)>max_attempts:
   log("model_attempt_limit",provider=p,role=role,available_models=len(candidates),attempt_limit=max_attempts)
   candidates=candidates[:max_attempts]

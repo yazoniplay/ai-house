@@ -1,5 +1,5 @@
 import unittest
-from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model, openrouter_free_model_ids, is_openrouter_credit_model_error
+from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool
 
 class ProviderRouterTests(unittest.TestCase):
     def test_provider_rotation_spreads_calls_across_available_providers(self):
@@ -49,6 +49,16 @@ class ProviderRouterTests(unittest.TestCase):
 
     def test_model_pool_keeps_primary_and_alternates_in_order(self):
         self.assertEqual(model_pool("kimi", "nemotron,glm,kimi"), ["kimi", "nemotron", "glm"])
+
+    def test_gemini_pool_uses_full_catalog_and_filters_specialized_models(self):
+        catalog={"gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.8-flash","gemini-3.6-flash","gemini-2.5-pro","gemma-3-27b-it","gemini-embedding-001","gemini-3.5-transcribe","gemini-3.1-flash-live-preview","gemini-3-pro-image"}
+        pool=gemini_chat_model_pool(catalog,["gemini-3.5-flash-lite","gemini-3.1-flash-lite"])
+        self.assertEqual(pool[:2],["gemini-3.5-flash-lite","gemini-3.1-flash-lite"])
+        self.assertIn("gemini-3.8-flash",pool)
+        self.assertIn("gemma-3-27b-it",pool)
+        self.assertIn("gemini-2.5-pro",pool)
+        self.assertFalse(any(any(token in model for token in ("embedding","transcribe","live","image")) for model in pool))
+        self.assertEqual(len(pool),6)
 
     def test_openrouter_catalog_finds_free_and_zero_priced_models(self):
         rows=[
