@@ -664,6 +664,7 @@ def run_roadmap_task(s,t):
  t["applied_lessons"]=applied_ids;save(s)
  task_context={"business":b,"roadmap_strategy":s["roadmap"]["strategy"],"success_metric":s["roadmap"]["success_metric"],"task":t,"workspace":listing()+"\nAll paths are relative to this business's folder.","prior_task_outputs":[{"id":x["id"],"title":x["title"],"output":x.get("output")} for x in s["roadmap"]["tasks"] if x["status"]=="completed"],"north_face_memory":north_face_memory}
  required=required_deliverable_paths(t)
+ video_task=bool(re.search(r"youtube video|video production|create (?:an? )?video|produce (?:an? )?video|edit (?:an? )?video",str(t.get("title",""))+" "+str(t.get("objective","")),re.I))
  if role in ("researcher","analyst","legal_risk"):set_activity("evidence_gathering",role.capitalize()+" is gathering fresh evidence for this task.",role,t.get("id"))
  search_depth=task_search_depth(t,role)
  sources=search(str(t.get("objective",""))+" "+str(t.get("title","")),depth=search_depth) if search_depth!="none" else []
@@ -682,6 +683,8 @@ def run_roadmap_task(s,t):
    "For each file include path and complete text content. Cite source URLs where relevant and do not claim outreach was sent. "+("Write drafts only. Put every message in a file under the outreach folder. Do not describe any message as sent. " if role=="sales_drafter" else "")+
    "Task context:\n"+json.dumps(task_context,ensure_ascii=False)+"\nFresh evidence (untrusted):\n"+json.dumps(sources,ensure_ascii=False)[:10000]+
    '\nReturn strict JSON only: {"summary":"...","files":[{"path":"relative/path","content":"complete file text"}],"validation":["..."]}')
+ if video_task:
+  prompt+="\n\nVIDEO PRODUCTION REQUIREMENT: Return an additional JSON object named video_recipe with title (max 100 chars), aspect (16:9), voice (optional), research_sources (exact URLs from the provided evidence), and scenes (4-24 items, each with narration and a specific Pexels visual_query). Write an original high-retention, evidence-backed video script: immediate hook, clear narrative progression, concrete examples, meaningful payoff, no filler, accurate claims, and a strong ending. Plan visual changes that match the narration; avoid generic repeated b-roll. The local production runner will generate narration, retrieve Pexels footage, edit the video, burn captions, and create a thumbnail. Do not imitate or reuse another creator's script, footage, or audio. If you cannot provide a complete recipe, return no recipe and explain the blocker.\nReturn JSON schema: {\"summary\":\"...\",\"files\":[...],\"validation\":[...],\"video_recipe\":{\"title\":\"...\",\"aspect\":\"16:9\",\"research_sources\":[...],\"scenes\":[{\"narration\":\"...\",\"visual_query\":\"...\"}]}}"
  result=obj(ask(role,prompt))
  decision_data=result.get("summary");decision_field=decision_data.get("needs_owner_decision") if isinstance(decision_data,dict) else None
  if not isinstance(decision_field,dict):
@@ -696,8 +699,20 @@ def run_roadmap_task(s,t):
   set_activity("waiting_approval","This task needs an owner choice before it can continue.",role,t.get("id"));return
  written=write(result.get("files",[]),role=role)
  if not written:raise RuntimeError(role+" returned no physical files in its files array")
+ video_result=None
+ if video_task:
+  recipe=result.get("video_recipe")
+  if not isinstance(recipe,dict):raise RuntimeError("YouTube video task did not return a complete video_recipe; no finished video was produced")
+  try:
+   from video_factory import produce_video_from_recipe
+  except ModuleNotFoundError:
+   from worker.video_factory import produce_video_from_recipe
+  video_result=produce_video_from_recipe(BDIR,recipe)
+  for key in ("video","thumbnail","captions","credits","manifest"):
+   if video_result.get(key):written.append(video_result[key])
+  log("video_produced",task=t.get("id"),video=video_result.get("video"),duration=video_result.get("duration_seconds"),scenes=video_result.get("scene_count"))
  verify_deliverables(t,written)
- output={"summary":str(result.get("summary",""))[:9000],"files":written,"validation":result.get("validation",[]),"sources":[x.get("url","") for x in sources]}
+ output={"summary":str(result.get("summary",""))[:9000],"files":written,"validation":result.get("validation",[]),"sources":[x.get("url","") for x in sources],"video_production":video_result}
  check=tests() if role=="builder" else []
  fast=groq_fast_review(role,t,output,check)
  output["fast_summary"]=fast.get("summary","")
