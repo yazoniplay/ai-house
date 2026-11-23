@@ -15,7 +15,7 @@ from briefs import create_brief, get_brief_answer, answer_brief, list_briefs
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
-from provider_router import rotate as route_rotate, cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool
+from provider_router import rotate as route_rotate, cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model
 from user_validation import verify_usage_events, load_usage_events
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
 from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
@@ -352,7 +352,7 @@ def model_candidates(provider,role):
   "gemini":["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.1-flash-lite"],
   "groq":["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
  }
- return list(dict.fromkeys(configured+defaults.get(provider,[])))
+ candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))\n log("model_pool_ready",provider=provider,role=role,model_count=len(candidates),models=candidates[:12])\n return candidates
 def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
@@ -363,7 +363,7 @@ def raw(p,sys,ask,role):
    return _raw_once(p,sys,ask,role,candidate)
   except Exception as error:
    last_error=error;message=str(error).lower()
-   fatal=any(token in message for token in ("401","403","402","invalid api key","authentication failed","unauthorized","permission denied","insufficient credits","billing limit","payment required"))
+   fatal=not should_try_next_model(error)
    log("model_attempt_failed",provider=p,model=candidate,role=role,attempt=index,total=len(candidates),provider_fatal=fatal,error=str(error)[:180])
    if fatal:break
    if index<len(candidates):log("model_fallback_next",provider=p,failed_model=candidate,next_model=candidates[index],role=role)
