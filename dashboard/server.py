@@ -329,6 +329,65 @@ def room_state_path(room):
     return path
 
 
+# Owner-managed briefs, recipes, skills, and recurring schedules.
+if str(WORKER_DIR) not in sys.path:
+    sys.path.insert(0, str(WORKER_DIR))
+from briefs import answer_brief, list_briefs
+from recipes import list_recipes
+from skills import list_skills
+SCHEDULES_FILE = STATE_DIR / "schedules.json"
+
+@app.get("/api/briefs")
+def briefs_api():
+    return jsonify(briefs=[{key: item.get(key) for key in ("id", "room", "question", "options", "context")} for item in list_briefs(WORKSPACE, True)])
+
+@app.post("/api/briefs/<brief_id>")
+def answer_brief_api(brief_id):
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or "choice" not in body:
+        return jsonify(error='JSON body must contain "choice".'), 400
+    try:
+        item = answer_brief(WORKSPACE, brief_id, body["choice"])
+        return jsonify(id=item["id"], status=item["status"], choice=item["choice"])
+    except (ValueError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
+
+@app.get("/api/recipes")
+def recipes_api():
+    return jsonify(recipes=list_recipes(WORKSPACE))
+
+@app.get("/api/skills")
+def skills_api():
+    return jsonify(skills=list_skills(WORKSPACE))
+
+@app.get("/api/schedules")
+def schedules_get_api():
+    return jsonify(schedules=read_json(SCHEDULES_FILE, [{"name": "daily_summary", "every_hours": 24, "action": "daily_summary", "last_run": None}]))
+
+@app.post("/api/schedules")
+def schedules_post_api():
+    body = request.get_json(silent=True)
+    entries = body.get("schedules") if isinstance(body, dict) else body
+    if not isinstance(entries, list):
+        return jsonify(error="JSON body must be a list or contain schedules: []."), 400
+    clean = []
+    for item in entries:
+        if not isinstance(item, dict):
+            return jsonify(error="Each schedule must be an object."), 400
+        name = str(item.get("name", "")).strip()
+        try:
+            hours = int(item.get("every_hours"))
+        except (TypeError, ValueError):
+            return jsonify(error="every_hours must be an integer from 1 to 168."), 400
+        action = item.get("action")
+        if not name or not 1 <= hours <= 168:
+            return jsonify(error="Schedule name is required and every_hours must be 1-168."), 400
+        if action not in ("daily_summary", "status_report"):
+            return jsonify(error='action must be "daily_summary" or "status_report".'), 400
+        clean.append({"name": name[:120], "every_hours": hours, "action": action, "last_run": item.get("last_run")})
+    write_json(SCHEDULES_FILE, clean)
+    return jsonify(schedules=clean)
+
 @app.get("/api/control")
 def house_control_get():
     settings = house_settings()
