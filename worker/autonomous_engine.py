@@ -732,7 +732,6 @@ def main():
  print("Workspace:",WORK)
  registry=load_rooms()
  if not isinstance(registry.get("rooms"),list) or not registry["rooms"]:registry["rooms"]=[{"id":"room-001","name":"Room 1","state_file":str(SF),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}]
- registry["rooms"]=registry["rooms"][:max(1,MAX_ROOMS)]
  registry.setdefault("past_businesses",[]);registry.setdefault("cursor",0)
  save_rooms(registry)
  first=registry["rooms"][0]
@@ -749,7 +748,10 @@ def main():
   try:
    published=run_publisher(WORK,HTTP);log("publish_pass",published=published)
   except Exception as publish_error:log("publish_pass",published=0,error=str(publish_error)[:500])
-  registry=load_rooms();active=[room for room in registry["rooms"] if room.get("status","active")=="active"]
+  registry=load_rooms()
+  if not any(item.get("status","active")=="active" for item in registry["rooms"]) and len(registry["rooms"])<MAX_ROOMS:
+   created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],reason="no_active_rooms")
+  active=[room for room in registry["rooms"] if room.get("status","active")=="active"]
   if active:
    index=int(registry.get("cursor",0))%len(active);room=active[index];registry["cursor"]=int(registry.get("cursor",0))+1;save_rooms(registry)
    try:
@@ -763,10 +765,12 @@ def main():
     if s.get("business_dir"):room["business_dir"]=s["business_dir"]
     if s.get("business_completed"):
      room["status"]="done"
-     if len(registry["rooms"])<MAX_ROOMS:
-      created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"])
-     else:save_rooms(registry)
-    else:save_rooms(registry)
+    save_rooms(registry)
+    active_now=[item for item in registry["rooms"] if item.get("status","active")=="active"]
+    if len(active_now)<MAX_ROOMS:
+     created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],active_rooms=len(active_now)+1)
+    else:
+     save_rooms(registry)
    except KeyboardInterrupt:print("Stopped; saved.");return 0
    except Exception as e:
     error=str(e)[:800];provider_wait=("No available leader provider:" in error or "No available worker provider:" in error)
