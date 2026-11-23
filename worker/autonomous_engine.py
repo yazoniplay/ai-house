@@ -1229,7 +1229,7 @@ def discord_command(text):
   return json.dumps(brief or {},ensure_ascii=False)
  if command=="!discord-pending-json":
   items=[dict(x,answer_command="!answer") for x in list_requests(WORK,True)]
-  items.extend(dict(x,answer_command="!brief-answer") for x in list_briefs(WORK,True))
+  items.extend(dict(x,answer_command="!brief-answer",alert_kind="brief") for x in list_briefs(WORK,True))
   return json.dumps(items,ensure_ascii=False)
  if command=="!brief-answer":
   if len(parts)!=3:return "Usage: !brief-answer <id> <option-number>"
