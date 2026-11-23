@@ -10,7 +10,10 @@ import time
 from pathlib import Path
 import httpx
 
-from computer_use import execute, ComputerUseError
+try:
+    from worker.computer_use import execute, ComputerUseError
+except ModuleNotFoundError:
+    from computer_use import execute, ComputerUseError
 
 API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
