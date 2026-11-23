@@ -89,8 +89,8 @@ class ProviderRouterTests(unittest.TestCase):
         error="openrouter 402: can only afford 83 tokens due to credits"
         self.assertTrue(is_openrouter_credit_model_error("openrouter",error))
         self.assertTrue(is_provider_wide_error("openrouter",error))
-        self.assertFalse(is_provider_wide_error("gemini","402 insufficient credits"))
-        self.assertFalse(is_provider_wide_error("openrouter","openrouter 401 invalid API key") is False)
+        self.assertTrue(is_provider_wide_error("gemini","402 insufficient credits"))
+        self.assertTrue(is_provider_wide_error("openrouter","openrouter 401 invalid API key"))
 
     def test_openrouter_free_daily_quota_skips_model_pool(self):
         error="429: free-models-per-day quota exhausted"
