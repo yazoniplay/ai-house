@@ -905,25 +905,38 @@ def cycle(s):
    except Exception:pass
   set_activity("market_research","The house is starting a fresh business cycle.")
   log("market_research_started")
-  if businesses_started_today()>=MAX_NEW_BUSINESSES_PER_DAY:
-   s["discovery_retry_after"]=next_utc_midnight().isoformat();save(s)
-   set_activity("discovery_wait","Daily business limit reached; new businesses start tomorrow.","researcher")
-   log("daily_business_limit_reached",limit=MAX_NEW_BUSINESSES_PER_DAY);notify("daily_limit","The daily new-business limit was reached.");return
-  business=opportunity()
-  if business is None:
-   retry_at=next_utc_midnight() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
-   s["discovery_retry_after"]=retry_at.isoformat()
-   wait_message="Tavily and Exa search budgets are used up; resuming after the UTC midnight reset." if not search_available() else "Insufficient source-backed opportunities; retrying discovery in 30 minutes."
-   s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
-   save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
+  try:
+   from coding_room import claim_next
+  except ModuleNotFoundError:
+   from worker.coding_room import claim_next
+  coding_project=claim_next(WORK,ROOM_ID)
+  if coding_project:
+   business={"name":coding_project["title"],"customer":coding_project["target_user"],"problem":coding_project["problem"],"solution":coding_project["brief"],"validation":"Owner supplied Coding Room brief; validate demand and feasibility with current research before committing to scope.","score":100,"sources":[],"owner_success_metric":coding_project.get("success_metric","")}
+   folder=f"apps/{coding_project['id']}-{slugify(coding_project.get('title','app'))}"
+   s["coding_project_id"]=coding_project["id"]
+   log("coding_project_claimed",project_id=coding_project["id"],title=coding_project["title"],room=ROOM_ID)
+  else:
+   if businesses_started_today()>=MAX_NEW_BUSINESSES_PER_DAY:
+    s["discovery_retry_after"]=next_utc_midnight().isoformat();save(s)
+    set_activity("discovery_wait","Daily business limit reached; new businesses start tomorrow.","researcher")
+    log("daily_business_limit_reached",limit=MAX_NEW_BUSINESSES_PER_DAY);notify("daily_limit","The daily new-business limit was reached.");return
+   business=opportunity()
+   if business is None:
+    retry_at=next_utc_midnight() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
+    s["discovery_retry_after"]=retry_at.isoformat()
+    wait_message="Tavily and Exa search budgets are used up; resuming after the UTC midnight reset." if not search_available() else "Insufficient source-backed opportunities; retrying discovery in 30 minutes."
+    s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
+    save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
+   folder=f"businesses/{len(load_rooms().get('past_businesses',[]))+1:03d}-{slugify(business.get('name',''))}"
+   s.pop("coding_project_id",None)
   s["business"]=business
-  folder=f"businesses/{len(load_rooms().get('past_businesses',[]))+1:03d}-{slugify(business.get('name',''))}"
   set_business_dir(folder)
   s["business_dir"]=folder
   (BDIR/"README.md").write_text("# "+str(business.get("name",""))+"\n\n"+"Customer: "+str(business.get("customer",""))+"\n\nScore: "+str(business.get("score",""))+"\n\nSources:\n"+"\n".join("- "+u for u in business.get("sources",[]))+"\n",encoding="utf-8")
-  s.setdefault("past_businesses",[]).append(str(business.get("name","")))
-  s["past_businesses"]=s["past_businesses"][-300:]
-  registry=load_rooms();registry.setdefault("past_businesses",[]).append(str(business.get("name","")));registry["past_businesses"]=registry["past_businesses"][-300:];save_rooms(registry)
+  if not coding_project:
+   s.setdefault("past_businesses",[]).append(str(business.get("name","")))
+   s["past_businesses"]=s["past_businesses"][-300:]
+   registry=load_rooms();registry.setdefault("past_businesses",[]).append(str(business.get("name","")));registry["past_businesses"]=registry["past_businesses"][-300:];save_rooms(registry)
   s.pop("discovery_retry_after",None)
   s["iteration"]=0;s["business_completed"]=False;s["roadmap"]=None;s["roadmap_replans"]=0;s["cycle"]=int(s.get("cycle",0))+1;save(s)
   (BDIR/"BUSINESS_DECISION.json").write_text(json.dumps(s["business"],indent=2,ensure_ascii=False),encoding="utf-8")
@@ -1142,6 +1155,16 @@ def main():
     if room_state.get("business_dir"):room["business_dir"]=room_state["business_dir"]
     activate_room(room);s=state();cycle(s);s=state()
     if s.get("business_completed"):learn_from_business(s);s=state()
+    if s.get("business_completed") and s.get("coding_project_id"):
+     try:
+      try:
+       from coding_room import complete_project
+      except ModuleNotFoundError:
+       from worker.coding_room import complete_project
+      complete_project(WORK,s["coding_project_id"],room.get("id"),"Leader-reviewed Coding Room roadmap completed.")
+      log("coding_project_completed",project_id=s.get("coding_project_id"),room=room.get("id"))
+      s.pop("coding_project_id",None);save(s)
+     except Exception as coding_error:log("coding_project_completion_error",error=str(coding_error)[:500])
     registry=load_rooms();room=next((item for item in registry["rooms"] if item.get("id")==room.get("id")),room)
     if s.get("business_dir"):room["business_dir"]=s["business_dir"]
     if s.get("business_completed"):
