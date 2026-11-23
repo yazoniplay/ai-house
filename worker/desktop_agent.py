@@ -220,7 +220,7 @@ def _continue(workspace, data, path):
             _save(path, data)
             approval_id=str(outcome.get("approval_id",""))
             reason=str(outcome.get("reason",""))[:700]
-            enqueue_alert(workspace,"desktop_approval:"+approval_id,"AI House needs your PC approval\\n"+reason+"\\n!approve "+approval_id+"\\n!deny "+approval_id)
+            enqueue_alert(workspace,"desktop_approval:"+approval_id,"AI House needs your PC approval\n"+reason+"\n!approve "+approval_id+"\n!deny "+approval_id)
             return data
         data["history"].append({"step": data["step"] + 1, "action": action, "result": outcome.get("status")})
         data["step"] += 1
