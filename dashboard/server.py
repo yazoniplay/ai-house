@@ -26,6 +26,9 @@ PID_FILE = STATE_DIR / "engine.pid"
 ENGINE_LOG = STATE_DIR / "engine.log"
 ENGINE = WORKER_DIR / "autonomous_engine.py"
 HERE = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from worker.channel_connectors import connection_status, gumroad_products, youtube_channel, ConnectorError
 
 app = Flask(__name__)
 lock = threading.RLock()
@@ -735,6 +738,30 @@ def local_log():
     except Exception:
         return jsonify(text="No engine log yet.")
 
+
+
+@app.get("/api/integrations/status")
+def integrations_status_api():
+    status = connection_status()
+    # Validate the configured YouTube OAuth token without exposing it.
+    if status["youtube"]["connected"]:
+        try:
+            status["youtube"]["channel"] = youtube_channel()
+        except ConnectorError as exc:
+            status["youtube"]["connected"] = False
+            status["youtube"]["error"] = str(exc)
+    return jsonify(connections=status)
+
+
+@app.get("/api/integrations/gumroad/products")
+def gumroad_products_api():
+    try:
+        products = gumroad_products()
+        # Return only public/product-management fields; never echo credentials.
+        safe = [{k: item.get(k) for k in ("id", "name", "price", "currency", "url", "published", "sales_count")} for item in products]
+        return jsonify(products=safe)
+    except ConnectorError as exc:
+        return jsonify(error=str(exc)), 503
 
 
 # Studio: YouTube production and marketing campaign workflow APIs.
