@@ -15,7 +15,7 @@ from briefs import create_brief, get_brief_answer, answer_brief, list_briefs
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
-from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool, provider_chat_model_pool
+from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error, is_provider_wide_error, gemini_chat_model_pool, provider_chat_model_pool
 from user_validation import verify_usage_events, load_usage_events
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
 from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
@@ -56,8 +56,8 @@ GFM=os.getenv("GROQ_FAST_MODEL","openai/gpt-oss-20b")
 if GM in ("llama-3.3-70b-versatile","llama-3.1-8b-instant"):GM="openai/gpt-oss-120b"
 if GFM in ("llama-3.1-8b-instant","llama-3.3-70b-versatile"):GFM="openai/gpt-oss-20b"
 HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507")
-NM=os.getenv("NVIDIA_MODEL","nvidia/nemotron-3-ultra-550b-a55b")
-NVIDIA_MODELS=[m.strip() for m in os.getenv("AI_HOUSE_NVIDIA_MODELS",os.getenv("NVIDIA_MODELS","nvidia/nemotron-3-ultra-550b-a55b,z-ai/glm-5.3-flash,moonshotai/kimi-k3.1-pro")).split(",") if m.strip()]
+NM=os.getenv("NVIDIA_MODEL","google/gemma-4-31b-it")
+NVIDIA_MODELS=[m.strip() for m in os.getenv("AI_HOUSE_NVIDIA_MODELS",os.getenv("NVIDIA_MODELS","google/gemma-4-31b-it,deepseek-ai/deepseek-v4-flash,meta/llama-3.3-70b-instruct,nvidia/nvidia-nemotron-nano-9b-v2,openai/gpt-oss-120b,qwen/qwen3-next-80b-a3b-instruct,z-ai/glm-5.3-flash")).split(",") if m.strip()]
 MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-v4.1-flash:free")
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
@@ -487,12 +487,16 @@ def raw(p,sys,ask,role):
   except Exception as error:
    last_error=error;message=str(error).lower()
    credit_model=is_openrouter_credit_model_error(p,error)
-   fatal=not should_try_next_model(error) and not credit_model
-   unavailable_model=is_unavailable_model_error(error) or credit_model
+   provider_wide=is_provider_wide_error(p,error)
+   fatal=provider_wide or (not should_try_next_model(error) and not credit_model)
+   unavailable_model=is_unavailable_model_error(error) and not provider_wide
    if unavailable_model:
     MODEL_UNAVAILABLE_UNTIL[candidate]=time.monotonic()+21600
     log("model_marked_unavailable",provider=p,model=candidate,seconds=21600,reason=str(error)[:180])
-   log("model_attempt_failed",provider=p,model=candidate,role=role,attempt=index,total=len(candidates),provider_fatal=fatal,model_unavailable=unavailable_model,error=str(error)[:180])
+   log("model_attempt_failed",provider=p,model=candidate,role=role,attempt=index,total=len(candidates),provider_fatal=fatal,provider_wide=provider_wide,model_unavailable=unavailable_model,error=str(error)[:180])
+   if provider_wide:
+    log("provider_wide_failure_short_circuit",provider=p,role=role,error=str(error)[:180])
+    break
    if fatal:break
    if index<len(candidates):log("model_fallback_next",provider=p,failed_model=candidate,next_model=candidates[index],role=role)
  if last_error:raise RuntimeError(p+" models exhausted after "+str(index)+" attempts: "+str(last_error)[:220])
@@ -536,15 +540,23 @@ def ask(role,prompt):
     if not fallback_evidence:
      request_prompt += "\nTavily returned no usable results. Do not make trend-dependent or changing-fact claims from memory; mark them unverified and defer decisions that require current evidence."
    log("agent_request_started",role=role,provider=p,prompt_chars=len(request_prompt),prompt_preview=request_prompt[:300])
-   out=raw(p,sys+(leader_instructions if role=="orchestrator" else ""),request_prompt,role)
+   full_system=sys+(leader_instructions if role=="orchestrator" else "")
+   out=raw(p,full_system,request_prompt,role)
+   if role=="orchestrator":
+    try:obj(out)
+    except Exception as parse_error:
+     log("leader_invalid_json_response",provider=p,error=str(parse_error)[:160],reply_preview=str(out)[:240])
+     repair_prompt=("Your previous answer was not a valid JSON object. Retry the original task below and return one complete strict JSON object only; no markdown, no prose, no truncated output. If the task asks for a roadmap, use only the documented agent_role values and required fields.\nORIGINAL TASK:\n"+request_prompt[:18000]+"\nINVALID RESPONSE:\n"+str(out)[:6000])
+     out=raw(p,full_system,repair_prompt,role)
+     obj(out)
    log("agent",role=role,provider=p,provider_role="leader" if role=="orchestrator" else "worker",reply_chars=len(out),reply_preview=out[:300])
    return out
   except Exception as e:
    cooldown=provider_cooldown_seconds(p,e)
-   if p=="openrouter" and is_openrouter_credit_model_error(p,e):
-    # A low OpenRouter balance must not put its free-model fallback on a
-    # 24-hour provider cooldown; briefly yield and let other providers run.
-    cooldown=min(cooldown or 120,120)
+   if is_provider_wide_error(p,e):
+    if is_openrouter_credit_model_error(p,e):cooldown=max(cooldown,86400)
+    elif p=="openrouter" and "429" in str(e).lower():cooldown=max(cooldown,21600)
+    else:cooldown=max(cooldown,3600)
    if cooldown:
     PROVIDER_COOLDOWN[p]=time.monotonic()+cooldown
     log("provider_cooldown",provider=p,role=role,seconds=cooldown,error=str(e)[:180])
@@ -829,8 +841,37 @@ def roadmap_prompt(s,mode="initial",failed=None):
  "\nFailure context:\n"+json.dumps(failed or {},ensure_ascii=False)[:5000]+
  "\nProven recipes you may reuse as a starting point; adapt them to this business:\n"+recipe_for_prompt(WORK)+
  "\nCreate a practical roadmap of 4-8 atomic tasks. Focus first on validating demand and the smallest useful product, then build, verify, and prepare honest distribution. For software, focus on ONE flagship app: if the business includes owner_success_metric, preserve it as the primary outcome; finish its core workflow, usability, tests, security, and deployment-quality checks before starting another app; do not scatter effort across many shallow apps. For every software/product business, instrument meaningful core-action analytics using stable privacy-safe pseudonymous user IDs; create a separate adoption-verification task with verification_target_users=10 and usage_events_path=reports/product-usage-events.jsonl. Verify at least 10 distinct real production user accounts performed a core action in the last 30 days using an actual analytics export, excluding owner, internal, test, bot, page-view, and marketing-click events. Do not fabricate or infer users from impressions, visits, downloads, or outreach. If fewer than 10 are evidenced, report the actual count as pending and keep working on product activation and authorized distribution; never claim the target was reached. Preserve owner_success_metric as primary and track 10-user validation as a secondary launch milestone. For a business with a strong content-marketing fit, include at most one original YouTube video production task in this roadmap after evidence research; name it clearly \"YouTube video production\" so the local studio can render it. Use exact cited source URLs and require a real finished video deliverable, not only a script. For Gumroad digital products, require evidence of a specific buyer problem, competitor/alternative analysis, a genuinely useful complete product, examples/previews, clear instructions, truthful claims, and a researched acquisition plan; reject generic low-value AI filler. Marketing must be channel-specific, searchable, audience-led, and measurable, not spam. Use legal_risk before any task that publishes, sells, or collects customer data. Use sales_drafter only to draft outreach as files; never plan a task that sends messages. Search budget left today: `"+str(search_credits_left())+"` credits. For each task that needs live web facts, set \"search\" to \"basic\" (1 credit, for quick facts, current names, or prices) or \"advanced\" (2 credits, for deep research on evidence that matters most). Use \"none\" when the task needs no live facts. Prefer basic. Use at most one advanced search per roadmap. Each task must have id (short unique slug), title, objective, optional desktop_goal (a short specific goal for the local Computer Room only when an installed GUI app is truly required; no credentials or risky publish/send actions), agent_role (researcher|strategist|architect|builder|growth|finance|copywriter|designer|qa_tester|sales_drafter|analyst|legal_risk|product_manager|customer_researcher|competitor_analyst|ux_designer|security_engineer|qa_engineer|seo_specialist|content_producer|community_manager|customer_success|sales_strategist|operations_manager|budget_controller|decision_auditor|experiment_designer|provider_manager), priority (1-100), depends_on (list of task ids), acceptance (2-5 observable checks), deliverable (specific artifact/output), search (none|basic|advanced), and needs_approval (true for any task that spends money, publishes anything publicly, contacts a person, or changes a live account; otherwise false). Include needs_owner_decision only when a task truly cannot proceed without an owner choice, as {\"question\":\"...\",\"options\":[\"...\",\"...\"]} with 2-4 short options. Include a measurable business success_metric and a short strategy. Avoid vague tasks like 'research more'. No new business suggestions to the owner; decide and execute internally. Do not include tasks outside this business or the user's excluded existing projects. Also return decision_review with rationale (why this strategy was selected), alternatives (2-5 plausible alternatives considered), evidence (source-backed evidence already present in the business and prior results), risks (major assumptions/risks), expected_outcome (what this roadmap should achieve), confidence (low|medium|high), and review_criteria (what evidence would make the Leader keep, modify, or rollback this plan). Do not claim evidence that is not in the snapshot. Return JSON: {\"strategy\":\"...\",\"success_metric\":\"...\",\"decision_review\":{\"rationale\":\"...\",\"alternatives\":[...],\"evidence\":[...],\"risks\":[...],\"expected_outcome\":\"...\",\"confidence\":\"low|medium|high\",\"review_criteria\":\"...\"},\"tasks\":[...]}")
+def infer_task_role(task):
+ text=" ".join(str(task.get(k,"")) for k in ("title","objective","deliverable")).lower()
+ if any(x in text for x in ("build","implement","code","mvp","develop","software","prototype")):return "builder"
+ if any(x in text for x in ("research","market evidence","source evidence","customer pain")):return "researcher"
+ if any(x in text for x in ("youtube","video production","video script","content production")):return "content_producer"
+ if any(x in text for x in ("marketing campaign","marketing assets","launch campaign","growth")):return "growth"
+ if "competitor" in text:return "competitor_analyst"
+ if any(x in text for x in ("pricing","unit economics","financial model","budget")):return "finance"
+ if any(x in text for x in ("customer feedback","customer interview","activation","onboarding")):return "customer_success"
+ if any(x in text for x in ("test","quality assurance","regression")):return "qa_tester"
+ if any(x in text for x in ("security","privacy threat")):return "security_engineer"
+ if any(x in text for x in ("design","user experience","ux")):return "designer"
+ if any(x in text for x in ("copy","headline","sales page")):return "copywriter"
+ return "strategist"
+def normalize_task_roles(tasks):
+ aliases={"mvp_build":"builder","mvp-builder":"builder","software_engineer":"builder","developer":"builder","engineer":"builder","implementation":"builder","coding":"builder","market_researcher":"researcher","market-researcher":"researcher","research":"researcher","marketing":"growth","marketing_specialist":"growth","marketing-specialist":"growth","product":"product_manager","product-management":"product_manager","qa":"qa_tester","tester":"qa_tester","test_engineer":"qa_engineer","video_producer":"content_producer","youtube_producer":"content_producer","customer_research":"customer_researcher","finance_analyst":"finance","operations":"operations_manager","seo":"seo_specialist","design":"designer","copywriting":"copywriter","sales":"sales_strategist"}
+ changed=[]
+ if not isinstance(tasks,list):return changed
+ for task in tasks:
+  if not isinstance(task,dict):continue
+  original=str(task.get("agent_role","")).strip().lower()
+  normalized=original.replace(" ","_")
+  role=aliases.get(normalized,normalized)
+  if role not in TASK_ROLES:role=infer_task_role(task)
+  if task.get("agent_role")!=role:
+   task["agent_role"]=role;changed.append({"task":task.get("id"),"from":original or None,"to":role})
+ return changed
 def validate_roadmap(tasks):
  if not isinstance(tasks,list) or not 4<=len(tasks)<=8:return "roadmap must contain 4 to 8 tasks"
+ normalized=normalize_task_roles(tasks)
+ if normalized:log("leader_task_roles_normalized",changes=normalized[:12],count=len(normalized))
  ids=set()
  for t in tasks:
   if isinstance(t,dict):
@@ -1032,7 +1073,20 @@ def run_roadmap_task(s,t):
   log("brief_created",task=t.get("id"),brief_id=brief_id)
   notify("brief:"+str(brief_id),str(t.get("title",""))+"\n"+str(decision_field.get("question",""))+"\n!brief "+str(brief_id))
   set_activity("waiting_approval","This task needs an owner choice before it can continue.",role,t.get("id"));return
- written=write(result.get("files",[]),role=role)
+ agent_files=result.get("files",[])
+ allowed_folders=LOADOUTS.get(role,{}).get("write_folders",["reports"])
+ if isinstance(agent_files,list):
+  for item in agent_files:
+   if not isinstance(item,dict):continue
+   original_path=str(item.get("path","")).replace("\\","/").strip()
+   parts=original_path.split("/")
+   if not parts or parts[0] not in allowed_folders:
+    basename=Path(original_path).name or (str(t.get("id","task"))+".md")
+    required_match=next((path for path in required if Path(path).name==basename and path.split("/")[0] in allowed_folders),None)
+    corrected=required_match or (allowed_folders[0]+"/"+basename)
+    item["path"]=corrected
+    log("agent_output_path_recovered",task=t.get("id"),role=role,original=original_path,corrected=corrected)
+ written=write(agent_files,role=role)
  if not written:raise RuntimeError(role+" returned no physical files in its files array")
  desktop_request=result.get("computer_room_request")
  if isinstance(desktop_request,dict):
