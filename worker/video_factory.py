@@ -253,7 +253,7 @@ def produce_video_from_recipe(business_dir, recipe):
         asset["scene"] = i
         assets.append(asset)
         path = download_clip(asset, clips_dir, "scene_" + str(i).zfill(2) + ".mp4")
-        clips.append({"path": path, "duration": max(1, len(scene["narration"].split()))})
+        clips.append({"path": path, "duration": min(60, max(1, len(scene["narration"].split())))})
     probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(narration)], check=True, capture_output=True, text=True, timeout=30)
     total = float(probe.stdout.strip())
     words_total = sum(max(1, len(s["narration"].split())) for s in scenes)
