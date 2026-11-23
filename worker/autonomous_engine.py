@@ -1030,11 +1030,10 @@ def create_roadmap(s,mode="initial",failed=None):
     t["search"]="basic";adjusted+=1
    else:advanced_seen=True
  if adjusted:log("search_choices_adjusted",count=adjusted)
- risky_action_terms=("publish","post publicly","send email","send message","contact customers","outreach to customers","upload to gumroad","sell the product","production deployment","deploy to production","purchase","pay for","change live account")
+ risky_action_terms=("publish","post publicly","send email","send message","send outreach","contact customers","upload to gumroad","sell the product","production deployment","deploy to production","purchase","pay for","change live account")
  for t in tasks:
   action_text=" ".join(str(t.get(k,"")) for k in ("title","objective","deliverable")).lower()
-  if any(term in action_text for term in risky_action_terms):t["needs_approval"]=True
-  elif t.get("needs_approval") and not any(term in action_text for term in ("send","publish","post","contact","upload","sell","deploy","purchase","pay","production account")):t["needs_approval"]=False
+  t["needs_approval"]=any(term in action_text for term in risky_action_terms)
   t.update({"status":"pending","attempts":0,"last_error":"","output":None})
  decision_review=plan.get("decision_review") if isinstance(plan.get("decision_review"),dict) else {}
  decision_review.setdefault("rationale",str(plan.get("strategy",""))[:1200])
