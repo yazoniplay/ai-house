@@ -335,6 +335,7 @@ if str(WORKER_DIR) not in sys.path:
 from briefs import answer_brief, list_briefs
 from recipes import list_recipes
 from skills import list_skills
+from studio import StudioError, create_project, list_projects, list_approvals, update_project, move_stage, decide_approval
 SCHEDULES_FILE = STATE_DIR / "schedules.json"
 
 @app.get("/api/briefs")
@@ -733,6 +734,65 @@ def local_log():
         return jsonify(text="\n".join(lines))
     except Exception:
         return jsonify(text="No engine log yet.")
+
+
+
+# Studio: YouTube production and marketing campaign workflow APIs.
+@app.get("/api/studio/projects")
+def studio_projects_api():
+    kind = request.args.get("kind")
+    try:
+        return jsonify(projects=list_projects(WORKSPACE, kind))
+    except StudioError as exc:
+        return jsonify(error=str(exc)), 400
+
+
+@app.post("/api/studio/projects")
+def studio_create_project_api():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify(error="JSON body must be an object."), 400
+    try:
+        project = create_project(
+            WORKSPACE, body.get("kind"), body.get("title"),
+            owner=body.get("owner", "owner"), brief=body.get("brief", ""),
+        )
+        return jsonify(project=project), 201
+    except StudioError as exc:
+        return jsonify(error=str(exc)), 400
+
+
+@app.patch("/api/studio/projects/<project_id>")
+def studio_update_project_api(project_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(project=update_project(WORKSPACE, project_id, body))
+    except StudioError as exc:
+        return jsonify(error=str(exc)), 400
+
+
+@app.post("/api/studio/projects/<project_id>/stage")
+def studio_move_stage_api(project_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(project=move_stage(WORKSPACE, project_id, body.get("stage")))
+    except StudioError as exc:
+        return jsonify(error=str(exc)), 400
+
+
+@app.get("/api/studio/approvals")
+def studio_approvals_api():
+    return jsonify(approvals=list_approvals(WORKSPACE, pending_only=False))
+
+
+@app.post("/api/studio/approvals/<approval_id>")
+def studio_decide_approval_api(approval_id):
+    body = request.get_json(silent=True) or {}
+    try:
+        item = decide_approval(WORKSPACE, approval_id, body.get("decision"), body.get("note", ""))
+        return jsonify(approval=item)
+    except StudioError as exc:
+        return jsonify(error=str(exc)), 400
 
 
 if __name__ == "__main__":
