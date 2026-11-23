@@ -25,3 +25,27 @@ def test_legacy_migrates(tmp_path):
  p=tmp_path/"north_face.json"; p.write_text(json.dumps({"lessons":[{"key":"legacy rule","lesson":"legacy rule","count":2,"last_seen":"2026-01-01T00:00:00+00:00"}]}),encoding="utf-8")
  x=nf.load(p)["lessons"][0]; assert x["state"]=="confirmed"
  for k in ("id","role_scope","task_types","source_task_ids","times_applied","outcomes","superseded_by","expires_at"): assert k in x
+
+
+def test_decision_reflection_persists_keep_modify_rollback(tmp_path):
+ p=tmp_path/"north_face.json"
+ item=nf.record_decision(p,{"title":"Choose onboarding flow","decision":"Use guided setup","goal":"Improve activation","rationale":"User tests showed confusion","alternatives":["single screen","guided setup"],"expected_outcome":"More users complete setup","success_metric":"activation rate","evidence":["5 moderated tests"],"confidence":"medium"},{"keep_modify_or_rollback":"modify","reason":"Completion improved but dropoff remains","observed_outcome":"3/5 completed","lesson":"Reduce step count","evidence_quality":"small_sample"})
+ assert item["review"]=="modify" and item["evidence_quality"]=="small_sample"
+ assert nf.load(p)["decision_reviews"][0]["lesson"]=="Reduce step count"
+
+def test_experiment_requires_hypothesis_and_metric(tmp_path):
+ import pytest
+ with pytest.raises(ValueError): nf.record_experiment(tmp_path/"nf.json",{"title":"A/B"})
+
+def test_experiment_underpowered_stays_inconclusive(tmp_path):
+ p=tmp_path/"north_face.json"
+ exp=nf.record_experiment(p,{"title":"Landing page test","hypothesis":"Shorter copy raises signup","metric":"signup rate","baseline":0.1,"minimum_samples":10})
+ result=nf.evaluate_experiment(p,exp["id"],[{"value":0.2,"sample_size":4}])
+ assert result["status"]=="inconclusive" and result["sample_size"]==4
+
+def test_experiment_supported_only_with_registered_metric_and_samples(tmp_path):
+ p=tmp_path/"north_face.json"
+ exp=nf.record_experiment(p,{"title":"Activation test","hypothesis":"Improved onboarding raises activation","metric":"activation rate","baseline":0.2,"minimum_samples":10})
+ result=nf.evaluate_experiment(p,exp["id"],[{"value":0.3,"sample_size":10}])
+ assert result["status"]=="supported"
+ assert nf.load(p)["experiments"][0]["status"]=="supported"
