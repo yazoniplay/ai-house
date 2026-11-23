@@ -1070,8 +1070,13 @@ function render(){
     $("memoryPostmortems").textContent=(memory.business_postmortems||[]).length;
     $("memoryUpdated").textContent=memory.updated_at?"Last memory update: "+new Date(memory.updated_at).toLocaleString():"Lessons appear after the first completed review.";
   }).catch(error=>{
+    const message=String(error&&error.message||error||"Unknown dashboard error");
     $("headerStatus").textContent="DASHBOARD ERROR";
-    $("heroText").textContent=error.message;
+    $("heroTitle").textContent="Dashboard status could not load.";
+    $("heroText").textContent=message+" — check the AI House console for the traceback.";
+    $("activeAgent").textContent="Dashboard status error";
+    $("activeTask").textContent=message;
+    $("liveDot").className="dot";
   });
 }
 async function refreshLog(){
