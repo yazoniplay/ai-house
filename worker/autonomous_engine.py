@@ -294,11 +294,15 @@ def tavily_search(q,depth=None):
  except Exception as e:
   log("tavily_error",query=str(q)[:240],error=str(e)[:180]);return []
 def search(q,depth=None):
- results=tavily_search(q,depth=depth) if T else []
- if results:return results
- fallback=exa_search(q)
- if fallback:log("search_fallback_exa",query=str(q)[:240],results=len(fallback))
- return fallback
+ tav=tavily_search(q,depth=depth) if T else []
+ exa=exa_search(q)
+ seen=set();merged=[]
+ for x in tav+exa:
+  u=x.get("url","")
+  if u and u not in seen:
+   seen.add(u);merged.append(x)
+ log("search_merged",query=str(q)[:240],tavily=len(tav),exa=len(exa),results=len(merged))
+ return merged[:10]
 def opportunity():
  set_activity("market_research","Searching Tavily for evidence-backed business opportunities.","researcher")
  past={re.sub(r"[^a-z0-9]+"," ",str(x).lower()).strip() for x in state().get("past_businesses",[])}
