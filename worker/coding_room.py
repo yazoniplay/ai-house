@@ -51,7 +51,10 @@ def create_project(workspace, title, target_user, problem, brief, success_metric
         raise CodingRoomError("App brief is required (max 8000 characters)")
     path = _path(workspace)
     data = _read(path)
-    if any(p.get("status") in ("queued", "active") and p.get("title", "").casefold() == title.casefold() for p in data["projects"]):
+    open_projects = [p for p in data["projects"] if p.get("status") in ("queued", "active")]
+    if len(open_projects) >= 3:
+        raise CodingRoomError("Coding Room keeps a small queue: one active app and at most two queued apps.")
+    if any(p.get("title", "").casefold() == title.casefold() for p in open_projects):
         raise CodingRoomError("An app with this name is already queued or active")
     project = {
         "id": secrets.token_hex(6), "title": title, "target_user": target_user,
