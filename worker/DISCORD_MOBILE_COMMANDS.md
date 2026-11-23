@@ -19,6 +19,7 @@ In Discord Developer Portal, enable **Message Content Intent** for the bot. Give
 - Choose an option from the buttons. The answer is saved in the local approval ledger and the Leader is called again with that answer in context.
 - Choose **Other / type a reply** when offered, then type the detail in the channel.
 - Desktop/PC access and other risky tasks use the existing approval ledger. The Discord approval alert now includes **yes/no** buttons. The action still runs only after the approval is recorded and the local worker processes it.
+- Use `!directive Your instruction` to persist a direction that the CEO applies to current task priorities or replans; `!directive clear` clears active directions. The directive is included in future Leader calls until cleared.
 - Use `!status`, `!pending`, `!start`, or `!stop` for quick controls.
 
 Button interactions are restricted to the configured owner ID. Approval IDs are checked against pending requests; stale buttons cannot approve a different request. Pending button views are restored from the local approval ledger after a bot restart, so a pending request does not lose its buttons just because the PC worker reconnects.
