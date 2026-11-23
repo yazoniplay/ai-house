@@ -207,6 +207,18 @@ def openrouter_chat(sys,ask):
  if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
  try:return r.json()["choices"][0]["message"].get("content") or ""
  except Exception as e:raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
+MODEL_ROTATION={}
+def configured_model_pool(provider,default_model,env_name):
+ raw_models=os.getenv(env_name,"")
+ pool=[]
+ for candidate in [default_model]+[x.strip() for x in raw_models.split(",") if x.strip()]:
+  if candidate and candidate not in pool:pool.append(candidate)
+ if not pool:return [default_model]
+ index=MODEL_ROTATION.get(provider,0)%len(pool)
+ MODEL_ROTATION[provider]=(index+1)%len(pool)
+ ordered=pool[index:]+pool[:index]
+ log("model_pool_selected",provider=provider,model=ordered[0],pool_size=len(pool),rotation=index)
+ return ordered
 def raw(p,sys,ask,role):
  def record_usage(provider,usage):
   try:record_spend(SPENDBF,estimate_cost(provider,usage))
@@ -241,10 +253,10 @@ def raw(p,sys,ask,role):
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
- elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(GFM if role=="fast" else GM)
- elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",HM
- elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",TM
- elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",SNM
+ elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(configured_model_pool("groq_fast",GFM,"GROQ_FAST_MODELS")[0] if role=="fast" else configured_model_pool("groq",GM,"GROQ_MODELS")[0])
+ elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",configured_model_pool("hf",HM,"HF_MODELS")[0]
+ elif p=="tokenharbor":key,url,model=TK,"https://tokenharbor.ai/v1/chat/completions",configured_model_pool("tokenharbor",TM,"TOKEN_HARBOR_MODELS")[0]
+ elif p=="sambanova":key,url,model=SK,"https://api.sambanova.ai/v1/chat/completions",configured_model_pool("sambanova",SNM,"SAMBANOVA_MODELS")[0]
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
