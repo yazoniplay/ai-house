@@ -60,6 +60,46 @@ def next_utc_midnight():
     return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def spend_daily_cap():
+    return float(os.getenv("AI_HOUSE_DAILY_SPEND_CAP_USD", "0"))
+
+def spend_monthly_cap():
+    return float(os.getenv("AI_HOUSE_MONTHLY_SPEND_CAP_USD", "0"))
+
+def _spend_path(budget_file: Path):
+    return budget_file.parent / "spend-ledger.json"
+
+def _read_spend(budget_file: Path):
+    path = _spend_path(budget_file)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        data = {}
+    today = _today()
+    month = today[:7]
+    if data.get("date") != today:
+        data["date"] = today
+        data["day_usd"] = 0.0
+    if data.get("month") != month:
+        data["month"] = month
+        data["month_usd"] = 0.0
+    data.setdefault("day_usd", 0.0)
+    data.setdefault("month_usd", 0.0)
+    return data, path
+
+def spend_allowed(budget_file: Path, estimated_usd: float = 0.0) -> bool:
+    data, _ = _read_spend(budget_file)
+    return (data["day_usd"] + estimated_usd <= spend_daily_cap()
+            and data["month_usd"] + estimated_usd <= spend_monthly_cap())
+
+def record_spend(budget_file: Path, usd: float):
+    data, path = _read_spend(budget_file)
+    data["day_usd"] = round(data["day_usd"] + usd, 6)
+    data["month_usd"] = round(data["month_usd"] + usd, 6)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
 def clean_env():
     """Environment for generated code: everything except secret-looking variables."""
     return {k: v for k, v in os.environ.items()

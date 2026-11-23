@@ -7,7 +7,7 @@ import sys
 try:sys.stdout.reconfigure(errors="replace")
 except Exception:pass
 from north_face import context as north_face_context, record_task as north_face_record_task, record_business as north_face_record_business
-from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit, search_monthly_limit, next_utc_midnight
+from guards import search_allowed, record_search, clean_env, run_pytest, search_daily_limit, search_monthly_limit, next_utc_midnight, spend_allowed, record_spend, spend_daily_cap, spend_monthly_cap
 from publisher import run_publisher
 ROOT=Path(__file__).resolve().parents[1]; HERE=Path(__file__).resolve().parent
 WORK=Path(os.getenv("AI_HOUSE_WORKSPACE",ROOT/"workspace")).resolve()
@@ -37,6 +37,14 @@ OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
 OR=os.getenv("OPENROUTER_API_KEY","");ORM=os.getenv("OPENROUTER_MODEL","openrouter/free")
 SK=os.getenv("SAMBANOVA_API_KEY","");SNM=os.getenv("SAMBANOVA_MODEL","deepseek-ai/DeepSeek-V3.2")
 EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"
+PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0}
+PAID_PROVIDERS=set(x.strip() for x in os.getenv("AI_HOUSE_PAID_PROVIDERS","").split(",") if x.strip())
+SPENDBF=SD/"search-budget.json"
+def estimate_cost(provider,usage):
+ if not usage:return 0.0
+ tokens=int(usage.get("total_tokens") or (int(usage.get("prompt_tokens",0))+int(usage.get("completion_tokens",0))))
+ rate=float(os.getenv("AI_HOUSE_PRICE_"+provider.upper()+"_PER_MILLION_USD",PRICE_PER_MILLION_TOKENS.get(provider,0.0)))
+ return tokens*rate/1_000_000
 ROLES={"researcher":"Evidence-based market researcher. Separate facts from assumptions.","strategist":"Practical low-cost founder. Validate demand; never promise income.","architect":"Product architect. Break the business goal into a coherent MVP architecture and acceptance criteria.","builder":"Senior engineer. Return complete functional files, not TODOs.","growth":"Ethical growth strategist. Draft truthful positioning, organic acquisition and customer feedback assets; no spam.","finance":"Bootstrapped finance analyst. Estimate pricing and unit economics transparently; label every assumption, never invent actual revenue.","reviewer":"Strict QA. Check quality, risks, test results and truthfulness.","orchestrator":"Autonomous leader/orchestrator. Approve quality, reject unsafe actions, and return concrete improvement instructions.",
 "copywriter":"Direct-response copywriter. Write clear, truthful sales copy, headlines, and product descriptions. Never invent testimonials, numbers, or guarantees.",
 "designer":"Product and brand designer. Produce layouts, specifications, and HTML/CSS mockups as files. You cannot render images; describe visuals precisely in files.",
@@ -63,6 +71,7 @@ def provider_cooldown_seconds(provider,error):
   return int(os.getenv("AI_HOUSE_ERROR_COOLDOWN_SECONDS","90"))
  return 0
 def provider_available(provider):
+ if provider in PAID_PROVIDERS and not spend_allowed(SBF):return False
  return time.monotonic()>=PROVIDER_COOLDOWN.get(provider,0)
 def log(e,**d):
  SD.mkdir(parents=True,exist_ok=True)
@@ -115,10 +124,30 @@ def openrouter_chat(sys,ask):
  try:return r.json()["choices"][0]["message"].get("content") or ""
  except Exception as e:raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
 def raw(p,sys,ask,role):
+ def record_usage(provider,usage):
+  try:record_spend(SPENDBF,estimate_cost(provider,usage))
+  except Exception as spend_error:
+   try:log("spend_record_error",provider=provider,error=str(spend_error)[:180])
+   except Exception:pass
  if p=="openrouter":
-  out=openrouter_chat(sys,ask);log("model_call_ok",provider="openrouter",model=ORM,role=role);return out
+  if not OR:raise RuntimeError("OPENROUTER_API_KEY missing")
+  r=HTTP.post("https://openrouter.ai/api/v1/chat/completions",headers={"Authorization":"Bearer "+OR,"Content-Type":"application/json","X-Title":"AI House"},json={"model":ORM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":4096},timeout=60)
+  if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
+  try:
+   data=r.json();out=data["choices"][0]["message"].get("content") or ""
+   record_usage("openrouter",data.get("usage"))
+   log("model_call_ok",provider="openrouter",model=ORM,role=role);return out
+  except Exception as e:raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
  if p=="ollama":
-  out=ollama_chat(sys,ask);log("model_call_ok",provider="ollama",model=OM,role=role);return out
+  if not OK:raise RuntimeError("OLLAMA_API_KEY missing")
+  if not OM:raise RuntimeError("OLLAMA_MODEL not configured")
+  r=HTTP.post("https://ollama.com/api/chat",headers={"Authorization":"Bearer "+OK,"Content-Type":"application/json"},json={"model":OM,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"stream":False,"format":"json"},timeout=60)
+  if r.status_code>=400:raise RuntimeError("ollama "+str(r.status_code)+": "+r.text[:220])
+  try:
+   data=r.json();out=data["message"]["content"]
+   record_usage("ollama",data.get("usage"))
+   log("model_call_ok",provider="ollama",model=OM,role=role);return out
+  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
  elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(GFM if role=="fast" else GM)
  elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",HM
@@ -134,6 +163,7 @@ def raw(p,sys,ask,role):
   if r.status_code>=400:raise RuntimeError(r.text[:220])
   try:
    out="".join(x.get("text","") for x in r.json()["candidates"][0]["content"]["parts"])
+   record_usage("gemini",None)
    log("model_call_ok",provider="gemini",model=model_id,role=role);return out
   except Exception as e:raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
  if p=="nvidia":
@@ -142,9 +172,10 @@ def raw(p,sys,ask,role):
     nvidia_payload={"model":nvidia_model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
     r=HTTP.post(url,headers={"Authorization":"Bearer "+N,"Content-Type":"application/json"},json=nvidia_payload,timeout=35)
     if r.status_code>=400:raise RuntimeError("HTTP "+str(r.status_code)+": "+r.text[:180])
-    try:out=r.json()["choices"][0]["message"].get("content","")
+    try:data=r.json();out=data["choices"][0]["message"].get("content","")
     except Exception as decode_error:raise RuntimeError("response could not be decoded: "+str(decode_error)[:120])
     if not out or not str(out).strip():raise RuntimeError("empty reply")
+    record_usage("nvidia",data.get("usage"))
     log("model_call_ok",provider="nvidia",model=nvidia_model,role=role);return out
    except Exception as nvidia_error:
     log("nvidia_model_failed",model=nvidia_model,role=role,error=str(nvidia_error)[:160])
@@ -170,7 +201,8 @@ def raw(p,sys,ask,role):
    last_error=RuntimeError(p+" "+str(r.status_code)+": "+r.text[:220])
    break
   try:
-   out=r.json()["choices"][0]["message"].get("content","")
+   data=r.json();out=data["choices"][0]["message"].get("content","")
+   record_usage(p,data.get("usage"))
    log("model_call_ok",provider=p,model=model,role=role);return out
   except Exception as e:
    last_error=RuntimeError(p+" response could not be decoded: "+str(e)[:120])
@@ -664,7 +696,7 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
  if not any((G,H,M,N,TK,OK,OR,SK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
- log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX))
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap())
  print("Workspace:",WORK);s=state()
  if s.get("business_dir"):set_business_dir(s["business_dir"])
  recovered=[]
