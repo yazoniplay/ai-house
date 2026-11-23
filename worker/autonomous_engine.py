@@ -374,7 +374,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
   model_id=model_override or (configured_model_pool("gemini_leader",leader_model,"AI_HOUSE_GEMINI_LEADER_MODELS")[0] if role=="orchestrator" else configured_model_pool("gemini_worker",worker_model,"AI_HOUSE_GEMINI_WORKER_MODELS")[0])
   url=f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
   r=HTTP.post(url,headers={"x-goog-api-key":M},json={"systemInstruction":{"parts":[{"text":sys}]},"contents":[{"role":"user","parts":[{"text":ask}]}],"generationConfig":{"responseMimeType":"application/json"}},timeout=25)
-  if r.status_code>=400:raise RuntimeError(r.text[:220])
+  if r.status_code>=400:raise RuntimeError(r.text[:1800])
   try:
    out="".join(x.get("text","") for x in r.json()["candidates"][0]["content"]["parts"])
    if not out or not str(out).strip():raise RuntimeError(p+" empty reply")
@@ -489,11 +489,14 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  defaults={"gemini":40,"nvidia":40,"openrouter":40,"groq":40,"vercel":40,"zai":40,"siliconflow":40}
+  defaults={"gemini":3,"nvidia":3,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2}
   env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS"}
-  if p in defaults:max_attempts=max(1,min(50,int(os.getenv(env_names[p],str(defaults[p])))))
-  else:max_attempts=max(1,min(12,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","8"))))
- except Exception:max_attempts={"gemini":40,"nvidia":40,"openrouter":40,"groq":40,"vercel":40,"zai":40,"siliconflow":40}.get(p,8)
+  if p in defaults:
+   # Environment values may lower the budget, but cannot re-enable dozens of
+   # retries against one provider during a single agent request.
+   max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
+  else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
+ except Exception:max_attempts={"gemini":3,"nvidia":3,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2}.get(p,3)
  if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
