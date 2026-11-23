@@ -1,5 +1,5 @@
 import unittest
-from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model
+from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model, openrouter_free_model_ids, is_openrouter_credit_model_error
 
 class ProviderRouterTests(unittest.TestCase):
     def test_provider_rotation_spreads_calls_across_available_providers(self):
@@ -49,6 +49,20 @@ class ProviderRouterTests(unittest.TestCase):
 
     def test_model_pool_keeps_primary_and_alternates_in_order(self):
         self.assertEqual(model_pool("kimi", "nemotron,glm,kimi"), ["kimi", "nemotron", "glm"])
+
+    def test_openrouter_catalog_finds_free_and_zero_priced_models(self):
+        rows=[
+            {"id":"meta-llama/llama-3.3-70b-instruct:free","pricing":{"prompt":"0","completion":"0"}},
+            {"id":"google/gemma-3-27b-it","pricing":{"prompt":"0.000001","completion":"0.000002"}},
+            {"id":"qwen/qwen3-32b","pricing":{"prompt":0,"completion":0}},
+            {"id":"bad/model","pricing":{"prompt":"unknown","completion":"unknown"}},
+        ]
+        self.assertEqual(openrouter_free_model_ids(rows),["meta-llama/llama-3.3-70b-instruct:free","qwen/qwen3-32b"])
+
+    def test_openrouter_credit_failure_is_model_specific_so_free_fallback_continues(self):
+        self.assertTrue(is_openrouter_credit_model_error("openrouter","openrouter 402: can only afford 83 tokens due to credits"))
+        self.assertFalse(is_openrouter_credit_model_error("gemini","402 insufficient credits"))
+        self.assertFalse(is_openrouter_credit_model_error("openrouter","openrouter 401 invalid API key"))
 
     def test_unknown_error_does_not_disable_provider(self):
         self.assertEqual(cooldown_seconds("bad response shape"),0)

@@ -59,6 +59,27 @@ def cooldown_seconds(error, quota=900, billing=86400, config=3600, timeout=60, s
         return int(server)
     return 0
 
+def openrouter_free_model_ids(rows):
+    """Return catalog-listed OpenRouter models that are explicitly free-priced."""
+    result=[]
+    for item in rows or []:
+        if not isinstance(item,dict):
+            continue
+        model_id=str(item.get("id") or "").strip()
+        pricing=item.get("pricing") or {}
+        try:
+            prompt=float(pricing.get("prompt",-1))
+            completion=float(pricing.get("completion",-1))
+        except (TypeError,ValueError):
+            prompt=completion=-1
+        if model_id and (model_id.endswith(":free") or (prompt==0 and completion==0)) and model_id not in result:
+            result.append(model_id)
+    return result
+
+def is_openrouter_credit_model_error(provider,error):
+    message=str(error).lower()
+    return provider=="openrouter" and ("402" in message or "insufficient credits" in message or "can only afford" in message) and any(token in message for token in ("credit","afford","payment","balance"))
+
 def should_try_next_model(error):
     """Model errors, transient failures and per-model rate limits should try another model.
 

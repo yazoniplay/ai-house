@@ -15,7 +15,7 @@ from briefs import create_brief, get_brief_answer, answer_brief, list_briefs
 from recipes import save_recipe, recipe_for_prompt
 from skills import skills_for_role
 from discord_bot import start_discord_bot, enqueue_alert
-from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error
+from provider_router import cooldown_seconds as route_cooldown, is_model_specific_error, model_pool as route_model_pool, should_try_next_model, filter_model_pool, is_unavailable_model_error, openrouter_free_model_ids, is_openrouter_credit_model_error
 from user_validation import verify_usage_events, load_usage_events
 from owner_directives import add_directive, list_directives as list_owner_directives, clear_directives as clear_owner_directives, context as owner_directives_context
 from search_fallback import provider_ready as search_provider_ready, mark_failure as mark_search_failure, mark_success as mark_search_success, next_retry as search_provider_next_retry
@@ -46,7 +46,7 @@ def envfile(p):
   for x in p.read_text().splitlines():
    x=x.strip()
    if x and not x.startswith("#") and "=" in x:
-    k,v=x.split("=",1);os.environ.setdefault(k.strip(),v.strip().strip('"').strip("'"))
+    k,v=x.split("=",1);k=k.strip();v=v.strip().strip('"').strip("'");\n    if not os.environ.get(k):os.environ[k]=v
 envfile(HERE/".env");envfile(ROOT/".env")
 G=os.getenv("GROQ_API_KEY","");H=os.getenv("HF_TOKEN","") or os.getenv("HUGGINGFACEHUB_API_TOKEN","");M=os.getenv("GEMINI_API_KEY","");N=os.getenv("NVIDIA_API_KEY","");T=os.getenv("TAVILY_API_KEY","")
 GM=os.getenv("GROQ_MODEL","openai/gpt-oss-120b")
@@ -129,12 +129,24 @@ def business_spend_usd(business_name=None):
    except Exception:continue
  except Exception:pass
  return round(total,6)
+STATE_SAVE_LOCK=threading.RLock()
+OPENROUTER_FREE_MODELS=[]
 def state():
  SD.mkdir(parents=True,exist_ok=True)
  try:return json.loads(SF.read_text(encoding="utf-8"))
  except:return {"cycle":0,"business":None,"iteration":0,"history":[]}
 def save(s):
- SD.mkdir(parents=True,exist_ok=True);tmp=SF.with_suffix(".tmp");tmp.write_text(json.dumps(s,indent=2,ensure_ascii=False),encoding="utf-8");tmp.replace(SF)
+ SD.mkdir(parents=True,exist_ok=True)
+ # Unique temp files prevent concurrent rooms/threads colliding on the same state.tmp.
+ tmp=SF.with_name(SF.name+"."+str(os.getpid())+"."+str(threading.get_ident())+".tmp")
+ payload=json.dumps(s,indent=2,ensure_ascii=False)
+ with STATE_SAVE_LOCK:
+  tmp.write_text(payload,encoding="utf-8")
+  for attempt in range(6):
+   try:tmp.replace(SF);return
+   except PermissionError:
+    if attempt==5:raise
+    time.sleep(0.04*(attempt+1))
 def load_rooms():
  try:data=json.loads(ROOMS_FILE.read_text(encoding="utf-8"))
  except Exception:data={}
@@ -143,7 +155,16 @@ def load_rooms():
  data.setdefault("cursor",0);data.setdefault("past_businesses",[])
  return data
 def save_rooms(data):
- SD.mkdir(parents=True,exist_ok=True);tmp=ROOMS_FILE.with_suffix(".tmp");tmp.write_text(json.dumps(data,indent=2,ensure_ascii=False),encoding="utf-8");tmp.replace(ROOMS_FILE)
+ SD.mkdir(parents=True,exist_ok=True)
+ tmp=ROOMS_FILE.with_name(ROOMS_FILE.name+"."+str(os.getpid())+"."+str(threading.get_ident())+".tmp")
+ payload=json.dumps(data,indent=2,ensure_ascii=False)
+ with STATE_SAVE_LOCK:
+  tmp.write_text(payload,encoding="utf-8")
+  for attempt in range(6):
+   try:tmp.replace(ROOMS_FILE);return
+   except PermissionError:
+    if attempt==5:raise
+    time.sleep(0.04*(attempt+1))
 def activate_room(room):
  global SF,ROOM_ID,BDIR
  ROOM_ID=room["id"];SF=Path(room["state_file"])
@@ -262,6 +283,7 @@ def provider_model_catalog(provider):
    response=HTTP.get("https://openrouter.ai/api/v1/models",headers={"Authorization":"Bearer "+OR},timeout=10)
    if response.status_code>=400:raise RuntimeError("OpenRouter model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
+   OPENROUTER_FREE_MODELS[:]=openrouter_free_model_ids(rows)
    ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id")}
   else:
    return None
@@ -391,7 +413,7 @@ def model_candidates(provider,role):
   # removes anything NVIDIA has actually retired or disabled for this API key.
   "nvidia":["google/gemma-4-31b-it","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-ultra-550b-a55b","nvidia/nemotron-3.5-bolt-e4b","z-ai/glm-5.3-flash","moonshotai/kimi-k3.1-pro","nvidia/nemotron-3.5-super-vl-120b-a12b","meta/muse-glimmer-30b"],
   # Flash Lite first for both CEO and workers; preserve a custom configured model after it.
-  "gemini":["gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.5-flash"],
+  "gemini":["gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.5-flash","gemini-2.5-flash","gemini-2.0-flash"],
   "groq":["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3-32b","meta-llama/llama-4-scout-17b-16e-instruct"],
   # OpenRouter's free router is a provider-level alias, followed by explicitly
   # catalog-verified model IDs so the router can still fail over if the free pool is down.
@@ -408,7 +430,10 @@ def model_candidates(provider,role):
   # Prefer known current endpoints (Gemma first); user-configured IDs remain fallbacks.
   candidates=list(dict.fromkeys(defaults.get(provider,[])+configured))
  elif provider=="openrouter":
-  candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
+  # Try no-cost catalog models before paid concrete slugs.
+  aliases=[x for x in configured if x in ("openrouter/free","openrouter/auto")]
+  other_configured=[x for x in configured if x not in ("openrouter/free","openrouter/auto")]
+  candidates=list(dict.fromkeys(aliases+OPENROUTER_FREE_MODELS+other_configured+defaults.get(provider,[])))
  else:
   candidates=list(dict.fromkeys(configured+defaults.get(provider,[])))
  catalog=provider_model_catalog(provider)
@@ -428,8 +453,8 @@ def model_candidates(provider,role):
 def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
- try:max_attempts=max(1,min(6,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
- except Exception:max_attempts=3
+ try:max_attempts=max(1,min(12,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","8"))))
+ except Exception:max_attempts=8
  if len(candidates)>max_attempts:
   log("model_attempt_limit",provider=p,role=role,available_models=len(candidates),attempt_limit=max_attempts)
   candidates=candidates[:max_attempts]
@@ -440,8 +465,9 @@ def raw(p,sys,ask,role):
    return _raw_once(p,sys,ask,role,candidate)
   except Exception as error:
    last_error=error;message=str(error).lower()
-   fatal=not should_try_next_model(error)
-   unavailable_model=is_unavailable_model_error(error)
+   credit_model=is_openrouter_credit_model_error(p,error)
+   fatal=not should_try_next_model(error) and not credit_model
+   unavailable_model=is_unavailable_model_error(error) or credit_model
    if unavailable_model:
     MODEL_UNAVAILABLE_UNTIL[candidate]=time.monotonic()+21600
     log("model_marked_unavailable",provider=p,model=candidate,seconds=21600,reason=str(error)[:180])
