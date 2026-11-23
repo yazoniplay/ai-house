@@ -1,4 +1,4 @@
-"""AI House Studio: durable YouTube and marketing workflows with owner approval gates.
+"""AI House Studio: durable YouTube and marketing workflows with AI House Leader approval gates.
 
 This module manages project metadata and workflow state only. It does not claim to
 render videos, upload to YouTube, or publish campaigns; those require connected
@@ -164,7 +164,7 @@ def move_stage(workspace, project_id, stage):
     if stage == "published":
         approval = next((a for a in data["approvals"] if a.get("id") == project.get("approval_id")), None)
         if not approval or approval.get("status") != "approved":
-            raise StudioError("owner approval is required before publishing")
+            raise StudioError("AI House Leader approval is required before publishing")
         project["publication_note"] = "Marked published by an authorized owner action; external upload is not performed by Studio."
     project["stage"] = stage
     project["updated_at"] = _now()
