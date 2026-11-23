@@ -65,3 +65,17 @@ AI House includes local API adapters for Gumroad product listing/creation and Yo
 - `YOUTUBE_CHANNEL_ID`: optional channel ID for your own reference; the adapter verifies the channel attached to the OAuth token.
 
 Restart the dashboard and open `/api/integrations/status` to verify the connection without revealing credentials. Gumroad products are listed at `/api/integrations/gumroad/products`. YouTube uploads use resumable upload and default to **private**; publishing must be a separate Leader-approved action. Credentials are never stored in the dashboard/browser or committed to GitHub. This first adapter does not perform OAuth sign-in or token refresh automatically; that requires completing the Google/Gumroad authorization flow and storing the resulting secrets locally.
+
+
+## Local desktop Computer Room
+
+AI House can control the desktop session on the PC where its local dashboard is running. The first implementation uses PyAutoGUI for screenshots, mouse, keyboard, scrolling, and launching explicitly configured applications. Install dependencies with `pip install -r worker/requirements.txt`, then restart the dashboard. Endpoints are local-only on `127.0.0.1:8000`:
+
+- `GET /api/computer/status`
+- `POST /api/computer/action` with `{"action":{"kind":"screenshot"}}
+- `GET /api/computer/approvals`
+- `POST /api/computer/approvals/<id>` with `{"choice":"yes"}` or `no`
+
+Supported action kinds: screenshot, click, move, type, hotkey, scroll, launch_app. App launch is restricted to aliases configured in `workspace/.ai-house/computer_apps.json`, e.g. `{"apps":{"vscode":"C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe"}}`. No shell command or arbitrary launch arguments are exposed. PyAutoGUI's corner fail-safe remains enabled.
+
+Actions whose declared intent/target indicates sending, publishing, uploading, purchasing, deleting, installing, changing permissions, or another nonstandard shortcut create an owner approval request. The approval is tied to the exact action payload; changing the action invalidates that approval. The Leader can continue routine work, but the local owner must answer risky computer actions. Treat this as an initial guarded computer-use bridge: desktop vision grounding, application-specific UI automation, stronger isolation, and a polished live computer view are still future work. Do not run it against a personal session containing private data; prefer a dedicated Windows user or VM with only business accounts and files.
