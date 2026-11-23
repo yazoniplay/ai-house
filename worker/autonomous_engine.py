@@ -33,8 +33,8 @@ GFM=os.getenv("GROQ_FAST_MODEL","openai/gpt-oss-20b")
 if GM in ("llama-3.3-70b-versatile","llama-3.1-8b-instant"):GM="openai/gpt-oss-120b"
 if GFM in ("llama-3.1-8b-instant","llama-3.3-70b-versatile"):GFM="openai/gpt-oss-20b"
 HM=os.getenv("HF_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507")
-NM=os.getenv("NVIDIA_MODEL","moonshotai/kimi-k3.1-pro")
-NVIDIA_MODELS=[m.strip() for m in os.getenv("NVIDIA_MODELS","moonshotai/kimi-k3.1-pro,nvidia/nemotron-3-ultra-550b-a55b,z-ai/glm-5.3-flash").split(",") if m.strip()]
+NM=os.getenv("NVIDIA_MODEL","nvidia/nemotron-3-ultra-550b-a55b")
+NVIDIA_MODELS=[m.strip() for m in os.getenv("NVIDIA_MODELS","nvidia/nemotron-3-ultra-550b-a55b,z-ai/glm-5.3-flash,moonshotai/kimi-k3.1-pro").split(",") if m.strip()]
 MM=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
 TK=os.getenv("TOKEN_HARBOR_KEY","");TM=os.getenv("TOKEN_HARBOR_MODEL","deepseek-v4.1-flash:free")
 OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
@@ -158,9 +158,12 @@ def raw(p,sys,ask,role):
   if r.status_code>=400:raise RuntimeError("openrouter "+str(r.status_code)+": "+r.text[:220])
   try:
    data=r.json();out=data["choices"][0]["message"].get("content") or ""
+   if not out or not str(out).strip():raise RuntimeError(p+" empty reply")
    record_usage("openrouter",data.get("usage"))
    log("model_call_ok",provider="openrouter",model=ORM,role=role);return out
-  except Exception as e:raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
+  except Exception as e:
+   if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
+   raise RuntimeError("openrouter response could not be decoded: "+str(e)[:120])
  if p=="ollama":
   if not OK:raise RuntimeError("OLLAMA_API_KEY missing")
   if not OM:raise RuntimeError("OLLAMA_MODEL not configured")
@@ -168,9 +171,12 @@ def raw(p,sys,ask,role):
   if r.status_code>=400:raise RuntimeError("ollama "+str(r.status_code)+": "+r.text[:220])
   try:
    data=r.json();out=data["message"]["content"]
+   if not out or not str(out).strip():raise RuntimeError(p+" empty reply")
    record_usage("ollama",data.get("usage"))
    log("model_call_ok",provider="ollama",model=OM,role=role);return out
-  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
+  except Exception as e:
+   if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
+   raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
  if p=="nvidia":key,url,model=N,"https://integrate.api.nvidia.com/v1/chat/completions",NM
  elif p=="groq":key,url,model=G,"https://api.groq.com/openai/v1/chat/completions",(GFM if role=="fast" else GM)
  elif p=="hf":key,url,model=H,"https://router.huggingface.co/v1/chat/completions",HM
@@ -186,9 +192,12 @@ def raw(p,sys,ask,role):
   if r.status_code>=400:raise RuntimeError(r.text[:220])
   try:
    out="".join(x.get("text","") for x in r.json()["candidates"][0]["content"]["parts"])
+   if not out or not str(out).strip():raise RuntimeError(p+" empty reply")
    record_usage("gemini",None)
    log("model_call_ok",provider="gemini",model=model_id,role=role);return out
-  except Exception as e:raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
+  except Exception as e:
+   if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
+   raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
  if p=="nvidia":
   for nvidia_model in NVIDIA_MODELS:
    try:
@@ -225,9 +234,11 @@ def raw(p,sys,ask,role):
    break
   try:
    data=r.json();out=data["choices"][0]["message"].get("content","")
+   if not out or not str(out).strip():raise RuntimeError(p+" empty reply")
    record_usage(p,data.get("usage"))
    log("model_call_ok",provider=p,model=model,role=role);return out
   except Exception as e:
+   if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    last_error=RuntimeError(p+" response could not be decoded: "+str(e)[:120])
    break
  if last_error:raise last_error
