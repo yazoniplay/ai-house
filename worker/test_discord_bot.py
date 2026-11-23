@@ -17,3 +17,10 @@ def test_parse_owner_decision_brief():
 
 def test_parse_brief_alert_ignores_other_commands():
     assert parse_brief_alert("!approve 12ab34cd") is None
+
+
+def test_payload_text_unwraps_nested_message_objects():
+    from discord_bot import payload_text
+    assert payload_text({"message": {"content": "Leader is working."}}) == "Leader is working."
+    assert payload_text("[object Object]") == ""
+    assert payload_text({"reply": ["First", "Second"]}) == "First\\nSecond"
