@@ -264,7 +264,7 @@ def provider_model_catalog(provider):
    response=HTTP.get("https://integrate.api.nvidia.com/v1/models",headers={"Authorization":"Bearer "+N},timeout=10)
    if response.status_code>=400:raise RuntimeError("NVIDIA model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
-   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id")}
+   ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
   elif provider=="groq" and G:
    response=HTTP.get("https://api.groq.com/openai/v1/models",headers={"Authorization":"Bearer "+G},timeout=10)
    if response.status_code>=400:raise RuntimeError("Groq model catalog HTTP "+str(response.status_code))
@@ -281,7 +281,7 @@ def provider_model_catalog(provider):
     name=str(item.get("name","")).removeprefix("models/").strip()
     if name and "generateContent" in methods:ids.add(name)
   elif provider=="openrouter" and OR:
-   response=HTTP.get("https://openrouter.ai/api/v1/models",headers={"Authorization":"Bearer "+OR},timeout=10)
+   response=HTTP.get("https://openrouter.ai/api/v1/models?output_modalities=text&endpoints=%2Fapi%2Fv1%2Fchat%2Fcompletions",headers={"Authorization":"Bearer "+OR},timeout=10)
    if response.status_code>=400:raise RuntimeError("OpenRouter model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
    OPENROUTER_FREE_MODELS[:]=openrouter_free_model_ids(rows)
