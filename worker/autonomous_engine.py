@@ -804,7 +804,7 @@ def run_roadmap_task(s,t):
   brief_id=create_brief(WORK,ROOM_ID,str(decision_field["question"]),decision_field["options"],context=str(t.get("title","")))
   t["status"]="waiting_approval";t["brief_id"]=brief_id;save(s)
   log("brief_created",task=t.get("id"),brief_id=brief_id)
-  notify("brief:"+str(brief_id),str(t.get("title",""))+"\n"+str(decision_field.get("question",""))+"\nBrief "+str(brief_id))
+  notify("brief:"+str(brief_id),str(t.get("title",""))+"\n"+str(decision_field.get("question",""))+"\n!brief "+str(brief_id))
   set_activity("waiting_approval","This task needs an owner choice before it can continue.",role,t.get("id"));return
  written=write(result.get("files",[]),role=role)
  if not written:raise RuntimeError(role+" returned no physical files in its files array")
