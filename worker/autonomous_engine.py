@@ -1097,6 +1097,10 @@ def cycle(s):
   s["iteration"]=0;s["business_completed"]=False;s["roadmap"]=None;s["roadmap_replans"]=0;s["cycle"]=int(s.get("cycle",0))+1;save(s)
   decision_file=BDIR/"BUSINESS_DECISION.txt"
   decision_file.write_text(business_decision_text(s["business"]),encoding="utf-8")
+  legacy_decision=BDIR/"BUSINESS_DECISION.json"
+  if legacy_decision.exists():
+   try:legacy_decision.unlink()
+   except OSError as legacy_error:log("legacy_decision_cleanup_error",error=type(legacy_error).__name__)
   log("artifact_created",path=str(Path(s["business_dir"])/"BUSINESS_DECISION.txt"),bytes=decision_file.stat().st_size)
   try:
    business=s["business"]
@@ -1245,6 +1249,9 @@ def chat_with_leader(text):
    options=payload.get("options") if isinstance(payload.get("options"),list) else []
    options=[str(x).strip()[:80] for x in options if str(x).strip()][:5]
    if len(options)<2:options=["Proceed","Wait / do not proceed"]
+   if not any("other" in x.lower() or "type a reply" in x.lower() for x in options):
+    if len(options)>=5:options[-1]="Other / type a reply"
+    else:options.append("Other / type a reply")
    summary=str(payload.get("summary") or "The Leader needs your decision to continue.")[:700]
    request_id=create_request(WORK,ROOM_ID,"leader_question",question,options=options,summary=summary)
    request=next((x for x in list_requests(WORK,True) if str(x.get("id"))==request_id),None)
