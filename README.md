@@ -54,3 +54,14 @@ The local engine records task-level root causes, lessons, improvement rules, rep
 - `dashboard/` — localhost dashboard and Windows startup installer.
 - `workspace/` — generated business work and local state.
 - `supabase/` — later cloud/control-plane integration; not required for local testing.
+
+
+## Gumroad and YouTube connections
+
+AI House includes local API adapters for Gumroad product listing/creation and YouTube channel lookup/video upload. Copy the new variables from `worker/.env.example` into your private `worker/.env` and fill them locally:
+
+- `GUMROAD_ACCESS_TOKEN`: Gumroad API access token.
+- `YOUTUBE_ACCESS_TOKEN`: Google OAuth access token with YouTube Data API permissions. Access tokens expire; refresh them and replace the local value when needed.
+- `YOUTUBE_CHANNEL_ID`: optional channel ID for your own reference; the adapter verifies the channel attached to the OAuth token.
+
+Restart the dashboard and open `/api/integrations/status` to verify the connection without revealing credentials. Gumroad products are listed at `/api/integrations/gumroad/products`. YouTube uploads use resumable upload and default to **private**; publishing must be a separate Leader-approved action. Credentials are never stored in the dashboard/browser or committed to GitHub. This first adapter does not perform OAuth sign-in or token refresh automatically; that requires completing the Google/Gumroad authorization flow and storing the resulting secrets locally.
