@@ -166,6 +166,15 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 @media(max-width:950px){.provider-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.provider-grid{grid-template-columns:1fr}.provider-summary{gap:6px}.provider-summary>div{padding:10px}.provider-summary strong{font-size:19px}.provider-summary span{font-size:8px}}
 
+
+.usage-panel{background:linear-gradient(120deg,#121d2c,#111a29 65%,#172235);border-color:#334762}
+.usage-progress-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.usage-progress-row strong{font-size:26px;letter-spacing:-.04em;color:#eaf2ff;font-variant-numeric:tabular-nums}
+.usage-progress-row span{font-size:11px;color:#9fb1ca}
+.usage-progress{height:9px;margin-top:14px;border-radius:20px;background:#27364b;overflow:hidden}
+.usage-progress span{display:block;height:100%;width:0;border-radius:20px;background:linear-gradient(90deg,#69d8b8,#89a9ff);transition:width .35s ease}
+.usage-footnote{margin-top:10px;color:#8095b1;font-size:10px;line-height:1.5}
+
 </style>
 </head>
 <body>
@@ -204,6 +213,12 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
     <div class="panel-head"><div><h2>Provider capacity</h2><div class="subtle">Observed model calls · automatic fallback</div></div><span class="subtle" id="providerUpdated">Waiting for usage</span></div>
     <div class="provider-summary"><div><strong id="providerTotalCalls">0</strong><span>successful calls</span></div><div><strong id="providerTotalCost">$0.00</strong><span>estimated tracked spend</span></div><div><strong id="providerCount">0</strong><span>providers observed</span></div></div>
     <div id="providerGrid" class="provider-grid"><div class="empty">Provider usage will appear after the first model call.</div></div>
+  </section>
+  <section class="panel usage-panel">
+    <div class="panel-head"><div><h2>Product adoption</h2><div class="subtle">Real production users · 30-day window</div></div><span class="subtle" id="usageStatus">Waiting for evidence</span></div>
+    <div class="usage-progress-row"><strong id="usageCount">0 / 10</strong><span id="usageSource">No production analytics export reviewed yet.</span></div>
+    <div class="usage-progress"><span id="usageProgressFill"></span></div>
+    <div class="usage-footnote">Only distinct accounts performing a core action count. Owner, internal, test, bot, page-view, and marketing-click events are excluded.</div>
   </section>
   <section class="panel station-panel">
     <div class="panel-head"><h2>The station</h2><span class="subtle">Pixel rooms · live roles</span></div>
@@ -680,11 +695,26 @@ async function refreshProviderUsage(){
  }catch(error){const updated=$("providerUpdated");if(updated)updated.textContent="Usage unavailable: "+error.message;}
 }
 
+
+function renderUsageMilestone(tasks){
+ const status=$("usageStatus"),count=$("usageCount"),source=$("usageSource"),fill=$("usageProgressFill");
+ if(!status||!count||!source||!fill)return;
+ const reports=(tasks||[]).map(t=>t&&t.review&&t.review.usage_verification).filter(Boolean);
+ const report=reports[reports.length-1];
+ const users=Math.max(0,Number(report&&report.distinct_production_users||0));
+ const target=Math.max(10,Number(report&&report.minimum_users||10));
+ count.textContent=Math.min(users,target)+" / "+target;
+ fill.style.width=Math.min(100,users/target*100)+"%";
+ status.textContent=report&&report.status==="verified"?"Verified":"Pending";
+ source.textContent=report?(report.source_exists?"Source: "+(report.source_path||"analytics export"):"Analytics export missing"):"No production analytics export reviewed yet.";
+}
+
 function render(){
   refreshProviderUsage();
   api("/api/local/state?room="+encodeURIComponent(selectedRoom)).then(s=>{
     const tasks=s.tasks||[],files=s.artifacts||[],events=s.events||[],memory=s.memory||{};
     renderDepartmentOverview(tasks);
+    renderUsageMilestone(tasks);
     const completed=tasks.filter(t=>t.status==="completed").length;
     const total=tasks.length,active=tasks.find(t=>t.status==="running");
     const running=!!s.running,enabled=!!s.autonomy_enabled;
