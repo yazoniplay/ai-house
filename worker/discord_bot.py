@@ -7,6 +7,7 @@ import queue
 import re
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 _LOG=logging.getLogger(__name__)
@@ -42,6 +43,32 @@ def enqueue_alert(workspace,kind,text):
    tmp=path.with_suffix(".tmp");tmp.write_text(json.dumps(state,ensure_ascii=False),encoding="utf-8");tmp.replace(path)
   _ALERTS.put((str(workspace),kind,redact(str(text)[:1800])))
  except Exception:return
+
+def _alert_state(workspace):
+ path=_alert_state_path(workspace)
+ try:
+  data=json.loads(path.read_text(encoding="utf-8"))
+  return data if isinstance(data,dict) else {}
+ except Exception:return {}
+
+def _save_alert_state(workspace,data):
+ path=_alert_state_path(workspace);path.parent.mkdir(parents=True,exist_ok=True)
+ tmp=path.with_suffix(".tmp");tmp.write_text(json.dumps(data,ensure_ascii=False),encoding="utf-8");tmp.replace(path)
+
+def _mark_alert_sent(workspace,kind):
+ try:
+  with _ALERT_LOCK:
+   state=_alert_state(workspace);sent=state.setdefault("_sent",{})
+   if not isinstance(sent,dict):sent={}
+   sent[str(kind)]=time.time();state["_sent"]=sent;_save_alert_state(workspace,state)
+ except Exception:return
+
+def _needs_alert_delivery(workspace,kind,created_at):
+ try:
+  sent=float(_alert_state(workspace).get("_sent",{}).get(str(kind),0) or 0)
+  created=datetime.fromisoformat(str(created_at).replace("Z","+00:00")).timestamp()
+  return sent<created
+ except Exception:return True
 
 def parse_approval_alert(message):
  match=re.search(r"!approve\s+([0-9a-fA-F]+).*?!deny\s+([0-9a-fA-F]+)",str(message),re.S)
@@ -107,7 +134,9 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
     if req.get("summary"):content+="\n"+str(req.get("summary",""))[:400]
     view=ChoiceView(req["id"],req["options"],owner_id)
     client.add_view(view)
-    await channel.send(content[:1800],view=view);return
+    await channel.send(content[:1800],view=view)
+    if req.get("kind")=="leader_question":_mark_alert_sent(workspace,"leader_question:"+str(req["id"]))
+    return
    await channel.send(content);return
   content=redact(str(payload or ""))[:1800]
   if content:await channel.send(content)
@@ -131,6 +160,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
       view=ChoiceView(request_id,["yes","no"],owner_id,"!answer")
       client.add_view(view)
       await channel.send(redact(message)[:1700],view=view)
+      _mark_alert_sent(workspace,kind)
      else:
       brief_id=parse_brief_alert(message)
       if brief_id:
@@ -139,6 +169,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
        view=ChoiceView(brief_id,brief.get("options",[]),owner_id,"!brief-answer")
        client.add_view(view)
        await channel.send(redact(message)[:1700],view=view)
+       _mark_alert_sent(workspace,kind)
       else:await channel.send(redact(message)[:1900])
     except Exception:_ALERTS.put(item);break
 
