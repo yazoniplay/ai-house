@@ -92,11 +92,13 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
 
  async def send_payload(channel,payload):
   if isinstance(payload,dict):
-   content=redact(str(payload.get("message") or payload.get("reply") or "Leader response"))[:1800]
+   content=redact(str(payload.get("message") or payload.get("reply") or "Leader response"))[:1200]
    req=payload.get("request")
    if isinstance(req,dict) and req.get("id") and req.get("options"):
+    content+="\\n\\nDecision needed: "+str(req.get("question",""))[:500]
+    if req.get("summary"):content+="\\n"+str(req.get("summary",""))[:400]
     view=ChoiceView(req["id"],req["options"],owner_id)
-    await channel.send(content,view=view);return
+    await channel.send(content[:1800],view=view);return
    await channel.send(content);return
   content=redact(str(payload or ""))[:1800]
   if content:await channel.send(content)
