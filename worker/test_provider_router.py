@@ -1,5 +1,5 @@
 import unittest
-from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model, openrouter_free_model_ids, is_openrouter_credit_model_error, gemini_chat_model_pool, provider_chat_model_pool
+from provider_router import rotate, model_pool, filter_model_pool, is_model_specific_error, is_unavailable_model_error, cooldown_seconds, should_try_next_model, openrouter_free_model_ids, is_openrouter_credit_model_error, is_provider_wide_error, gemini_chat_model_pool, provider_chat_model_pool
 
 class ProviderRouterTests(unittest.TestCase):
     def test_provider_rotation_spreads_calls_across_available_providers(self):
@@ -85,10 +85,18 @@ class ProviderRouterTests(unittest.TestCase):
         ]
         self.assertEqual(openrouter_free_model_ids(rows),["meta-llama/llama-3.3-70b-instruct:free","qwen/qwen3-32b"])
 
-    def test_openrouter_credit_failure_is_model_specific_so_free_fallback_continues(self):
-        self.assertTrue(is_openrouter_credit_model_error("openrouter","openrouter 402: can only afford 83 tokens due to credits"))
-        self.assertFalse(is_openrouter_credit_model_error("gemini","402 insufficient credits"))
-        self.assertFalse(is_openrouter_credit_model_error("openrouter","openrouter 401 invalid API key"))
+    def test_openrouter_account_credit_failure_is_provider_wide(self):
+        error="openrouter 402: can only afford 83 tokens due to credits"
+        self.assertTrue(is_openrouter_credit_model_error("openrouter",error))
+        self.assertTrue(is_provider_wide_error("openrouter",error))
+        self.assertFalse(is_provider_wide_error("gemini","402 insufficient credits"))
+        self.assertFalse(is_provider_wide_error("openrouter","openrouter 401 invalid API key") is False)
+
+    def test_openrouter_free_daily_quota_skips_model_pool(self):
+        error="429: free-models-per-day quota exhausted"
+        self.assertTrue(is_provider_wide_error("openrouter",error))
+        self.assertFalse(should_try_next_model(error))
+        self.assertFalse(is_provider_wide_error("groq","429 rate limit for this model"))
 
     def test_unknown_error_does_not_disable_provider(self):
         self.assertEqual(cooldown_seconds("bad response shape"),0)
