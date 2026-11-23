@@ -1030,7 +1030,7 @@ def create_roadmap(s,mode="initial",failed=None):
     t["search"]="basic";adjusted+=1
    else:advanced_seen=True
  if adjusted:log("search_choices_adjusted",count=adjusted)
- risky_action_terms=("publish to","publish on","publish publicly","post to","post on","post publicly","send email","send message","send outreach","contact customers","contact a customer","upload to gumroad","sell the product","production deployment","deploy to production","purchase subscription","pay for","change live account")
+ risky_action_terms=("publish to","publish on","publish publicly","post to","post on","post publicly","send email","send message","send outreach","contact customers","contact a customer","reach out to customers","interview customers","conduct customer interviews","send interview requests","upload to gumroad","sell the product","production deployment","deploy to production","purchase subscription","pay for","change live account")
  for t in tasks:
   action_text=" ".join(str(t.get(k,"")) for k in ("title","objective","deliverable")).lower()
   t["needs_approval"]=any(term in action_text for term in risky_action_terms)
@@ -1053,6 +1053,13 @@ def create_roadmap(s,mode="initial",failed=None):
  if not any(t.get("agent_role")=="builder" or "mvp build" in str(t.get("title","")).lower() for t in tasks if isinstance(t,dict)):
   tasks.append({"id":"auto-flagship-mvp-"+str(cycle_id),"title":"Build the selected business MVP — "+business_name[:70],"objective":"Build the smallest useful, runnable first product for the AI-selected business "+business_name+". Decide the appropriate product format from the customer problem and solution, implement the core workflow, include setup/run instructions and meaningful tests. Do not ask the owner to choose features; use the business brief and evidence.","agent_role":"builder","priority":72,"depends_on":research_dependencies,"status":"pending","attempts":0,"acceptance":["Runnable source files and setup instructions are written to disk","The core customer workflow is implemented, not only a mockup or TODO list","Meaningful tests or deterministic validation are included and actual results reported","The product concept is tied to the selected customer problem and success metric"],"deliverable":"build/flagship-mvp/README.md","search":"none","needs_approval":False})
 
+ external_validation_ids={str(t.get("id")) for t in tasks if isinstance(t,dict) and any(term in (str(t.get("title",""))+" "+str(t.get("objective",""))).lower() for term in ("customer interview","interview protocol","outreach draft","customer outreach","verify 10 real product users","adoption verification"))}
+ for task in tasks:
+  if not isinstance(task,dict):continue
+  role=str(task.get("agent_role",""))
+  if role in ("builder","architect","ux_designer","qa_engineer","qa_tester","security_engineer","product_manager"):
+   before=list(task.get("depends_on",[]));task["depends_on"]=[dep for dep in before if str(dep) not in external_validation_ids]
+   if before!=task["depends_on"]:log("roadmap_dependency_unblocked",task=task.get("id"),removed_dependencies=[dep for dep in before if str(dep) in external_validation_ids])
  s["roadmap"]={"strategy":plan.get("strategy",""),"success_metric":plan.get("success_metric",""),"decision_review":decision_review,"tasks":tasks,"created_at":datetime.now(timezone.utc).isoformat()}
  try:
   north_face_record_decision(SD/"north_face.json",{"id":"roadmap-"+str(s.get("cycle",0))+"-"+str(s.get("roadmap_replans",0)+int(mode!="initial")),"title":"Roadmap decision: "+str(s.get("business",{}).get("name","business"))+" ("+str(mode)+")","decision":"Use this execution strategy and dependency plan for the current business cycle.","goal":str(plan.get("success_metric",""))[:700],"rationale":str(decision_review.get("rationale",""))[:1200],"alternatives":decision_review.get("alternatives",[]),"expected_outcome":str(decision_review.get("expected_outcome",plan.get("success_metric","")))[:700],"success_metric":str(plan.get("success_metric",""))[:500],"evidence":decision_review.get("evidence",[]),"risks":decision_review.get("risks",[]),"confidence":decision_review.get("confidence","low")},{"decision":"pending","reason":str(decision_review.get("review_criteria",""))[:900],"observed_outcome":"Not yet observed; roadmap has just been created.","lesson":"","evidence_quality":"planning_evidence_not_outcome"})
