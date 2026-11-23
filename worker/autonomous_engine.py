@@ -1750,6 +1750,26 @@ def discord_command(text):
  if command=="!start":
   set_house_running(True);return "House started."
  return "Commands: !status, !pending, !approve <id>, !deny <id>, !directive <instruction>, !directive clear, !stop, !start, !help. Any message without ! goes to the leader."
+def leader_text(value,depth=0):
+ """Convert provider/UI message payloads into readable text, never '[object Object]'."""
+ if depth>5:return ""
+ if value is None:return ""
+ if isinstance(value,str):
+  text_value=value.strip()
+  return "" if text_value=="[object Object]" else text_value
+ if isinstance(value,(int,float,bool)):return str(value)
+ if isinstance(value,list):
+  parts=[leader_text(item,depth+1) for item in value]
+  return "\n".join(part for part in parts if part)
+ if isinstance(value,dict):
+  for key in ("text","content","message","reply","answer","output"):
+   if key in value:
+    rendered=leader_text(value.get(key),depth+1)
+    if rendered:return rendered
+  try:return json.dumps(value,ensure_ascii=False,indent=2,default=str)
+  except Exception:return ""
+ return str(value)[:1200]
+
 def chat_with_leader(text):
  try:
   registry=load_rooms()
@@ -1821,7 +1841,8 @@ def chat_with_leader(text):
   raw=str(ask("orchestrator",prompt))
   try:payload=obj(raw)
   except Exception:payload={"reply":raw[:1400],"question":None,"options":[],"summary":""}
-  reply=str(payload.get("reply") or "The leader has no additional update.")[:1200]
+  reply=leader_text(payload.get("reply")) or "The leader has no additional update."
+  reply=reply[:1200]
   question=str(payload.get("question") or "").strip()
   request=None
   if question:
