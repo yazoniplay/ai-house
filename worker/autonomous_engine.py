@@ -106,6 +106,7 @@ for _r in ("customer_success","content_producer","community_manager"):
 HTTP=httpx.Client(timeout=120)
 # Provider cooldowns prevent repeated quota/rate-limit calls while the engine keeps working.
 PROVIDER_COOLDOWN={}
+FREE_SEARCH_COOLDOWN_UNTIL=0
 def provider_cooldown_seconds(provider,error):
  return route_cooldown(error,
   quota=int(os.getenv("AI_HOUSE_QUOTA_COOLDOWN_SECONDS","900")),
@@ -661,17 +662,26 @@ def tavily_search(q,depth=None):
  except Exception as e:
   mark=mark_search_failure(SEARCH_PROVIDER_STATE,"tavily",str(e));log("tavily_error",query=str(q)[:240],error=str(e)[:180],retry_after=mark.get("retry_after"));return []
 def duckduckgo_search(q):
+ global FREE_SEARCH_COOLDOWN_UNTIL
  if os.getenv("AI_HOUSE_FREE_SEARCH","1").strip().lower() in ("0","false","no","off"):return []
+ now=time.monotonic()
+ if now<FREE_SEARCH_COOLDOWN_UNTIL:
+  log("free_search_skipped",provider="duckduckgo",reason="circuit_open",cooldown_seconds=max(1,int(FREE_SEARCH_COOLDOWN_UNTIL-now)))
+  return []
  try:
-  response=HTTP.get("https://html.duckduckgo.com/html/",params={"q":str(q)[:300]},headers={"User-Agent":"Mozilla/5.0 (compatible; AIHouseResearch/1.0)"},timeout=25)
-  if response.status_code>=400:log("free_search_error",provider="duckduckgo",status=response.status_code);return []
+  response=HTTP.get("https://html.duckduckgo.com/html/",params={"q":str(q)[:300]},headers={"User-Agent":"Mozilla/5.0 (compatible; AIHouseResearch/1.0)"},timeout=6)
+  if response.status_code>=400:
+   FREE_SEARCH_COOLDOWN_UNTIL=time.monotonic()+300
+   log("free_search_error",provider="duckduckgo",status=response.status_code,cooldown_seconds=300);return []
   items=parse_free_search_results(response.text,limit=5)
+  FREE_SEARCH_COOLDOWN_UNTIL=0
   if items:
    try:record_action("search",cost_usd=0.0,provider="duckduckgo",query=str(q)[:200])
    except Exception:pass
   log("free_search_result",provider="duckduckgo",query=str(q)[:180],results=len(items));return items
  except Exception as e:
-  log("free_search_error",provider="duckduckgo",error=str(e)[:180]);return []
+  FREE_SEARCH_COOLDOWN_UNTIL=time.monotonic()+600
+  log("free_search_error",provider="duckduckgo",error=str(e)[:180],cooldown_seconds=600);return []
 def search_available():
  return bool((T and search_provider_ready(SEARCH_PROVIDER_STATE,"tavily") and search_allowed(SBF)) or (EX and search_provider_ready(SEARCH_PROVIDER_STATE,"exa") and exa_allowed()) or os.getenv("AI_HOUSE_FREE_SEARCH","1").strip().lower() not in ("0","false","no","off"))
 def search_retry_at():
