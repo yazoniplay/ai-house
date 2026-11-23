@@ -603,6 +603,7 @@ async function refreshOutbox(){
     $("outboxCount").textContent=outboxFiles.length+" files";
     if(!outboxFiles.length)addEmpty(list,"No finished files found in business reports, build, or drafts folders yet.");
     outboxFiles.forEach(file=>{
+      const item=document.createElement("div");item.className="outbox-item";
       const row=document.createElement("button");row.type="button";row.className="outbox-row";
       const main=document.createElement("span");
       const name=document.createElement("strong");name.textContent=file.business||"Business";
@@ -611,7 +612,11 @@ async function refreshOutbox(){
       const meta=document.createElement("span");meta.className="outbox-meta";
       const time=file.modified?new Date(file.modified).toLocaleString():"";
       meta.textContent=formatBytes(Number(file.bytes||0))+" · "+time;
-      row.append(main,meta);row.addEventListener("click",()=>openOutboxFile(file));list.append(row);
+      row.append(main,meta);row.addEventListener("click",()=>openOutboxFile(file));
+      const download=document.createElement("a");download.className="outbox-download";
+      download.href="/api/outbox/download?path="+encodeURIComponent(file.path||"");
+      download.textContent="Download";download.setAttribute("download","");
+      item.append(row,download);list.append(item);
     });
   }catch(error){$("outboxCount").textContent="Unavailable";addEmpty($("outboxList"),error.message);}
 }
