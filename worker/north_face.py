@@ -103,7 +103,10 @@ def context_with_ids(path,role=None,task_type=None):
  ps=sorted(ps,key=lambda x:int(x.get("count",1)),reverse=True)[:8]
  txt=("THE NORTH FACE — SELF-IMPROVEMENT MEMORY (highest operating priority)\nUse confirmed, relevant experience to improve decisions and execution. Check recurring mistakes. Apply rules explicitly; do not repeat contradicted or expired lessons. After each task, extract evidence-based learning.\nReusable lessons:\n"+json.dumps([{"id":x.get("id"),"lesson":x.get("lesson"),"improvement_rule":x.get("improvement_rule"),"frequency":x.get("count",1),"context":x.get("latest_context")} for x in ls],ensure_ascii=False)[:7000]+"\nRecurring mistake patterns:\n"+json.dumps([{"root_cause":x.get("root_cause"),"frequency":x.get("count"),"examples":x.get("examples",[])} for x in ps],ensure_ascii=False)[:3500])
  return txt,ids
-def context(path,max_lessons=18,role=None,task_type=None): return context_with_ids(path,role,task_type)[0]
+def context(path,max_lessons=18,role=None,task_type=None):
+ base=context_with_ids(path,role,task_type)[0]
+ audit=decision_review_context(path,12)
+ return base+"\\n\\nNORTH FACE — LEADER DECISION AUDIT\\nBefore repeating a recent decision, compare its expected outcome with observed evidence. Challenge weak rationale, consider alternatives, and explicitly keep, modify, or rollback; do not treat untested decisions as proven. Open experiments with insufficient samples remain inconclusive.\\n"+json.dumps(audit,ensure_ascii=False)[:9000]
 
 
 def record_decision(path, decision, review=None):
