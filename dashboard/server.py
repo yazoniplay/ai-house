@@ -338,7 +338,7 @@ if str(WORKER_DIR) not in sys.path:
 from briefs import answer_brief, list_briefs
 from recipes import list_recipes
 from skills import list_skills
-from studio import StudioError, create_project, list_projects, list_approvals, update_project, move_stage, decide_approval
+from studio import StudioError, create_project, list_projects, list_approvals, update_project, move_stage, decide_approval, leader_review_approval
 SCHEDULES_FILE = STATE_DIR / "schedules.json"
 
 @app.get("/api/briefs")
@@ -812,14 +812,18 @@ def studio_approvals_api():
     return jsonify(approvals=list_approvals(WORKSPACE, pending_only=False))
 
 
-@app.post("/api/studio/approvals/<approval_id>")
-def studio_decide_approval_api(approval_id):
-    body = request.get_json(silent=True) or {}
+@app.post("/api/studio/approvals/<approval_id>/leader-review")
+def studio_leader_review_api(approval_id):
     try:
-        item = decide_approval(WORKSPACE, approval_id, body.get("decision"), body.get("note", ""))
+        item = leader_review_approval(WORKSPACE, approval_id)
         return jsonify(approval=item)
     except StudioError as exc:
-        return jsonify(error=str(exc)), 400
+        return jsonify(error=str(exc)), 503
+
+
+@app.post("/api/studio/approvals/<approval_id>")
+def studio_decide_approval_api(approval_id):
+    return jsonify(error="Studio approvals are decided by the AI House Leader. Use the leader-review endpoint."), 403
 
 
 
