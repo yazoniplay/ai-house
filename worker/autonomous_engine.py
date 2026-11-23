@@ -348,7 +348,7 @@ def model_candidates(provider,role):
  else:return []
  configured=route_model_pool(primary,os.getenv(env_name,""))
  defaults={
-  "nvidia":["nvidia/nemotron-3-super-120b-a12b","nvidia/nemotron-3.5-lightning-30b-a3b","z-ai/glm-5.3-flash","openai/gpt-oss-20b","moonshotai/kimi-k3"],
+  "nvidia":["nvidia/nemotron-3-super-120b-a12b","nvidia/nemotron-3.5-lightning-30b-a3b","z-ai/glm-5.3-flash","z-ai/glm-5-3","deepseek-ai/deepseek-v4.1-flash","nvidia/nemotron-3.5-super-vl-120b-a12b","meta/muse-glimmer-30b","google/gemma-4-31b-it","openai/gpt-oss-20b","moonshotai/kimi-k3"],
   "gemini":["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.1-flash-lite"],
   "groq":["openai/gpt-oss-20b","openai/gpt-oss-120b","meta-llama/llama-4-scout-17b-16e-instruct","qwen/qwen3-32b"]
  }
