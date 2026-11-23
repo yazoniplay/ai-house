@@ -190,6 +190,81 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 .decision-card p{margin:8px 0 0;font-size:10px;line-height:1.5;color:#9eb1cb;overflow-wrap:anywhere}
 .decision-card p b{color:#d5e2f6}
 
+
+/* Control-room redesign: intentional hierarchy, calmer surfaces, responsive work area. */
+:root{--bg:#080b12;--panel:#101722;--panel2:#151f2d;--line:#263345;--accent:#a9a2ff;--cyan:#78d8e8;--green:#7de0b5;--muted:#91a0b5}
+body{background:radial-gradient(ellipse at 8% -8%,#262b4c 0,transparent 36%),radial-gradient(ellipse at 96% 5%,#142e38 0,transparent 28%),#080b12;letter-spacing:.005em}
+header{height:auto;min-height:72px;flex-wrap:wrap;gap:10px 14px;padding:12px clamp(14px,3vw,42px);background:#080d16eF;border-bottom-color:#253249;box-shadow:0 10px 35px #0002}
+.brand{font-size:17px;letter-spacing:.09em}.brand small{font-size:8px}
+.header-spacer{min-width:12px}
+.room-select{background:#111a28;border-color:#2b3b51}
+header a{background:#111a28;border-color:#2b3b51!important;border-radius:10px;transition:border-color .15s,background .15s}
+header a:hover{background:#1a2638;border-color:#61718c!important}
+header .pill{background:#111a28}
+main{display:flex;flex-direction:column;gap:15px;max-width:1540px;padding:24px clamp(14px,3vw,40px) 64px}
+main>.hero{order:0}
+main>.stats{order:1}
+main>.live-now-panel{order:2}
+main>.content{order:3}
+main>.departments-panel{order:4}
+main>.provider-panel{order:5}
+main>.usage-panel{order:6}
+main>.station-panel{order:7}
+main>#dailySummaryPanel{order:8}
+main>#outboxPanel{order:9}
+main>#ledgerPanel{order:10}
+main>details.dev{order:11}
+.hero{border-radius:24px;padding:clamp(22px,3vw,36px);min-height:205px;grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr);background:radial-gradient(ellipse at 78% 5%,#9c8dff20,transparent 36%),linear-gradient(115deg,#1a263a,#121a29 58%,#19192d);box-shadow:0 24px 70px #0004}
+.hero h1{max-width:740px;font-size:clamp(30px,4.2vw,48px)}
+.hero p{font-size:13px;line-height:1.7;color:#bac6d8}
+.live-card{border-radius:18px;background:#0a111dce;border-color:#3b4b66;padding:20px}
+.stats{gap:12px;margin:0}
+.stat{border-radius:16px;padding:17px 19px;background:linear-gradient(145deg,#151f2e,#101722);border-color:#29384c}
+.stat label{font-size:9px}.stat strong{font-size:28px}
+.panel{border-radius:19px;padding:clamp(16px,2vw,22px);background:linear-gradient(150deg,#111a27,#0d141f);border-color:#253348;box-shadow:0 10px 30px #0001}
+.panel-head{margin-bottom:16px}
+h2{font-size:11px;letter-spacing:.15em;color:#dfe8f7}
+.subtle{font-size:11px}
+.live-now-panel{background:linear-gradient(140deg,#121d2a,#0f1723);border-color:#304158}
+.live-now-grid{gap:11px}
+.live-block{border-radius:14px;background:#0a111b;border-color:#243247;padding:15px}
+.live-block h3{font-size:9px;letter-spacing:.14em;color:#8fa7c4}
+.live-copy,.live-list{line-height:1.6}
+.content{gap:15px;grid-template-columns:minmax(0,1.55fr) minmax(300px,.75fr)}
+.stack{gap:15px}
+.task{border-radius:14px;padding:15px;background:#0b121d;border-color:#253448}
+.task.working{border-color:#4a7993;box-shadow:inset 3px 0 var(--cyan),0 8px 24px #0002}
+.department-card,.provider-card{border-radius:15px}
+.outbox-row{border-radius:13px}
+#outboxPanel,#ledgerPanel,#dailySummaryPanel{scroll-margin-top:90px}
+button{transition:transform .12s ease,border-color .12s ease,background .12s ease}
+button:not(:disabled):hover{transform:translateY(-1px);border-color:#657994}
+button:not(:disabled):active{transform:translateY(0)}
+/* North Face learning console */
+.nf-insights{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:15px}
+.nf-insight{min-width:0;padding:13px;border:1px solid #2a3a50;border-radius:14px;background:linear-gradient(145deg,#151f2d,#0d141e)}
+.nf-insight-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.nf-insight-head strong{font-size:11px;color:#e0e9f8}
+.nf-insight-head span{font-size:9px;color:#8fa3bd;text-align:right}
+.nf-list{display:grid;gap:8px;max-height:340px;overflow:auto}
+.nf-item{padding:10px;border:1px solid #26364b;border-radius:11px;background:#0a111b}
+.nf-item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.nf-item-title{font-size:10px;font-weight:800;color:#dce7f8;line-height:1.45;overflow-wrap:anywhere}
+.nf-tag{flex:0 0 auto;padding:3px 7px;border:1px solid #35465d;border-radius:20px;font-size:8px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;color:#a8bbd4}
+.nf-tag.confirmed,.nf-tag.supported,.nf-tag.keep{color:#91e4bf;border-color:#356b58}
+.nf-tag.candidate,.nf-tag.proposed,.nf-tag.inconclusive{color:#f1c98e;border-color:#775b3b}
+.nf-tag.not_supported,.nf-tag.rollback,.nf-tag.failed{color:#f1a0ad;border-color:#75414b}
+.nf-item p{margin:7px 0 0;color:#9fb0c7;font-size:10px;line-height:1.55;overflow-wrap:anywhere}
+.nf-item .nf-meta{color:#788da9;font-size:9px;margin-top:7px}
+.nf-item .nf-outcomes{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.nf-item .nf-outcomes span{font-size:9px;color:#a8bad0;border:1px solid #26364a;border-radius:7px;padding:4px 6px}
+#decisionAudit{max-height:520px}
+.decision-card{border-radius:14px;padding:14px}
+.decision-card p{font-size:11px;line-height:1.6}
+.decision-audit-head{margin-top:18px}
+@media(max-width:900px){main{gap:12px}.content{grid-template-columns:1fr}.hero{grid-template-columns:1fr}.nf-insights{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){header{position:relative;padding:12px;gap:8px}.brand{width:100%}.header-spacer{display:none}.room-select{flex:1;min-width:120px}header a{font-size:10px!important;padding:7px 8px!important}.pill{font-size:9px}.schedule-status{font-size:9px}main{padding:14px 10px 40px}.hero{padding:20px 17px}.hero h1{font-size:31px}.live-card{min-height:0}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:22px}.nf-insights{grid-template-columns:1fr}.nf-list{max-height:260px}.panel{padding:14px;border-radius:16px}}
+
 </style>
 </head>
 <body>
@@ -299,6 +374,24 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
           <div class="memory-stat"><small>Postmortems</small><strong id="memoryPostmortems">0</strong></div>
         </div>
         <p class="note" id="memoryUpdated">Lessons are saved after reviews and business outcomes.</p>
+        <div class="nf-insights">
+          <section class="nf-insight">
+            <div class="nf-insight-head"><strong>Reusable lessons</strong><span id="nfLessonState">Confirmed rules</span></div>
+            <div id="nfLessons" class="nf-list"><div class="empty">Learning data will appear after reviews.</div></div>
+          </section>
+          <section class="nf-insight">
+            <div class="nf-insight-head"><strong>Experiments</strong><span id="nfExperimentCount">0 registered</span></div>
+            <div id="nfExperiments" class="nf-list"><div class="empty">No hypothesis tests registered yet.</div></div>
+          </section>
+          <section class="nf-insight">
+            <div class="nf-insight-head"><strong>Business postmortems</strong><span id="nfPostmortemCount">0 recorded</span></div>
+            <div id="nfPostmortems" class="nf-list"><div class="empty">Business outcome reviews will appear here.</div></div>
+          </section>
+          <section class="nf-insight">
+            <div class="nf-insight-head"><strong>Recurring mistakes</strong><span id="nfMistakeCount">0 patterns</span></div>
+            <div id="nfMistakes" class="nf-list"><div class="empty">Repeated root causes will appear here.</div></div>
+          </section>
+        </div>
         <div class="decision-audit-head"><strong>Decision audit trail</strong><span id="decisionAuditCount">0 reviews</span></div>
         <div id="decisionAudit" class="decision-audit"><div class="empty">Roadmap and business decisions will appear here with their evidence-based reviews.</div></div>
       </section>
@@ -714,6 +807,52 @@ async function refreshProviderUsage(){
 
 
 
+function renderNorthFace(memory){
+ const lessonsBox=$("nfLessons"),experimentsBox=$("nfExperiments"),postBox=$("nfPostmortems"),mistakesBox=$("nfMistakes");
+ if(!lessonsBox)return;
+ const lessons=Array.isArray(memory?.lessons)?memory.lessons:[];
+ const experiments=Array.isArray(memory?.experiments)?memory.experiments:[];
+ const posts=Array.isArray(memory?.business_postmortems)?memory.business_postmortems:[];
+ const mistakes=Array.isArray(memory?.mistake_patterns)?memory.mistake_patterns:[];
+ $("nfExperimentCount").textContent=experiments.length+" registered";
+ $("nfPostmortemCount").textContent=posts.length+" recorded";
+ $("nfMistakeCount").textContent=mistakes.length+" patterns";
+ const makeItem=(box,title,state,description,meta,outcomes=[])=>{
+  const card=document.createElement("article");card.className="nf-item";
+  const top=document.createElement("div");top.className="nf-item-top";
+  const heading=document.createElement("div");heading.className="nf-item-title";heading.textContent=String(title||"Learning record");
+  const tag=document.createElement("span");tag.className="nf-tag "+String(state||"candidate").toLowerCase().replace(/[^a-z_]/g,"_");tag.textContent=String(state||"candidate").replace(/_/g," ");
+  top.append(heading,tag);card.append(top);
+  if(description){const p=document.createElement("p");p.textContent=String(description);card.append(p);}
+  if(meta){const p=document.createElement("p");p.className="nf-meta";p.textContent=String(meta);card.append(p);}
+  if(outcomes.length){const row=document.createElement("div");row.className="nf-outcomes";outcomes.forEach(value=>{const span=document.createElement("span");span.textContent=String(value);row.append(span);});card.append(row);}
+  box.append(card);
+ };
+ lessonsBox.replaceChildren();
+ const sorted=lessons.slice().sort((a,b)=>(a.state==="confirmed"?0:1)-(b.state==="confirmed"?0:1));
+ if(!sorted.length)addEmpty(lessonsBox,"No lessons recorded yet. North Face adds candidates from reviewed tasks and business outcomes.");
+ sorted.slice(-8).reverse().forEach(x=>{
+  const outcomes=x.outcomes||{};
+  makeItem(lessonsBox,x.improvement_rule||x.lesson,x.state||"candidate",x.root_cause?"Root cause: "+x.root_cause:"",String(x.role_scope||["all"]).replace(/,/g,", ")+" · "+Number(x.count||1)+" observations · "+String(x.confidence||"low")+" confidence",["Applied "+Number(x.times_applied||0),"Positive "+Number(outcomes.positive||0),"Negative "+Number(outcomes.negative||0)]);
+ });
+ experimentsBox.replaceChildren();
+ if(!experiments.length)addEmpty(experimentsBox,"No hypothesis tests registered. A test should state its hypothesis, metric and minimum sample count.");
+ experiments.slice(-6).reverse().forEach(x=>{
+  const e=x.evaluation||{};const desc=String(x.hypothesis||"")+" · Metric: "+String(x.metric||"not set");
+  makeItem(experimentsBox,x.title,x.status||"proposed",desc,"Samples "+Number(e.sample_size||0)+" / "+Number(e.required_samples||x.minimum_samples||10)+(e.reason?" · "+e.reason:""),[e.baseline!==undefined&&e.baseline!==null?"Baseline "+e.baseline:null,e.observed!==undefined&&e.observed!==null?"Observed "+e.observed:null].filter(Boolean));
+ });
+ postBox.replaceChildren();
+ if(!posts.length)addEmpty(postBox,"No completed business postmortems yet.");
+ posts.slice(-5).reverse().forEach(x=>{
+  const evidence=Array.isArray(x.evidence)?x.evidence.join(" · "):x.evidence;
+  const lessons=Array.isArray(x.lessons)?x.lessons.join(" · "):x.lessons;
+  makeItem(postBox,x.business,x.outcome||"review",x.metric||"Outcome metric not recorded",evidence||"Evidence not attached",lessons?[String(lessons).slice(0,420)]:[]);
+ });
+ mistakesBox.replaceChildren();
+ if(!mistakes.length)addEmpty(mistakesBox,"No repeated root causes recorded.");
+ mistakes.slice(0,6).forEach(x=>makeItem(mistakesBox,x.root_cause||x.key,"pattern", "Recorded "+Number(x.count||1)+" times",String(x.role_scope||["all"]).replace(/,/g,", "),Array.isArray(x.examples)?x.examples.slice(-3):[]));
+}
+
 function renderDecisionAudit(memory){
  const box=$("decisionAudit"),count=$("decisionAuditCount");if(!box||!count)return;
  const items=(memory&&memory.decision_reviews||[]).slice(-10).reverse();
@@ -756,6 +895,7 @@ function render(){
     renderDepartmentOverview(tasks);
     renderUsageMilestone(tasks);
     renderDecisionAudit(memory);
+    renderNorthFace(memory);
     const completed=tasks.filter(t=>t.status==="completed").length;
     const total=tasks.length,active=tasks.find(t=>t.status==="running");
     const running=!!s.running,enabled=!!s.autonomy_enabled;

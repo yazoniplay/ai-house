@@ -748,6 +748,7 @@ def local_state():
             "mistake_patterns": memory.get("mistake_patterns", [])[:12],
             "business_postmortems": memory.get("business_postmortems", [])[-10:],
             "decision_reviews": memory.get("decision_reviews", [])[-30:],
+            "experiments": memory.get("experiments", [])[-20:],
             "updated_at": memory.get("updated_at"),
         },
         events=[event for event in read_events(1000) if str(event.get('room', 'room-001')) == room_id][-100:],
