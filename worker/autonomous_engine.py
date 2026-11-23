@@ -154,6 +154,16 @@ def new_room(registry):
  path=ROOMS_DIR/rid/"state.json";path.parent.mkdir(parents=True,exist_ok=True)
  room={"id":rid,"name":f"Room {n}","state_file":str(path),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}
  registry["rooms"].append(room);return room
+def room_business_locked(room):
+ """A room is locked into a business only after its selection is persisted."""
+ try:
+  room_state=json.loads(Path(room.get("state_file","")).read_text(encoding="utf-8"))
+  business=room_state.get("business")
+  return bool(isinstance(business,dict) and business.get("name") and room_state.get("business_dir") and int(room_state.get("cycle",0))>0 and not room_state.get("business_completed"))
+ except Exception:return False
+def ready_to_spawn_room(registry):
+ active=[room for room in registry.get("rooms",[]) if room.get("status","active")=="active"]
+ return bool(active) and all(room_business_locked(room) for room in active)
 def _hm(text):
  h,m=str(text).strip().split(":");return int(h)*60+int(m)
 def in_window(window,now=None):
@@ -1277,7 +1287,7 @@ def cycle(s):
     retry_at=search_retry_at() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
     s["discovery_retry_after"]=retry_at.isoformat()
     set_global_discovery_retry(retry_at.isoformat())
-    wait_message="Search providers are paused by saved quota/credit cooldowns; retrying at "+retry_at.isoformat()+"." if not search_available() else "Insufficient source-backed opportunities; retrying discovery in 30 minutes using the no-key search fallback if needed."
+    wait_message="Paid search providers are paused by saved quota/credit cooldowns. The no-key fallback was also attempted but did not return enough usable evidence; retrying at "+retry_at.isoformat()+"." if not search_available() else "Tavily, Exa, and the no-key DuckDuckGo fallback were attempted, but none produced enough source-backed evidence for a responsible business selection. Discovery will retry in 30 minutes."
     s["activity"]={"stage":"discovery_wait","message":wait_message,"role":"researcher","task":None,"updated_at":datetime.now(timezone.utc).isoformat()}
     save(s);log("discovery_wait",seconds=1800,retry_after=s["discovery_retry_after"]);return
    folder=f"businesses/{len(load_rooms().get('past_businesses',[]))+1:03d}-{slugify(business.get('name',''))}"
@@ -1608,12 +1618,13 @@ def main():
      room["status"]="done"
     save_rooms(registry)
     active_rooms_now=[item for item in registry["rooms"] if item.get("status","active")=="active"]
-    if len(active_rooms_now)<MAX_ROOMS:
+    if len(active_rooms_now)<MAX_ROOMS and ready_to_spawn_room(registry):
      if active_now():
-      created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],active_rooms=len(active_rooms_now)+1)
-     else:log("room_creation_deferred",reason="active_room_capacity_outside_active_hours")
+      created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],active_rooms=len(active_rooms_now)+1,reason="all_active_rooms_have_locked_businesses")
+     else:log("room_creation_deferred",reason="businesses_locked_but_outside_active_hours")
     else:
      save_rooms(registry)
+     if len(active_rooms_now)<MAX_ROOMS:log("room_creation_waiting",active_rooms=len(active_rooms_now),locked=sum(1 for item in active_rooms_now if room_business_locked(item)),reason="each_active_room_must_lock_in_a_business_first")
    except KeyboardInterrupt:print("Stopped; saved.");return 0
    except Exception as e:
     error=str(e)[:800];provider_wait=("No available leader provider:" in error or "No available worker provider:" in error)
