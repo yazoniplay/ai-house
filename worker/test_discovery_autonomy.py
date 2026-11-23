@@ -53,6 +53,7 @@ class DiscoverySearchTests(unittest.TestCase):
         ]
         for provider,env_name,url,key in cases:
             with self.subTest(provider=provider), patch.object(engine,"HTTP") as http, \
+                 patch.object(engine,"ORK" if provider=="orcarouter" else "BLK",key), \
                  patch.object(engine,"record_spend") as spend, patch.object(engine,"record_action") as action, patch.object(engine,"log"):
                 http.post.return_value=response
                 output=engine._raw_once(provider,"system","prompt","orchestrator","provider/model")
