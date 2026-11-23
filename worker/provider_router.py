@@ -39,3 +39,15 @@ def cooldown_seconds(error, quota=900, billing=86400, config=3600, timeout=60, s
     if any(token in message for token in ("503","502","500","temporarily unavailable","service unavailable")):
         return int(server)
     return 0
+
+def should_try_next_model(error):
+    """Model errors, transient failures and per-model rate limits should try another model.
+
+    Stop only for credentials, permissions or account-level billing failures.
+    """
+    message=str(error).lower()
+    return not any(token in message for token in (
+        "401", "403", "402", "unauthorized", "invalid api key",
+        "authentication failed", "permission denied", "insufficient credits",
+        "pre-paid credits", "payment required", "billing limit",
+    ))
