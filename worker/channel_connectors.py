@@ -6,7 +6,66 @@ Publishing functions are explicit calls so the Leader can invoke them after its 
 import json
 import os
 from pathlib import Path
+from datetime import datetime, timezone
+import threading
 import httpx
+
+# Daily limits persist across worker restarts. Count attempts conservatively,
+# including failed API attempts, to prevent retry-based bypass.
+GUMROAD_DAILY_PRODUCT_CAP = 3
+YOUTUBE_DAILY_UPLOAD_CAP = 1
+PUBLISH_LIMITS_FILE = Path(os.getenv("AI_HOUSE_WORKSPACE", Path(__file__).resolve().parents[1] / "workspace")).resolve() / ".ai-house" / "publish-limits.json"
+_PUBLISH_LIMITS_LOCK = threading.Lock()
+
+
+def _reserve_publish_slot(platform, daily_cap, limits_file=None):
+    """Atomically reserve one daily publish attempt; raises ConnectorError at cap."""
+    path = Path(limits_file or PUBLISH_LIMITS_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    with _PUBLISH_LIMITS_LOCK:
+        with lock_path.open("a+b") as lock_file:
+            if os.name == "nt":
+                import msvcrt
+                if os.fstat(lock_file.fileno()).st_size == 0:
+                    lock_file.write(b"0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                today = datetime.now(timezone.utc).date().isoformat()
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                    if not isinstance(data, dict):
+                        data = {}
+                except (OSError, ValueError, TypeError):
+                    data = {}
+                day = data.setdefault(today, {})
+                count = int(day.get(platform, 0))
+                if count >= int(daily_cap):
+                    raise ConnectorError(
+                        f"Daily {platform} limit reached ({daily_cap} per UTC day). Try again after UTC midnight."
+                    )
+                day[platform] = count + 1
+                # Keep a short history while preserving today's counter.
+                for old_day in list(data):
+                    try:
+                        if (datetime.fromisoformat(old_day).date() - datetime.now(timezone.utc).date()).days < -7:
+                            data.pop(old_day, None)
+                    except (ValueError, TypeError):
+                        data.pop(old_day, None)
+                tmp = path.with_name(path.name + "." + str(os.getpid()) + ".tmp")
+                tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+                tmp.replace(path)
+            finally:
+                if os.name == "nt":
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 TIMEOUT = 45
 
@@ -57,10 +116,12 @@ def gumroad_create_product(name, price_cents, description="", published=False):
         raise ConnectorError("price_cents must be an integer")
     if price < 0:
         raise ConnectorError("price_cents cannot be negative")
+    token = _gumroad_token()
+    _reserve_publish_slot("gumroad_products", GUMROAD_DAILY_PRODUCT_CAP)
     response = httpx.post(
         "https://api.gumroad.com/v2/products",
         data={
-            "access_token": _gumroad_token(),
+            "access_token": token,
             "name": name,
             "price": price,
             "description": str(description or "")[:10000],
@@ -120,6 +181,7 @@ def youtube_upload_video(file_path, title, description="", privacy_status="priva
         "status": {"privacyStatus": privacy_status, "selfDeclaredMadeForKids": False},
     }
     token = _youtube_token()
+    _reserve_publish_slot("youtube_uploads", YOUTUBE_DAILY_UPLOAD_CAP)
     start = httpx.post(
         "https://www.googleapis.com/upload/youtube/v3/videos",
         params={"uploadType": "resumable", "part": "snippet,status"},
