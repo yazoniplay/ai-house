@@ -78,6 +78,23 @@ def parse_approval_alert(message):
  match=re.search(r"!approve\s+([0-9a-fA-F]+).*?!deny\s+([0-9a-fA-F]+)",str(message),re.S)
  return match.group(1) if match and match.group(1)==match.group(2) else None
 
+def payload_text(value,depth=0):
+ """Render nested leader payloads as text instead of Python/JS object placeholders."""
+ if depth>5 or value is None:return ""
+ if isinstance(value,str):
+  value=value.strip()
+  return "" if value=="[object Object]" else value
+ if isinstance(value,(int,float,bool)):return str(value)
+ if isinstance(value,list):
+  return "\\n".join(part for part in (payload_text(x,depth+1) for x in value) if part)
+ if isinstance(value,dict):
+  for key in ("text","content","message","reply","answer","output"):
+   if key in value:
+    rendered=payload_text(value.get(key),depth+1)
+    if rendered:return rendered
+  return json.dumps(value,ensure_ascii=False,default=str)
+ return str(value)[:1200]
+
 def parse_brief_alert(message):
  match=re.search(r"!brief\s+([0-9a-fA-F]+)",str(message))
  return match.group(1) if match else None
@@ -131,7 +148,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
 
  async def send_payload(channel,payload):
   if isinstance(payload,dict):
-   content=redact(str(payload.get("message") or payload.get("reply") or "Leader response"))[:1200]
+   content=redact(payload_text(payload.get("message") or payload.get("reply") or "Leader response"))[:1200]
    req=payload.get("request")
    if isinstance(req,dict) and req.get("id") and req.get("options"):
     content+="\n\nDecision needed: "+str(req.get("question",""))[:500]
