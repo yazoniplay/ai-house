@@ -49,3 +49,12 @@ def test_experiment_supported_only_with_registered_metric_and_samples(tmp_path):
  result=nf.evaluate_experiment(p,exp["id"],[{"value":0.3,"sample_size":10}])
  assert result["status"]=="supported"
  assert nf.load(p)["experiments"][0]["status"]=="supported"
+
+
+def test_review_decision_updates_original_with_observed_outcome(tmp_path):
+ p=tmp_path/"north_face.json"
+ nf.record_decision(p,{"id":"roadmap-1-0","title":"Roadmap decision","decision":"Use strategy A","rationale":"Evidence supports a small test","alternatives":["Strategy B"],"expected_outcome":"10 users","success_metric":"10 users","evidence":["source"],"risks":["uncertain demand"],"confidence":"medium"},{"decision":"keep","reason":"Plan just created","evidence_quality":"planning"})
+ reviewed=nf.review_decision(p,"roadmap-1-0",{"keep_modify_or_rollback":"modify","reason":"Target missed","observed_outcome":"2 users observed","lesson":"Narrow onboarding","evidence_quality":"postmortem"})
+ assert reviewed["review"]=="modify"
+ assert reviewed["observed_outcome"]=="2 users observed"
+ assert reviewed["lesson"]=="Narrow onboarding"
