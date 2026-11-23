@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 import httpx
 
@@ -105,7 +106,7 @@ def create_voiceover(script, output_path, voice="en-US-AndrewNeural"):
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         subprocess.run(
-            [os.environ.get("AI_HOUSE_PYTHON", "python"), "-m", "edge_tts",
+            [os.environ.get("AI_HOUSE_PYTHON", sys.executable), "-m", "edge_tts",
              "--voice", str(voice)[:80], "--text", script[:50000],
              "--write-media", str(target)],
             check=True, timeout=600, capture_output=True, text=True,
@@ -143,6 +144,20 @@ def render_video(project_dir, clips, narration_path, output_path, subtitles_path
         if not 1 <= duration <= 60:
             raise VideoFactoryError("Scene duration must be between 1 and 60 seconds")
         safe_clips.append((path, duration))
+    if not shutil.which("ffprobe"):
+        raise VideoFactoryError("FFprobe must be installed and available on PATH")
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(narration)],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    try:
+        narration_seconds = float(probe.stdout.strip())
+    except (TypeError, ValueError):
+        raise VideoFactoryError("Could not determine narration duration")
+    if narration_seconds <= 0:
+        raise VideoFactoryError("Narration duration is invalid")
+    requested_total = sum(duration for _, duration in safe_clips)
+    safe_clips = [(path, duration * narration_seconds / requested_total) for path, duration in safe_clips]
     inputs = []
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
     for path, _ in safe_clips:
@@ -178,7 +193,7 @@ def render_video(project_dir, clips, narration_path, output_path, subtitles_path
     audio_label = f"{narration_index}:a"
     if music_index is not None:
         filters.append(f"[{narration_index}:a]volume=1.0[narr]")
-        filters.append(f"[{music_index}:a]volume=0.12,aloop=loop=-1:size=2e+09[bed]")
+        filters.append(f"[{music_index}:a]volume=0.12,aloop=loop=-1:size=2000000000[bed]")
         filters.append("[narr][bed]amix=inputs=2:duration=first:dropout_transition=2, loudnorm=I=-16:TP=-1.5:LRA=11[aout]")
         audio_label = "aout"
     else:
