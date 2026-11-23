@@ -16,7 +16,8 @@ class SpecialistPromptTests(unittest.TestCase):
 
     def test_playbooks_preserve_truthfulness_and_external_action_boundaries(self):
         prompt=specialist_system_prompt("sales_drafter").lower()
-        self.assertIn("do not contact",prompt)\n        self.assertIn("anyone",prompt)
+        self.assertIn("do not contact",prompt)
+        self.assertIn("anyone",prompt)
         self.assertIn("never imply",UNIVERSAL.lower())
         self.assertIn("never invent",UNIVERSAL.lower())
 
