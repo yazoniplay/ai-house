@@ -63,6 +63,10 @@ def _mark_alert_sent(workspace,kind):
    sent[str(kind)]=time.time();state["_sent"]=sent;_save_alert_state(workspace,state)
  except Exception:return
 
+def _was_alert_sent(workspace,kind):
+ try:return float(_alert_state(workspace).get("_sent",{}).get(str(kind),0) or 0)>0
+ except Exception:return False
+
 def _needs_alert_delivery(workspace,kind,created_at):
  try:
   sent=float(_alert_state(workspace).get("_sent",{}).get(str(kind),0) or 0)
@@ -157,6 +161,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
     try:
      request_id=parse_approval_alert(message)
      if request_id:
+      if _was_alert_sent(workspace,kind):continue
       view=ChoiceView(request_id,["yes","no"],owner_id,"!answer")
       client.add_view(view)
       await channel.send(redact(message)[:1700],view=view)
@@ -164,6 +169,7 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
      else:
       brief_id=parse_brief_alert(message)
       if brief_id:
+       if _was_alert_sent(workspace,kind):continue
        raw_brief=await asyncio.to_thread(command_handler,"!brief-json "+brief_id)
        brief=json.loads(str(raw_brief))
        view=ChoiceView(brief_id,brief.get("options",[]),owner_id,"!brief-answer")
@@ -179,9 +185,29 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
   try:
    pending_raw=await asyncio.to_thread(command_handler,"!discord-pending-json")
    pending=json.loads(str(pending_raw))
+   target=client.get_channel(int(channel_id)) if channel_id.isdigit() else None
+   if target is None and channel_id.isdigit():
+    try:target=await client.fetch_channel(int(channel_id))
+    except Exception:target=None
    for request in pending if isinstance(pending,list) else []:
-    if request.get("id") and request.get("options"):
-     client.add_view(ChoiceView(request["id"],request["options"],owner_id,request.get("answer_command","!answer")))
+    if not request.get("id") or not request.get("options"):continue
+    answer_command=request.get("answer_command","!answer")
+    view=ChoiceView(request["id"],request["options"],owner_id,answer_command)
+    client.add_view(view)
+    req_id=str(request["id"]);req_kind=str(request.get("kind",""))
+    if request.get("alert_kind")=="brief":
+     alert_kind="brief:"+req_id
+     content="Owner choice needed\\n"+str(request.get("question",""))+"\\n"+str(request.get("context",""))+"\\n!brief "+req_id
+    elif req_kind=="leader_question":
+     alert_kind="leader_question:"+req_id
+     content="Leader needs your decision\\n"+str(request.get("question",""))+"\\n"+str(request.get("summary",""))
+    else:
+     alert_kind=("desktop_approval:" if req_kind.startswith("desktop_action_") else "approval_needed:")+req_id
+     content="AI House needs your approval\\n"+str(request.get("question",""))+"\\n"+str(request.get("summary",""))+"\\n!approve "+req_id+"\\n!deny "+req_id
+     view=ChoiceView(req_id,["yes","no"],owner_id,"!answer");client.add_view(view)
+    if target is not None and _needs_alert_delivery(workspace,alert_kind,request.get("created_at","")):
+     await target.send(redact(content)[:1700],view=view)
+     _mark_alert_sent(workspace,alert_kind)
    _LOG.info("discord_persistent_views_registered count=%s",len(pending) if isinstance(pending,list) else 0)
   except Exception as view_error:_LOG.error("discord_persistent_views_error %s",type(view_error).__name__)
  @client.event
