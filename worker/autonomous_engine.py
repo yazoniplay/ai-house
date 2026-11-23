@@ -301,6 +301,9 @@ def _raw_once(p,sys,ask,role):
    except Exception as nvidia_error:
     nvidia_last_error=nvidia_error
     log("nvidia_model_failed",model=nvidia_model,role=role,error=str(nvidia_error)[:160])
+    if provider_cooldown_seconds("nvidia",nvidia_error) and not is_model_specific_error(nvidia_error):
+     log("nvidia_provider_exhausted",role=role,error=str(nvidia_error)[:180])
+     break
   if nvidia_last_error:raise RuntimeError("nvidia models exhausted: "+str(nvidia_last_error)[:220])
   raise RuntimeError("nvidia: all models failed")
  if not key:raise RuntimeError(p+" key missing")
@@ -317,8 +320,8 @@ def _raw_once(p,sys,ask,role):
  for candidate in candidates:
   payload["model"]=candidate
   r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"},json=payload,timeout=timeout_seconds)
-  if r.status_code in (404,429,503) and candidate!=candidates[-1]:
-   log("groq_model_auto_fallback",unavailable_model=candidate,next_model=GFM,status=r.status_code)
+  if r.status_code in (400,404) and candidate!=candidates[-1] and is_model_specific_error(r.text):
+   log("groq_model_auto_fallback",unavailable_model=candidate,next_model=candidates[candidates.index(candidate)+1],status=r.status_code)
    continue
   if r.status_code>=400:
    last_error=RuntimeError(p+" "+str(r.status_code)+": "+r.text[:220])
