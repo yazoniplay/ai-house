@@ -28,10 +28,12 @@ ENGINE = WORKER_DIR / "autonomous_engine.py"
 HERE = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from worker.channel_connectors import connection_status, gumroad_products, gumroad_create_product, youtube_channel, youtube_upload_video, ConnectorError
-from worker.computer_use import ComputerUseError, execute as computer_execute, status as computer_status
-from worker.approvals import list_requests as list_owner_approvals, answer as answer_owner_approval
-from worker.desktop_agent import DesktopAgentError, create_task as create_desktop_task, run_task as run_desktop_task, resume_task as resume_desktop_task, list_tasks as list_desktop_tasks
+if str(WORKER_DIR) not in sys.path:
+    sys.path.insert(0, str(WORKER_DIR))
+from channel_connectors import connection_status, gumroad_products, gumroad_create_product, youtube_channel, youtube_upload_video, ConnectorError
+from computer_use import ComputerUseError, execute as computer_execute, status as computer_status
+from approvals import list_requests as list_owner_approvals, answer as answer_owner_approval
+from desktop_agent import DesktopAgentError, create_task as create_desktop_task, run_task as run_desktop_task, resume_task as resume_desktop_task, list_tasks as list_desktop_tasks
 
 app = Flask(__name__)
 lock = threading.RLock()
