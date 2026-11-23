@@ -656,9 +656,12 @@ def create_roadmap(s,mode="initial",failed=None):
  business_text=" ".join(str(business.get(k,"")) for k in ("name","customer","problem","solution","revenue_model","validation","mvp")).lower()
  software_product=bool(s.get("coding_project_id")) or any(term in business_text for term in ("software","web app","mobile app","saas","application","browser extension","productivity app","online tool","platform","dashboard app"))
  if software_product:
-  usage_task=next((t for t in tasks if isinstance(t,dict) and (int(t.get("verification_target_users",0) or 0)>=10 or any(term in " ".join(str(t.get(k,"")) for k in ("title","objective","success_metric")).lower() for term in ("10 users","ten users","adoption verification","verify product usage","usage verification")))),None)
+  def declared_usage_target(task):
+   try:return int(task.get("verification_target_users",0) or 0)
+   except (TypeError,ValueError):return 0
+  usage_task=next((t for t in tasks if isinstance(t,dict) and (declared_usage_target(t)>=10 or any(term in " ".join(str(t.get(k,"")) for k in ("title","objective","success_metric")).lower() for term in ("10 users","ten users","adoption verification","verify product usage","usage verification")))),None)
   if usage_task:
-   usage_task["verification_target_users"]=max(10,int(usage_task.get("verification_target_users",10) or 10))
+   usage_task["verification_target_users"]=max(10,declared_usage_target(usage_task))
    usage_task.setdefault("usage_events_path","reports/product-usage-events.jsonl")
   else:
    dependencies=[str(t.get("id")) for t in tasks if isinstance(t,dict) and (t.get("agent_role") in ("builder","architect","product_manager","qa_engineer","qa_tester","security_engineer") or any(term in str(t.get("title","")).lower() for term in ("instrument analytics","core action analytics")))]
