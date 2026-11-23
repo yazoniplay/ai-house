@@ -2,18 +2,18 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
 
-$PythonCommand = Get-Command python -ErrorAction SilentlyContinue
+$PythonCommand = Get-Command py -ErrorAction SilentlyContinue
 $PythonArgs = @()
 if ($PythonCommand) {
     $PythonExe = $PythonCommand.Source
+    $PythonArgs = @("-3")
 } else {
-    $PythonCommand = Get-Command py -ErrorAction SilentlyContinue
+    $PythonCommand = Get-Command python -ErrorAction SilentlyContinue
     if (-not $PythonCommand) {
         Write-Host "Python 3.12 or newer is required. Install it from https://www.python.org/downloads/ and enable Add Python to PATH."
         exit 1
     }
     $PythonExe = $PythonCommand.Source
-    $PythonArgs = @("-3")
 }
 
 $EnvFile = Join-Path $Root "worker\.env"
@@ -24,7 +24,10 @@ if (-not (Test-Path $EnvFile) -and (Test-Path $EnvExample)) {
 }
 
 Write-Host "Installing/updating AI House Python packages..."
-& $PythonExe @PythonArgs -m pip install -r (Join-Path $Root "worker\requirements.txt") flask
+$PipArguments = @()
+$PipArguments += $PythonArgs
+$PipArguments += @("-m", "pip", "install", "-r", (Join-Path $Root "worker\requirements.txt"), "flask")
+& $PythonExe @PipArguments
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Dependency installation failed. Check Python and your internet connection."
     exit 1
@@ -35,7 +38,7 @@ if ($LASTEXITCODE -ne 0) {
 $listeners = @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
 foreach ($ListenerPid in $listeners) {
     $ProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ListenerPid" -ErrorAction SilentlyContinue
-    if ($ProcessInfo -and $ProcessInfo.CommandLine -match "(?i)dashboard[\\/]+server\.py") {
+    if ($ProcessInfo -and $ProcessInfo.CommandLine -match "(?i)(dashboard[\\/]+)?server\.py") {
         Write-Host "Stopping the previous AI House dashboard (PID $ListenerPid)..."
         & taskkill.exe /PID $ListenerPid /T /F | Out-Null
         Start-Sleep -Seconds 2
