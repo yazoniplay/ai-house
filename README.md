@@ -1,18 +1,86 @@
-# AI House
+<div align="center">
 
-AI House is a local-first autonomous business lab. A CEO/orchestrator chooses and validates an opportunity, creates a roadmap, assigns specialist roles, reviews deliverables, and records experience in The North Face.
+<img src="docs/ai-house-banner.svg" alt="AI House — A crew, not a chatbot" width="100%">
 
-## Run the local dashboard
+<p>
+  <strong>An autonomous, multi-agent business workspace that researches opportunities, plans work, creates real deliverables, reviews its output, and learns from every cycle.</strong>
+</p>
 
-### Windows quick start
+<p>
+  <a href="https://github.com/yazoniplay/ai-house/actions/workflows/python-syntax.yml"><img src="https://github.com/yazoniplay/ai-house/actions/workflows/python-syntax.yml/badge.svg?branch=main" alt="Python checks"></a>
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/Runtime-Local--first-7C3AED" alt="Local first">
+  <img src="https://img.shields.io/badge/Status-Active%20development-22C55E" alt="Active development">
+  <a href="https://github.com/yazoniplay/ai-house/blob/main/LICENSE"><img src="https://img.shields.io/github/license/yazoniplay/ai-house" alt="License"></a>
+</p>
 
-Download the latest [main branch ZIP](https://github.com/yazoniplay/ai-house/archive/refs/heads/main.zip), extract it, and run `start-house.bat`. The launcher installs the Python dependencies and opens the dashboard at `http://127.0.0.1:8000`. It keeps startup errors visible in a console.
+<p>
+  <a href="#-what-is-ai-house">What it is</a> ·
+  <a href="#-how-it-works">How it works</a> ·
+  <a href="#-get-started">Get started</a> ·
+  <a href="#-rooms-and-capabilities">Capabilities</a> ·
+  <a href="#-providers">Providers</a> ·
+  <a href="#-safety-and-control">Safety</a>
+</p>
 
-When reinstalling, copy your existing `worker/.env` and entire `workspace/` folder into the newly extracted project before launching. Keep the old project folder until the new one starts successfully. The repository contains only `worker/.env.example`; the private `worker/.env` is ignored and is not shipped in the ZIP.
+</div>
+
+---
+
+## 🏠 What is AI House?
+
+AI House is a local-first autonomous business lab. Instead of giving you one chatbot and a pile of prompts, it coordinates a crew of specialist AI agents around real work.
+
+A leadership agent chooses a direction and builds a roadmap. Specialist agents research, design, engineer, create, analyze, and test. A separate reviewer challenges the result. Failed work can be improved and reviewed again. The North Face records lessons so future cycles can make better decisions.
+
+**The goal:** move from *"here is an idea"* to *"here is the actual work, the files, the review, and what we learned."*
+
+> AI House is still actively being built. It can create and review local deliverables, but a completed task is not automatically a validated business, paying customer, or successful public launch.
+
+## ⚡ How it works
+
+```mermaid
+flowchart TD
+    A["Business opportunity / owner direction"] --> B["CEO · strategy and roadmap"]
+    B --> C["Specialist agents"]
+    C --> D["Real files and deliverables"]
+    D --> E["Independent review"]
+    E -->|Needs work| F["Feedback · retry · improve"]
+    F --> C
+    E -->|Approved| G["Completed work"]
+    G --> H["The North Face · lessons and memory"]
+    H --> B
+    G --> I["Owner approval for external actions"]
+```
+
+### The operating loop
+
+| Stage | What happens |
+|---|---|
+| **01 · Decide** | The Leader evaluates the opportunity, constraints, and success metric. |
+| **02 · Plan** | Work is split into specialist tasks with dependencies and acceptance criteria. |
+| **03 · Execute** | Agents create actual reports, code, designs, campaign assets, and other files. |
+| **04 · Challenge** | A reviewer checks the artifact against the requirements and evidence. |
+| **05 · Improve** | Rejected work receives concrete feedback and can be retried. |
+| **06 · Learn** | The North Face stores root causes, lessons, and operational rules for future work. |
+
+## 🚀 Get started
+
+### Windows — quick start
+
+1. Download the [latest main branch ZIP](https://github.com/yazoniplay/ai-house/archive/refs/heads/main.zip).
+2. Extract it to a folder.
+3. Open the folder and run **`start-house.bat`**.
+4. Add your provider keys to `worker/.env` when prompted by setup.
+5. Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+The launcher installs the Python dependencies and starts the local dashboard. Startup errors remain visible in the console.
+
+**Updating without losing your work:** keep a copy of your existing `worker/.env` and the entire `workspace/` folder. Copy both into the newly extracted version before launching it. Keep the old folder until the new version starts successfully. The private `worker/.env` is ignored by Git and is not included in the ZIP.
 
 ### Manual start
 
-From the project root in PowerShell:
+Requirements: Python 3.12 recommended.
 
 ```powershell
 python -m pip install -r worker/requirements.txt
@@ -20,101 +88,176 @@ python -m pip install flask
 python dashboard/server.py
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000). The first dashboard launch starts autonomy automatically; you do not need to press Start. Closing the browser tab does not stop the worker while the dashboard server remains running.
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
-The dashboard has a persistent **Stop autonomy** control. Stop disables automatic restarts and remains in effect after the dashboard is restarted. **Resume autonomy** turns it back on.
+The first dashboard launch starts autonomy automatically. Closing the browser tab does not stop the worker while the dashboard server is running.
 
-## Start automatically when Windows signs in
+### Keep it running
 
-To start the dashboard in the background each time you sign in to Windows, run this once from the project root:
+The local dashboard can be registered to start when you sign in to Windows:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File dashboard\install_startup.ps1
 ```
 
-This registers the current project folder in Windows Task Scheduler and starts the dashboard. Then visit http://127.0.0.1:8000. The dashboard server supervises the worker and restarts it after an unexpected exit, unless you have pressed Stop.
+The dashboard server supervises the worker and can restart it after an unexpected exit. **Stop autonomy** disables automatic restarts; **Resume autonomy** turns them back on.
 
-**Local-runtime limit:** the AI House process runs on this PC. It cannot work while the PC is shut down or asleep. Sign in to Windows and keep the machine awake for continuous local operation.
+> **Local-runtime note:** AI House runs on the PC hosting it. It cannot continue working while that machine is shut down or asleep. Keep the PC awake for continuous operation.
 
-## Work and deliverables
+## 🧠 Rooms and capabilities
 
-Agent-created reports, business decisions, builder files, and learning summaries are saved under `workspace/`. The dashboard lists these files and lets you open or download them. They are local files; cloud storage uploads and automatic publishing are not configured by this local-first runtime.
+AI House is organized around specialist departments and production rooms.
 
-The engine uses a CEO/orchestrator and specialist roles such as researcher, strategist, architect, builder, growth, and finance. The current local engine executes one roadmap task at a time and records task-level progress; the roster in the dashboard reflects roles assigned to the current roadmap, not concurrent agents.
+| Room / system | What it is for |
+|---|---|
+| **Leadership** | Opportunity selection, strategy, roadmaps, dependencies, task review, and owner approvals. |
+| **Research** | Market evidence, customer problems, competitor analysis, and source-backed reports. |
+| **Studio** | Marketing campaigns, content production, YouTube planning, and creative deliverables. |
+| **Coding Room** | Focused software projects, with one flagship app prioritized over scattered prototypes. |
+| **Computer Room** | Guarded local desktop actions on the machine running AI House. |
+| **Finance & Operations** | Unit economics, budgets, provider capacity, handoffs, and operational planning. |
+| **The North Face** | Persistent task lessons, root causes, decisions, and business postmortems. |
+| **Discord integration** | Notifications and supported owner interactions from Discord. |
 
-## Providers and secrets
+### Real deliverables, not just chat
 
-Put provider keys in `worker/.env` (copy `worker/.env.example` if needed). Never commit keys or share your `.env` file.
+Agents are expected to return physical files. The local runner writes approved output paths into the workspace, and the dashboard's Outbox lets you preview and download finished work.
 
-Provider order is Gemini first, Groq immediately second, NVIDIA third, and Hugging Face last. The main Groq model is `openai/gpt-oss-120b`; Groq fast reasoning and summaries use `openai/gpt-oss-20b`. If the 120B model returns unavailable/overloaded, the worker tries the 20B model before leaving Groq. Old Llama 3.3 70B / Llama 3.1 8B model IDs in an existing `.env` are automatically mapped to the current GPT-OSS model IDs. Gemini, NVIDIA, Groq, Hugging Face, and Tavily settings are configured locally.
+Typical outputs include:
 
-Provider errors are handled separately: Gemini quota and temporary 5xx errors receive cooldowns; NVIDIA calls have a shorter timeout; Hugging Face billing/credit errors are paused for 24 hours instead of being retried each cycle. When Gemini is unavailable, the worker runs a fresh Tavily search before using a backup model. If all providers are unavailable, the current task is saved and waits without consuming its agent retry allowance; the local loop retries automatically after cooldowns.
+- Research dossiers, source tables, and business reports
+- Product briefs, architecture plans, and implementation files
+- Test plans, regression tests, and QA reports
+- Marketing campaigns, copy, and outreach drafts
+- Video scripts, rendered assets, thumbnails, and asset credits
 
-Roadmap specialists must return physical deliverable files in the `files` array. The worker writes them under `workspace/`, enforces the exact path from the task deliverable, and sends the saved file content to the CEO for review. Interrupted attempts are retried once and then marked failed instead of looping indefinitely.
+The local engine currently executes roadmap tasks sequentially. The agent roster represents specialist roles assigned to the work; it does not mean every role is running concurrently.
 
-## The North Face: self-improvement
+## 🔌 Model and search providers
 
-The local engine records task-level root causes, lessons, improvement rules, repeated mistakes, and business postmortems. Later tasks receive this experience as context. This is persistent experience memory, not automatic model-weight fine-tuning.
+AI House uses a provider-agnostic routing layer. Configure whichever services you have access to; unavailable providers are skipped or cooled down according to the failure type.
 
-## Repository layout
+Supported model providers include:
 
-- `worker/` — local autonomy engine, provider integrations, and North Face memory.
-- `dashboard/` — localhost dashboard and Windows startup installer.
-- `workspace/` — generated business work and local state.
-- `supabase/` — later cloud/control-plane integration; not required for local testing.
+- **Gemini**
+- **Groq**
+- **NVIDIA NIM**
+- **Cloudflare Workers AI**
+- **OpenRouter**
+- **Hugging Face**
+- **Token Harbor**
+- **SambaNova**
+- **Vercel AI Gateway**
+- **Z.ai**
+- **SiliconFlow**
+- **OrcaRouter**
+- **BazaarLink**
+- **AgentRouter**
+- **Routeway**
+- **Ollama**
 
+Search integrations include **Tavily**, **Exa**, and a DuckDuckGo fallback.
 
-## Gumroad and YouTube connections
+Provider availability, model catalogs, account limits, billing, and model IDs can change. A configured key does not guarantee that a provider has free credits or that every model is currently available. AI House uses cooldowns and fallbacks, but provider outages can still delay work.
 
-AI House includes local API adapters for Gumroad product listing/creation and YouTube channel lookup/video upload. Copy the new variables from `worker/.env.example` into your private `worker/.env` and fill them locally:
+### Configure secrets
 
-- `GUMROAD_ACCESS_TOKEN`: Gumroad API access token.
-- `YOUTUBE_ACCESS_TOKEN`: Google OAuth access token with YouTube Data API permissions. Access tokens expire; refresh them and replace the local value when needed.
-- `YOUTUBE_CHANNEL_ID`: optional channel ID for your own reference; the adapter verifies the channel attached to the OAuth token.
+Copy `worker/.env.example` to `worker/.env`, then add the keys you want to use. Keep the private file on your machine.
 
-Restart the dashboard and open `/api/integrations/status` to verify the connection without revealing credentials. Gumroad products are listed at `/api/integrations/gumroad/products`. YouTube uploads use resumable upload and default to **private**; publishing must be a separate Leader-approved action. Credentials are never stored in the dashboard/browser or committed to GitHub. This first adapter does not perform OAuth sign-in or token refresh automatically; that requires completing the Google/Gumroad authorization flow and storing the resulting secrets locally.
+Common variables:
 
+| Variable | Used for |
+|---|---|
+| `GEMINI_API_KEY` | Gemini models |
+| `GROQ_API_KEY` | Groq models |
+| `NVIDIA_API_KEY` | NVIDIA NIM |
+| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Workers AI |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `AGENTROUTER_API_KEY` | AgentRouter |
+| `ROUTEWAY_API_KEY` | Routeway |
+| `TAVILY_API_KEY` / `EXA_API_KEY` | Web research |
+| `PEXELS_API_KEY` | Stock footage retrieval for video production |
 
-## Local desktop Computer Room
+See [`worker/.env.example`](worker/.env.example) for the complete list and optional model overrides.
 
-AI House can control the desktop session on the PC where its local dashboard is running. The first implementation uses PyAutoGUI for screenshots, mouse, keyboard, scrolling, and launching explicitly configured applications. Install dependencies with `pip install -r worker/requirements.txt`, then restart the dashboard. Endpoints are local-only on `127.0.0.1:8000`:
+**Never commit API keys, OAuth tokens, cookies, or your private `.env` file.** Do not paste secrets into issues, Discord, screenshots, or logs.
 
-- `GET /api/computer/status`
-- `POST /api/computer/action` with `{"action":{"kind":"screenshot"}}
-- `GET /api/computer/approvals`
-- `POST /api/computer/approvals/<id>` with `{"choice":"yes"}` or `no`
+## 🛡️ Safety and control
 
-Supported action kinds: screenshot, click, move, type, hotkey, scroll, launch_app. App launch is restricted to aliases configured in `workspace/.ai-house/computer_apps.json`, e.g. `{"apps":{"vscode":"C:/Users/you/AppData/Local/Programs/Microsoft VS Code/Code.exe"}}`. No shell command or arbitrary launch arguments are exposed. PyAutoGUI's corner fail-safe remains enabled.
+AI House is designed to keep the owner in control of consequential actions.
 
-Actions whose declared intent/target indicates sending, publishing, uploading, purchasing, deleting, installing, changing permissions, or another nonstandard shortcut create an owner approval request. The approval is tied to the exact action payload; changing the action invalidates that approval. The Leader can continue routine work, but the local owner must answer risky computer actions. Treat this as an initial guarded computer-use bridge: desktop vision grounding, application-specific UI automation, stronger isolation, and a polished live computer view are still future work. Do not run it against a personal session containing private data; prefer a dedicated Windows user or VM with only business accounts and files.
+- Public publishing, outreach, purchases, and other configured risky actions require approval.
+- YouTube uploads default to **private**; publishing is a separate approved action.
+- Sales and customer outreach agents create drafts; they do not silently send messages.
+- Computer Room actions use a guarded local bridge. App launching is restricted to configured aliases; arbitrary shell execution is not exposed through that bridge.
+- Computer actions are tied to their approval payload. Changing the action invalidates the approval.
+- Provider keys stay in local environment files and are not stored in the dashboard/browser.
+- Research and business reports must distinguish evidence from assumptions. Planned interviews, unverified demand, and completed product usage must never be presented as facts.
 
+Use a dedicated Windows account or VM for desktop automation, with only the business files and accounts the agents need. Do not expose a personal desktop session containing sensitive information.
 
+## 📁 Project layout
 
-## Original YouTube production pipeline
+```text
+ai-house/
+├── dashboard/       Local web dashboard, API, and Windows startup helper
+├── worker/          Autonomy engine, specialist prompts, providers, and integrations
+├── docs/            Project visuals and documentation
+├── supabase/        Optional cloud/control-plane work
+├── workspace/       Local business files, state, reports, and generated deliverables
+├── start-house.bat  Windows launcher
+└── README.md
+```
 
-A roadmap task explicitly titled **YouTube video production** (or create/produce/edit video) now requires current source evidence from the existing Tavily/Exa research path and a structured `video_recipe`. The local engine uses the recipe to generate narration with Edge TTS, retrieve scene-matched Pexels footage, edit a 1080p video with FFmpeg, burn captions, and create a thumbnail and asset-credit manifest. The resulting MP4 and supporting files are saved under that business's `youtube/<video-slug>/` folder and included in the task's physical deliverables. The Leader reviews the result; this does not automatically publish it.
+The `workspace/` directory contains local state and generated business work. It is not a substitute for a remote backup. Back it up separately.
+
+## 🎬 YouTube production
+
+For supported video-production tasks, AI House can create a structured video recipe, generate narration with Edge TTS, retrieve scene-matched Pexels footage, edit a 1080p video with FFmpeg, burn captions, and create a thumbnail and asset-credit manifest.
 
 Local setup:
 
-1. Add `PEXELS_API_KEY` to private `worker/.env`.
-2. Install Python packages: `pip install -r worker/requirements.txt`.
-3. Install FFmpeg and FFprobe on Windows and add both to PATH.
-4. Keep `TAVILY_API_KEY` and/or `EXA_API_KEY` configured for current source-backed research.
+1. Add `PEXELS_API_KEY` to `worker/.env`.
+2. Install dependencies from `worker/requirements.txt`.
+3. Install FFmpeg and FFprobe and add both to PATH.
+4. Configure Tavily and/or Exa for current source-backed research.
 
-This first renderer creates original narrated stock-footage videos and captions. It is a production foundation, not a guarantee of viral performance: the Leader must still reject weak scripts, generic visuals, inaccurate claims, poor pacing, or low-quality thumbnails before publishing.
+The renderer is a production foundation, not a guarantee of accuracy, audience retention, or viral performance. The Leader should review the script, footage, captions, claims, and thumbnail before anything is published.
 
-## One flagship app at a time
+## 🧪 Development and checks
 
-The autonomous Leader roadmap now instructs software businesses to focus on one flagship app and finish its core workflow, usability, tests, security, and deployment-quality checks before starting another app. Gumroad product tasks are also instructed to validate a specific buyer problem and competitor alternatives, deliver a complete useful product with previews/instructions, and build a researched channel-specific acquisition plan rather than generating generic AI filler.
+The repository includes a GitHub Actions workflow that compiles the Python code and runs the worker regression suite on pushes and pull requests to `main`.
 
+Run the checks locally:
 
+```powershell
+python -m py_compile worker/*.py dashboard/server.py
+python -m unittest discover -s worker -p "test_*.py" -v
+```
 
-### Computer Room setup notes
+When changing autonomy behavior, add regression tests for the failure mode—not just the happy path. In particular, test provider fallbacks, malformed model output, approval gates, dependency recovery, file safety, and claims about external actions.
 
-Open `http://127.0.0.1:8000/computer-room` while the local dashboard is running. The vision operator is currently Gemini-based and reads `GEMINI_API_KEY` from the local environment or `worker/.env`. To allow app launching, copy `worker/computer_apps.example.json` to `workspace/.ai-house/computer_apps.json` and replace the example paths with the exact executable paths on your PC. Only those aliases can be launched; the desktop agent does not receive a general shell tool. Desktop tasks are queued in local JSON, visible in the Computer Room, and pause/resume through the owner approval queue. For safety, use a dedicated desktop account or VM with only business files and channel accounts.
+## 🧭 Current boundaries
 
+AI House is an actively evolving project. The local engine is not a hosted 24/7 service, and a completed internal task does not prove product-market fit or revenue. External integrations depend on valid credentials, account permissions, provider availability, and owner approval. Some workflows—especially real customer interviews, public distribution, OAuth refresh, and production deployment—still require explicit setup or human participation.
 
+## 🤝 Contributing
 
-## Coding Room — one flagship app
+Issues and pull requests are welcome. Useful contributions include focused bug reports with reproducible steps, tests for autonomy failures, provider compatibility fixes, and improvements to specialist workflows.
 
-Open `http://127.0.0.1:8000/coding-room` to submit a focused software-app brief. The queue permits one active app and at most two queued apps. When an engine room becomes available, the Leader claims the next project and creates a research-backed roadmap; specialist builders create the app artifacts, reviewers check them, and the project is marked complete after the roadmap finishes. A project brief includes the target user, problem, core workflow, and optional success metric. This prevents the system from scattering effort across dozens of shallow app ideas.
+Before submitting a change:
+
+1. Explain the user/business problem it solves.
+2. Keep the change scoped and preserve existing working behavior.
+3. Add regression tests for the behavior changed.
+4. Never include secrets, private workspace data, or customer information.
+
+---
+
+<div align="center">
+
+**AI HOUSE** · Research deeply. Build deliberately. Review honestly. Learn continuously.
+
+<sub>Built to turn a collection of AI models into a coordinated crew that ships real work.</sub>
+
+</div>
