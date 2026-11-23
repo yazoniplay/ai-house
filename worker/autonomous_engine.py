@@ -18,6 +18,11 @@ MAX_ROOMS=int(os.getenv("AI_HOUSE_MAX_ROOMS","3"))
 ROOMS_FILE=SD/"rooms.json"
 ROOMS_DIR=SD/"rooms"
 ROOM_ID="room-001"
+ACTIVE_HOURS=os.getenv("AI_HOUSE_ACTIVE_HOURS","09:00-23:00")
+SUMMARY_TIME=os.getenv("AI_HOUSE_SUMMARY_TIME","22:00")
+MAX_NEW_BUSINESSES_PER_DAY=int(os.getenv("AI_HOUSE_MAX_NEW_BUSINESSES_PER_DAY","2"))
+CONTROL_FILE=SD/"control.json"
+DAILY_DIR=SD/"daily"
 DISCOVERY_QUERIES=["small business customer pain points underserved niche 2026","recent workflow problems freelancers and small businesses","current demand for simple digital products small business","newly emerging consumer needs online services"]
 def envfile(p):
  if p.exists():
@@ -106,6 +111,31 @@ def new_room(registry):
  path=ROOMS_DIR/rid/"state.json";path.parent.mkdir(parents=True,exist_ok=True)
  room={"id":rid,"name":f"Room {n}","state_file":str(path),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}
  registry["rooms"].append(room);return room
+def _hm(text):
+ h,m=str(text).strip().split(":");return int(h)*60+int(m)
+def in_window(window,now=None):
+ now=now or datetime.now()
+ start,end=str(window).split("-",1)
+ minute=now.hour*60+now.minute
+ a,b=_hm(start),_hm(end)
+ return a<=minute<b if a<b else (minute>=a or minute<b)
+def active_now():
+ return in_window(ACTIVE_HOURS)
+def house_running():
+ try:return bool(json.loads(CONTROL_FILE.read_text(encoding="utf-8")).get("running",True))
+ except Exception:return True
+def set_house_running(running):
+ SD.mkdir(parents=True,exist_ok=True);CONTROL_FILE.write_text(json.dumps({"running":bool(running),"updated_at":datetime.now(timezone.utc).isoformat()}),encoding="utf-8")
+def businesses_started_today():
+ today=datetime.now().date().isoformat();count=0
+ try:
+  for line in LF.read_text(encoding="utf-8",errors="replace").splitlines():
+   try:
+    item=json.loads(line)
+    if item.get("event")=="opportunity_chosen" and str(item.get("at",""))[:10]==datetime.now(timezone.utc).date().isoformat():count+=1
+   except Exception:continue
+ except Exception:pass
+ return count
 def set_activity(stage,message,role=None,task=None):
  # Persist current execution stage so the dashboard can show work during long model calls.
  try:
@@ -731,6 +761,10 @@ def cycle(s):
    except Exception:pass
   set_activity("market_research","The house is starting a fresh business cycle.")
   log("market_research_started")
+  if businesses_started_today()>=MAX_NEW_BUSINESSES_PER_DAY:
+   s["discovery_retry_after"]=next_utc_midnight().isoformat();save(s)
+   set_activity("discovery_wait","Daily business limit reached; new businesses start tomorrow.","researcher")
+   log("daily_business_limit_reached",limit=MAX_NEW_BUSINESSES_PER_DAY);return
   business=opportunity()
   if business is None:
    retry_at=next_utc_midnight() if not search_available() else datetime.now(timezone.utc)+timedelta(minutes=30)
@@ -752,11 +786,37 @@ def cycle(s):
   log("artifact_created",path=str(Path(s["business_dir"])/"BUSINESS_DECISION.json"),bytes=(BDIR/"BUSINESS_DECISION.json").stat().st_size)
   log("opportunity_chosen",name=s["business"].get("name"),score=s["business"].get("score"),validation=s["business"].get("validation"))
  build(s)
+def write_daily_summary(registry):
+ today=datetime.now().date().isoformat()
+ if registry.get("last_summary_date")==today:return
+ DAILY_DIR.mkdir(parents=True,exist_ok=True)
+ lines=["# AI House daily summary "+today,""]
+ for room in registry.get("rooms",[]):
+  try:data=json.loads(Path(room["state_file"]).read_text(encoding="utf-8"))
+  except Exception:data={}
+  roadmap=(data.get("roadmap") or {}).get("tasks",[])
+  counts={}
+  for t in roadmap:counts[t.get("status","unknown")]=counts.get(t.get("status","unknown"),0)+1
+  business=(data.get("business") or {}).get("name","(no business yet)")
+  lines.append("## "+room.get("id","room")+": "+str(business))
+  lines.append("- Room status: "+str(room.get("status","active")))
+  lines.append("- Task statuses: "+(", ".join(f"{k} {v}" for k,v in sorted(counts.items())) or "none yet"))
+  lines.append("")
+ try:search=json.loads(SBF.read_text(encoding="utf-8"))
+ except Exception:search={}
+ try:spend=json.loads((SD/"spend-ledger.json").read_text(encoding="utf-8"))
+ except Exception:spend={}
+ lines.append("## Budgets")
+ lines.append("- Tavily searches today: "+str(search.get("count",0) if search.get("date")==today else 0))
+ lines.append("- Model spend today (USD): "+str(spend.get("day_usd",0) if spend.get("date")==today else 0))
+ lines.append("- New businesses started today: "+str(businesses_started_today()))
+ (DAILY_DIR/(today+".md")).write_text("\n".join(lines)+"\n",encoding="utf-8")
+ registry["last_summary_date"]=today;save_rooms(registry);log("daily_summary_written",date=today)
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
  if not any((G,H,M,N,TK,OK,OR,SK)):print("Add GEMINI_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY and/or HF_TOKEN to worker/.env");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
- log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS)
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS,active_hours=ACTIVE_HOURS,summary_time=SUMMARY_TIME,max_new_businesses_per_day=MAX_NEW_BUSINESSES_PER_DAY)
  print("Workspace:",WORK)
  registry=load_rooms()
  if not isinstance(registry.get("rooms"),list) or not registry["rooms"]:registry["rooms"]=[{"id":"room-001","name":"Room 1","state_file":str(SF),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}]
@@ -773,12 +833,25 @@ def main():
   if recovered:save(s);log("interrupted_tasks_recovered",tasks=recovered)
  save_rooms(registry);activate_room(first)
  while True:
+  if not house_running():
+   set_activity("stopped","The house is stopped from the dashboard.")
+   if a.once:return 0
+   time.sleep(int(os.getenv("AI_HOUSE_POLL_SECONDS","10")));continue
+  if not active_now():
+   set_activity("scheduled_pause","Outside active hours ("+ACTIVE_HOURS+"); work is saved and will resume automatically.")
+   if a.once:return 0
+   time.sleep(int(os.getenv("AI_HOUSE_POLL_SECONDS","10")));continue
   try:
    published=run_publisher(WORK,HTTP);log("publish_pass",published=published)
   except Exception as publish_error:log("publish_pass",published=0,error=str(publish_error)[:500])
   registry=load_rooms()
+  try:
+   if _hm(datetime.now().strftime("%H:%M"))>=_hm(SUMMARY_TIME):write_daily_summary(registry)
+  except Exception as summary_error:log("daily_summary_error",error=str(summary_error)[:400])
   if not any(item.get("status","active")=="active" for item in registry["rooms"]):
-   created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],reason="no_active_rooms")
+   if active_now():
+    created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],reason="no_active_rooms")
+   else:log("room_creation_deferred",reason="no_active_rooms_outside_active_hours")
   active=[room for room in registry["rooms"] if room.get("status","active")=="active"]
   if active:
    index=int(registry.get("cursor",0))%len(active);room=active[index];registry["cursor"]=int(registry.get("cursor",0))+1;save_rooms(registry)
@@ -794,9 +867,11 @@ def main():
     if s.get("business_completed"):
      room["status"]="done"
     save_rooms(registry)
-    active_now=[item for item in registry["rooms"] if item.get("status","active")=="active"]
-    if len(active_now)<MAX_ROOMS:
-     created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],active_rooms=len(active_now)+1)
+    active_rooms_now=[item for item in registry["rooms"] if item.get("status","active")=="active"]
+    if len(active_rooms_now)<MAX_ROOMS:
+     if active_now():
+      created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],active_rooms=len(active_rooms_now)+1)
+     else:log("room_creation_deferred",reason="active_room_capacity_outside_active_hours")
     else:
      save_rooms(registry)
    except KeyboardInterrupt:print("Stopped; saved.");return 0

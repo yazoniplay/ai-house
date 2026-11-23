@@ -100,6 +100,17 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 @media(max-width:900px){.live-now-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.live-now-grid{grid-template-columns:1fr}.live-block.wide{grid-column:auto}}
 
+.schedule-status{color:var(--muted);font-size:11px;max-width:210px;text-align:right}
+.station-room{border:1px solid var(--line);padding:12px;margin-top:10px;background:var(--panel2);color:var(--text)}
+.station-room-name{font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.station-status{font-size:10px;color:var(--muted);margin:3px 0 10px}
+.station-desks{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}
+.pixel-desk{min-height:72px;border:2px solid var(--line);background:var(--bg);padding:8px;display:flex;flex-direction:column;justify-content:space-between;font-size:10px;text-transform:capitalize;box-shadow:inset 0 -5px var(--panel2)}
+.pixel-desk:before{content:"";height:8px;width:100%;border:1px solid var(--line);background:var(--panel2);display:block}
+.pixel-desk.lit{border-color:var(--station-lit);background:var(--station-lit-bg);box-shadow:inset 0 -5px var(--station-lit)}
+.station-panel{--station-lit:var(--green);--station-lit-bg:#18382e}
+.summary-pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:none;min-height:70px}
+@media(max-width:520px){.schedule-status{width:100%;max-width:none;text-align:left;order:5}.station-desks{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -108,8 +119,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
   <div class="header-spacer"></div>
   <select id="roomSelect" class="room-select" aria-label="Choose room"><option>Loading rooms…</option></select>
   <div class="pill"><i id="headerDot" class="dot"></i><span id="headerStatus">Connecting</span></div>
+  <span id="scheduleStatus" class="schedule-status">Schedule loading…</span>
+  <button id="houseToggle" class="stop">Stop house</button>
   <button id="resume" class="resume hidden">Resume autonomy</button>
-  <button id="stop" class="stop">Stop autonomy</button>
+  <button id="stop" class="stop hidden">Stop autonomy</button>
 </header>
 <main>
 
@@ -125,6 +138,14 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
     </div>
   </section>
 
+  <section class="panel station-panel">
+    <div class="panel-head"><h2>The station</h2><span class="subtle">Pixel rooms · live roles</span></div>
+    <div id="stationRooms"><div class="empty">Loading room stations…</div></div>
+  </section>
+  <section class="panel" id="dailySummaryPanel">
+    <div class="panel-head"><h2>Today's summary</h2><span class="subtle" id="summaryDate">Waiting for daily report</span></div>
+    <pre id="dailySummary" class="summary-pre">No daily summary has been written yet.</pre>
+  </section>
   <section class="hero">
     <div>
       <div class="eyebrow">The house is at work</div>
@@ -195,11 +216,69 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d16;border:1px so
 const $=id=>document.getElementById(id);
 let roomList=[];
 let selectedRoom=localStorage.getItem("ai-house-room")||"";
-async function api(path,method="GET"){
-  const response=await fetch(path,{method,headers:{"Content-Type":"application/json"}});
+async function api(path,method="GET",body=null){
+  const response=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(data.error||("HTTP "+response.status));
   return data;
+}
+let controlState=null;
+async function refreshControl(){
+  try{
+    controlState=await api("/api/control");
+    $("houseToggle").textContent=controlState.running?"Stop house":"Start house";
+    $("houseToggle").className=controlState.running?"stop":"resume";
+    $("houseToggle").setAttribute("aria-pressed",String(!controlState.running));
+    $("scheduleStatus").textContent=controlState.active_hours+(controlState.active_now?"":" · paused for schedule");
+    $("headerStatus").textContent=!controlState.running?"HOUSE STOPPED":(!controlState.active_now?"PAUSED FOR SCHEDULE":"HOUSE RUNNING");
+    $("headerDot").className="dot"+(controlState.running&&controlState.active_now?" on":"");
+  }catch(error){$("scheduleStatus").textContent="Schedule unavailable";}
+}
+async function toggleHouse(){
+  if(!controlState)return;
+  const running=!controlState.running;$("houseToggle").disabled=true;
+  try{await api("/api/control","POST",JSON.stringify({running}));await refreshControl();await render();}
+  catch(error){alert(error.message);}
+  finally{$("houseToggle").disabled=false;}
+}
+async function refreshSummary(){
+  try{const data=await api("/api/summary");$("dailySummary").textContent=data&&typeof data.text==="string"?data.text:"No daily summary has been written yet."; $("summaryDate").textContent=data&&data.date?data.date:"No report yet";}
+  catch(error){$("dailySummary").textContent="Summary unavailable: "+error.message;}
+}
+function stationStatus(activity,control){
+  const stage=String(activity?.stage||"").toLowerCase();
+  if(!control?.running||stage==="stopped")return "stopped";
+  if(!control.active_now||stage==="scheduled_pause")return "paused for schedule";
+  if(stage==="discovery_wait"||!activity?.role)return "waiting";
+  return "working";
+}
+async function refreshStation(){
+  const container=$("stationRooms");container.replaceChildren();
+  if(!roomList.length){addEmpty(container,"No rooms are registered yet.");return;}
+  for(const room of roomList){
+    const card=document.createElement("div");card.className="station-room";
+    const name=document.createElement("div");name.className="station-room-name";name.textContent=String(room.name||room.id||"Room");card.append(name);
+    let live={};try{live=await api("/api/live?room="+encodeURIComponent(room.id));}catch(error){live={};}
+    const activity=live.activity||{},tasks=Array.isArray(live.roadmap?.tasks)?live.roadmap.tasks:[];
+    const status=document.createElement("div");status.className="station-status";status.textContent=stationStatus(activity,controlState);card.append(status);
+    const desks=document.createElement("div");desks.className="station-desks";
+    const roles=[...new Set(tasks.map(task=>String(task.agent_role||"agent")))];
+    if(!roles.length)addEmpty(desks,"No roles on this roadmap yet.");
+    roles.forEach(role=>{
+      const desk=document.createElement("div");desk.className="pixel-desk";
+      const roleName=document.createElement("span");roleName.textContent=role.replace(/_/g," ");
+      const stage=String(activity.stage||"");
+      const active=activity.role===role&&!["stopped","scheduled_pause","discovery_wait"].includes(stage);
+      if(active)desk.classList.add("lit");
+      let taskTitle=String(activity.task||"");
+      const task=tasks.find(item=>String(item.id||"")===taskTitle);
+      if(task)taskTitle=String(task.title||task.id||"");
+      if(!taskTitle&&active)taskTitle=String(tasks.find(item=>item.agent_role===role&&item.status==="running")?.title||"");
+      desk.setAttribute("title",taskTitle);
+      const tag=document.createElement("small");tag.textContent=active?"WORKING":"idle";desk.append(roleName,tag);desks.append(desk);
+    });
+    card.append(desks);container.append(card);
+  }
 }
 async function refreshRooms(){
   try{
@@ -397,13 +476,8 @@ function render(){
     const completed=tasks.filter(t=>t.status==="completed").length;
     const total=tasks.length,active=tasks.find(t=>t.status==="running");
     const running=!!s.running,enabled=!!s.autonomy_enabled;
-    $("headerStatus").textContent=running?"AUTONOMY ONLINE":(!s.configured?"NEEDS API KEY":(enabled?"WORKER STARTING":"STOPPED BY YOU"));
-    $("headerDot").className="dot"+(running?" on":"");
     $("liveDot").className="dot"+(running?" on":"");
-    $("resume").classList.toggle("hidden",running);
-    $("resume").textContent=enabled?"Start worker":"Resume autonomy";
-    $("stop").classList.toggle("hidden",!running);
-    $("stop").disabled=!running;
+    $("resume").classList.add("hidden");$("stop").classList.add("hidden");
     $("heroTitle").textContent=running?"Your AI team is working.":(!s.configured?"Add a provider key to start.":"Autonomy is paused.");
     $("heroText").textContent=running?"Research, planning, execution, CEO reviews and learning are running locally. This page is only the control room; closing the tab does not stop the worker.":(!s.configured?"Add at least one model key to worker/.env (Gemini, Groq, NVIDIA or Hugging Face). The dashboard will start autonomy automatically once it is configured.":(enabled?"The worker is starting or recovering. Your saved work is safe.":"You stopped the house. Your saved work is still in the workspace. Resume when you want the agents to continue."));
     const activity=s.activity||{};
@@ -476,6 +550,7 @@ async function refreshLog(){
   try{$("log").textContent=(await api("/api/local/log")).text||"No engine log yet.";}
   catch(error){$("log").textContent=error.message;}
 }
+$("houseToggle").addEventListener("click",toggleHouse);
 $("stop").addEventListener("click",async()=>{
   if(!confirm("Stop AI House? It will stay stopped until you press Resume autonomy."))return;
   $("stop").disabled=true;
@@ -483,17 +558,21 @@ $("stop").addEventListener("click",async()=>{
   catch(error){alert(error.message);$("stop").disabled=false;}
 });
 $("roomSelect").addEventListener("change",()=>{
-  selectedRoom=$("roomSelect").value;localStorage.setItem("ai-house-room",selectedRoom);render();refreshLive();
+  selectedRoom=$("roomSelect").value;localStorage.setItem("ai-house-room",selectedRoom);render();refreshLive();refreshStation();
 });
 $("resume").addEventListener("click",async()=>{
   $("resume").disabled=true;
   try{await api("/api/local/start","POST");await render();}
   catch(error){alert(error.message);$("resume").disabled=false;}
 });
-refreshRooms().then(()=>{render();refreshLive();});
+refreshRooms().then(()=>{render();refreshLive();refreshStation();});
+refreshControl();refreshSummary();
 setInterval(render,2500);
 setInterval(refreshLive,3000);
 setInterval(refreshRooms,10000);
+setInterval(refreshControl,4000);
+setInterval(refreshSummary,15000);
+setInterval(refreshStation,5000);
 setInterval(()=>{if(document.querySelector("details.dev").open)refreshLog();},4000);
 document.querySelector("details.dev").addEventListener("toggle",e=>{if(e.target.open)refreshLog();});
 </script>

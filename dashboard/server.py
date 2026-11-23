@@ -18,6 +18,8 @@ EVENT_FILE = STATE_DIR / "events.jsonl"
 ROOMS_FILE = STATE_DIR / "rooms.json"
 NORTH_FACE_FILE = STATE_DIR / "north_face.json"
 CONTROL_FILE = STATE_DIR / "autonomy_control.json"
+HOUSE_CONTROL_FILE = STATE_DIR / "control.json"
+DAILY_DIR = STATE_DIR / "daily"
 PID_FILE = STATE_DIR / "engine.pid"
 ENGINE_LOG = STATE_DIR / "engine.log"
 ENGINE = WORKER_DIR / "autonomous_engine.py"
@@ -72,6 +74,49 @@ def configured():
             if key.strip() in names and value.strip().strip("\"'"):
                 return True
     return False
+
+
+def house_settings():
+    defaults = {"active_hours": "09:00-23:00", "summary_time": "22:00", "max_new_businesses_per_day": "2"}
+    env_names = {"active_hours": "AI_HOUSE_ACTIVE_HOURS", "summary_time": "AI_HOUSE_SUMMARY_TIME", "max_new_businesses_per_day": "AI_HOUSE_MAX_NEW_BUSINESSES_PER_DAY"}
+    values = {}
+    for key, default in defaults.items():
+        env_name = env_names[key]
+        value = os.getenv(env_name)
+        if value is None:
+            for path in (WORKER_DIR / ".env", ROOT / ".env"):
+                try:
+                    for line in path.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            name, raw = line.split("=", 1)
+                            if name.strip() == env_name:
+                                value = raw.strip().strip('"').strip("'")
+                                break
+                except Exception:
+                    continue
+                if value is not None:
+                    break
+        values[key] = value if value is not None else default
+    return values
+
+
+def house_control_running():
+    return bool(read_json(HOUSE_CONTROL_FILE, {"running": True}).get("running", True))
+
+
+def local_active_now(window):
+    try:
+        start, end = window.split("-", 1)
+        def minute(value):
+            hour, mins = value.strip().split(":")
+            return int(hour) * 60 + int(mins)
+        local = time.localtime()
+        current = local.tm_hour * 60 + local.tm_min
+        a, b = minute(start), minute(end)
+        return a <= current < b if a < b else (current >= a or current < b)
+    except Exception:
+        return False
 
 
 def read_events(limit=100):
@@ -280,6 +325,43 @@ def room_state_path(room):
     if not path.is_absolute():
         path = ROOT / path
     return path
+
+
+@app.get("/api/control")
+def house_control_get():
+    settings = house_settings()
+    return jsonify(running=house_control_running(), active_hours=settings["active_hours"], summary_time=settings["summary_time"], max_new_businesses_per_day=int(settings["max_new_businesses_per_day"]), active_now=local_active_now(settings["active_hours"]))
+
+
+@app.post("/api/control")
+def house_control_post():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get("running"), bool):
+        return jsonify(error="JSON body must contain running: true or false."), 400
+    write_json(HOUSE_CONTROL_FILE, {"running": body["running"], "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    return jsonify(running=body["running"])
+
+
+@app.get("/api/summary")
+def daily_summary_api():
+    try:
+        root = DAILY_DIR.resolve()
+        candidates = []
+        if root.is_dir():
+            for path in root.glob("*.md"):
+                resolved = path.resolve()
+                try:
+                    resolved.relative_to(root)
+                except ValueError:
+                    continue
+                if resolved.is_file():
+                    candidates.append(resolved)
+        if not candidates:
+            return jsonify(None)
+        newest = max(candidates, key=lambda path: path.stat().st_mtime)
+        return jsonify(date=newest.stem, text=newest.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return jsonify(None)
 
 
 @app.get("/api/rooms")
