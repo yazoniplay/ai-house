@@ -15,6 +15,7 @@ WORKER_PATH = Path(__file__).resolve().parent
 if str(WORKER_PATH) not in sys.path:
     sys.path.insert(0, str(WORKER_PATH))
 from computer_use import execute, ComputerUseError
+from discord_bot import enqueue_alert
 
 API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -217,6 +218,9 @@ def _continue(workspace, data, path):
             data["summary"] = "Paused for owner approval: " + str(outcome.get("reason", ""))[:700]
             data["updated_at"] = time.time()
             _save(path, data)
+            approval_id=str(outcome.get("approval_id",""))
+            reason=str(outcome.get("reason",""))[:700]
+            enqueue_alert(workspace,"desktop_approval:"+approval_id,"AI House needs your PC approval\\n"+reason+"\\n!approve "+approval_id+"\\n!deny "+approval_id)
             return data
         data["history"].append({"step": data["step"] + 1, "action": action, "result": outcome.get("status")})
         data["step"] += 1
