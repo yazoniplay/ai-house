@@ -682,7 +682,18 @@ def create_roadmap(s,mode="initial",failed=None):
  if adjusted:log("search_choices_adjusted",count=adjusted)
  for t in tasks:
   t.update({"status":"pending","attempts":0,"last_error":"","output":None})
- s["roadmap"]={"strategy":plan.get("strategy",""),"success_metric":plan.get("success_metric",""),"tasks":tasks,"created_at":datetime.now(timezone.utc).isoformat()}
+ decision_review=plan.get("decision_review") if isinstance(plan.get("decision_review"),dict) else {}
+ decision_review.setdefault("rationale",str(plan.get("strategy",""))[:1200])
+ decision_review.setdefault("alternatives",[])
+ decision_review.setdefault("evidence",s.get("business",{}).get("sources",[]) if isinstance(s.get("business"),dict) else [])
+ decision_review.setdefault("risks",[])
+ decision_review.setdefault("expected_outcome",str(plan.get("success_metric",""))[:700])
+ decision_review.setdefault("confidence","low")
+ decision_review.setdefault("review_criteria","Compare expected outcome with actual task evidence and business success metric; keep, modify, or rollback.")
+ s["roadmap"]={"strategy":plan.get("strategy",""),"success_metric":plan.get("success_metric",""),"decision_review":decision_review,"tasks":tasks,"created_at":datetime.now(timezone.utc).isoformat()}
+ try:
+  north_face_record_decision(SD/"north_face.json",{"id":"roadmap-"+str(s.get("cycle",0))+"-"+str(s.get("roadmap_replans",0)+int(mode!="initial")),"title":"Roadmap decision: "+str(s.get("business",{}).get("name","business"))+" ("+str(mode)+")","decision":"Use this execution strategy and dependency plan for the current business cycle.","goal":str(plan.get("success_metric",""))[:700],"rationale":str(decision_review.get("rationale",""))[:1200],"alternatives":decision_review.get("alternatives",[]),"expected_outcome":str(decision_review.get("expected_outcome",plan.get("success_metric","")))[:700],"success_metric":str(plan.get("success_metric",""))[:500],"evidence":decision_review.get("evidence",[]),"risks":decision_review.get("risks",[]),"confidence":decision_review.get("confidence","low")},{"decision":"keep","reason":str(decision_review.get("review_criteria",""))[:900],"observed_outcome":"Not yet observed; roadmap has just been created.","lesson":"","evidence_quality":"planning_evidence_not_outcome"})
+ except Exception as roadmap_review_error:log("north_face_roadmap_decision_error",error=type(roadmap_review_error).__name__)
  s["roadmap_replans"]=int(s.get("roadmap_replans",0)) if mode=="initial" else int(s.get("roadmap_replans",0))+1
  save(s);log("roadmap_created",mode=mode,tasks=len(tasks),metric=s["roadmap"]["success_metric"])
 def task_ready(t,tasks):
