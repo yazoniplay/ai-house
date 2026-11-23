@@ -120,6 +120,32 @@ def is_openrouter_credit_model_error(provider,error):
     message=str(error).lower()
     return provider=="openrouter" and ("402" in message or "insufficient credits" in message or "can only afford" in message) and any(token in message for token in ("credit","afford","payment","balance"))
 
+def is_provider_wide_error(provider,error):
+    """Identify failures that cannot be fixed by switching model IDs."""
+    message=str(error).lower()
+    if any(token in message for token in (
+        "402", "payment required", "insufficient credits", "pre-paid credits",
+        "billing limit", "credits exhausted", "account balance",
+    )):
+        return True
+    if any(token in message for token in (
+        "401", "403", "unauthorized", "invalid api key",
+        "authentication failed", "permission denied",
+    )):
+        return True
+    if any(token in message for token in (
+        "account quota", "account-level quota", "daily quota",
+        "monthly quota", "daily limit", "monthly limit",
+        "provider-wide quota", "shared quota exhausted",
+    )):
+        return True
+    if provider=="openrouter" and "429" in message and any(token in message for token in (
+        "free-models-per-day", "free models per day", "free model daily",
+        "free-model daily", "daily free-model quota", "free model quota",
+    )):
+        return True
+    return False
+
 def should_try_next_model(error):
     """Model errors, transient failures and per-model rate limits should try another model.
 
@@ -130,4 +156,6 @@ def should_try_next_model(error):
         "401", "403", "402", "unauthorized", "invalid api key",
         "authentication failed", "permission denied", "insufficient credits",
         "pre-paid credits", "payment required", "billing limit",
+        "free-models-per-day", "free models per day", "daily quota",
+        "account quota", "monthly quota", "daily limit", "shared quota exhausted",
     ))
