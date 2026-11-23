@@ -109,8 +109,6 @@ def _risk_reason(action):
         return "High-impact desktop action: " + ", ".join(sorted(tokens & HIGH_RISK_WORDS))
     if kind == "hotkey" and action.get("keys") not in SAFE_HOTKEYS:
         return "Unlisted keyboard shortcut requires owner review."
-    if kind == "launch_app":
-        return "Opening an application requires explicit allowlist configuration."
     return None
 
 
@@ -150,7 +148,7 @@ def execute(workspace, action, approval_id=None):
     elif kind == "type":
         pg.write(clean["text"], interval=0.015)
     elif kind == "hotkey":
-        if clean["keys"] not in SAFE_HOTKEYS:
+        if clean["keys"] not in SAFE_HOTKEYS and not approval_id:
             raise ComputerUseError("hotkey was not approved by the local policy")
         pg.hotkey(*clean["keys"])
     elif kind == "scroll":
