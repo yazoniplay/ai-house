@@ -197,13 +197,13 @@ async def _bot_session(workspace,command_handler,chat_handler,token):
     req_id=str(request["id"]);req_kind=str(request.get("kind",""))
     if request.get("alert_kind")=="brief":
      alert_kind="brief:"+req_id
-     content="Owner choice needed\\n"+str(request.get("question",""))+"\\n"+str(request.get("context",""))+"\\n!brief "+req_id
+     content="Owner choice needed\n"+str(request.get("question",""))+"\n"+str(request.get("context",""))+"\n!brief "+req_id
     elif req_kind=="leader_question":
      alert_kind="leader_question:"+req_id
-     content="Leader needs your decision\\n"+str(request.get("question",""))+"\\n"+str(request.get("summary",""))
+     content="Leader needs your decision\n"+str(request.get("question",""))+"\n"+str(request.get("summary",""))
     else:
      alert_kind=("desktop_approval:" if req_kind.startswith("desktop_action_") else "approval_needed:")+req_id
-     content="AI House needs your approval\\n"+str(request.get("question",""))+"\\n"+str(request.get("summary",""))+"\\n!approve "+req_id+"\\n!deny "+req_id
+     content="AI House needs your approval\n"+str(request.get("question",""))+"\n"+str(request.get("summary",""))+"\n!approve "+req_id+"\n!deny "+req_id
      view=ChoiceView(req_id,["yes","no"],owner_id,"!answer");client.add_view(view)
     if target is not None and _needs_alert_delivery(workspace,alert_kind,request.get("created_at","")):
      await target.send(redact(content)[:1700],view=view)
