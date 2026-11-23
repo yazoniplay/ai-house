@@ -1013,15 +1013,15 @@ def learn_from_business(s):
   decision_file=BDIR/"BUSINESS_DECISION.txt"
   if decision_file.exists():
    with decision_file.open("a",encoding="utf-8") as decision_stream:
-    decision_stream.write("\\n\\nNORTH FACE — OUTCOME REVIEW\\n"+"="*72+"\\n")
-    decision_stream.write("Final review: "+str(outcome.get("decision","continue_testing"))+"\\n")
-    decision_stream.write("Observed metric: "+str(outcome.get("metric","not measured"))+"\\n")
-    decision_stream.write("Evidence: "+str(outcome.get("evidence",""))+"\\n")
-    decision_stream.write("Failure reasons: "+str(outcome.get("failure_reasons",""))+"\\n")
-    decision_stream.write("What worked: "+str(postmortem["what_worked"])+"\\n")
-    decision_stream.write("What failed: "+str(postmortem["what_failed"])+"\\n")
-    decision_stream.write("Lessons: "+str(postmortem["lessons"])+"\\n")
-    decision_stream.write("Next changes: "+str(postmortem["next_changes"])+"\\n")
+    decision_stream.write("\\n\\nNORTH FACE — OUTCOME REVIEW\n"+"="*72+"\n")
+    decision_stream.write("Final review: "+str(outcome.get("decision","continue_testing"))+"\n")
+    decision_stream.write("Observed metric: "+str(outcome.get("metric","not measured"))+"\n")
+    decision_stream.write("Evidence: "+str(outcome.get("evidence",""))+"\n")
+    decision_stream.write("Failure reasons: "+str(outcome.get("failure_reasons",""))+"\n")
+    decision_stream.write("What worked: "+str(postmortem["what_worked"])+"\n")
+    decision_stream.write("What failed: "+str(postmortem["what_failed"])+"\n")
+    decision_stream.write("Lessons: "+str(postmortem["lessons"])+"\n")
+    decision_stream.write("Next changes: "+str(postmortem["next_changes"])+"\n")
  except Exception as memo_error:log("business_decision_memo_review_error",error=type(memo_error).__name__)
  s["last_business_postmortem"]={"decision":outcome.get("decision"),"metric":outcome.get("metric"),"evidence":outcome.get("evidence",[]),"failure_reasons":outcome.get("failure_reasons",[])}
  s["lessons"]=(s.get("lessons",[])+postmortem["lessons"]+postmortem["next_changes"])[-30:]
