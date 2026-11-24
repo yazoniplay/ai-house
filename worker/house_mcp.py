@@ -87,8 +87,20 @@ def house_status(workspace=None):
         engine_running = True
     except (OSError, ValueError, TypeError):
         pass
+    registry = _read_json(root / "rooms.json", {})
+    raw_rooms = registry.get("rooms") if isinstance(registry, dict) else []
+    room_summaries = []
+    for room in raw_rooms if isinstance(raw_rooms, list) else []:
+        if not isinstance(room, dict):
+            continue
+        _, room_state, _ = _state(workspace, room.get("id"))
+        room_business = room_state.get("business") if isinstance(room_state.get("business"), dict) else {}
+        room_roadmap = room_state.get("roadmap") if isinstance(room_state.get("roadmap"), dict) else {}
+        room_tasks = room_roadmap.get("tasks") if isinstance(room_roadmap.get("tasks"), list) else []
+        room_summaries.append(_clean({"id": room.get("id"), "name": room.get("name"), "status": room.get("status"), "business": room_business.get("name"), "cycle": room_state.get("cycle", 0), "task_count": len(room_tasks), "task_status_counts": _status_counts(room_tasks), "activity": room_state.get("activity")}))
     return _clean({
         "house": "AI House",
+        "rooms": room_summaries,
         "engine_running": engine_running,
         "autonomy_enabled": bool(autonomy.get("enabled", True)),
         "house_enabled": bool(control.get("running", True)),
@@ -112,8 +124,8 @@ def _status_counts(items):
     return counts
 
 
-def list_work(workspace=None, limit=30):
-    _, state = _state(workspace)
+def list_work(workspace=None, limit=30, room_id=None):
+    _, state, selected_room = _state(workspace, room_id)
     roadmap = state.get("roadmap") if isinstance(state.get("roadmap"), dict) else {}
     tasks = roadmap.get("tasks") if isinstance(roadmap.get("tasks"), list) else []
     safe = []
@@ -127,7 +139,7 @@ def list_work(workspace=None, limit=30):
 
 
 def recent_activity(workspace=None, limit=25):
-    root, _ = _state(workspace)
+    root, _, _ = _state(workspace)
     path = root / "events.jsonl"
     rows = []
     try:
@@ -151,7 +163,7 @@ def recent_activity(workspace=None, limit=25):
 
 
 def pending_owner_questions(workspace=None):
-    root, _ = _state(workspace)
+    root, _, _ = _state(workspace)
     items = []
     approval_dir = root / "approvals"
     try:
