@@ -87,6 +87,8 @@ def is_unavailable_model_error(error):
 
 def cooldown_seconds(error, quota=900, billing=86400, config=3600, timeout=60, server=90):
     message=str(error).lower()
+    if "daily free allocation" in message or "neurons" in message:
+        return 21600
     if any(token in message for token in ("1113", "insufficient balance", "no resource package", "please recharge", "requires a valid credit card", "credit card on file")):
         return int(billing)
     if any(token in message for token in ("50609", "system is too busy", "system too busy", "high demand")):
@@ -144,7 +146,7 @@ def is_provider_wide_error(provider,error):
     )):
         return True
     if any(token in message for token in (
-        "account quota", "account-level quota", "daily quota",
+        "daily free allocation", "neurons", "account quota", "account-level quota", "daily quota",
         "monthly quota", "daily limit", "monthly limit",
         "provider-wide quota", "shared quota exhausted",
     )):
