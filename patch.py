@@ -1,35 +1,37 @@
+import re
 from pathlib import Path
 
 target = Path("worker/autonomous_engine.py")
 code = target.read_text(encoding="utf-8")
 
-ark_line = 'ARK= os. getenv("AGENTROUTER_API_KEY",""); ARM= os. getenv("AGENTROUTER_MODEL","deepseek-v4-flash"); ARB= os. getenv("AGENTROUTER_BASE_URL","https://agentrouter.org"). rstrip("/")'
-headers_block = ark_line + '''
-AGENTROUTER_HEADERS = {
-    "User-Agent": "claude-cli/2.0.30 (external, cli)",
-    "x-app": "cli",
-    "anthropic-version": "2023-06-01",
-    "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14",
-    "x-stainless-lang": "js",
-    "x-stainless-package-version": "0.39.0",
-    "x-stainless-os": "Windows",
-    "x-stainless-arch": "x64",
-    "x-stainless-runtime": "node",
-    "x-stainless-runtime-version": "v22.12.0",
-}'''
+# Add automatic /v1/responses fallback for AgentRouter models that require it
+old_block = '''        if r. status_code>= 400:
+            last_error= RuntimeError( p+" "+ str( r. status_code)+": "+ r. text[: 220])
+            break'''
 
-assert ark_line in code, "Could not find ARK line"
-code = code.replace(ark_line, headers_block, 1)
+new_block = '''        if r. status_code == 400 and p == "agentrouter" and "/v1/responses" in r. text:
+            resp_url = ARB + "/responses"
+            resp_payload = {"model": candidate, "instructions": sys, "input": ask, "max_output_tokens": 8192}
+            r2 = HTTP. post(resp_url, headers={"Authorization": "Bearer " + key, "Content-Type": "application/json", **AGENTROUTER_HEADERS}, json=resp_payload, timeout=timeout_seconds)
+            if r2. status_code < 400:
+                d2 = r2. json()
+                out = d2. get("output_text") or "". join(c. get("text", "") for item in d2. get("output", []) for c in item. get("content", []) if isinstance(c, dict))
+                if out and str(out). strip():
+                    record_usage(p, d2. get("usage"))
+                    log("model_call_ok", provider=p, model=candidate, role=role, endpoint="responses")
+                    return out
+            last_error = RuntimeError(p + " responses " + str(r2. status_code) + ": " + r2. text[: 220])
+            break
+        if r. status_code>= 400:
+            last_error= RuntimeError( p+" "+ str( r. status_code)+": "+ r. text[: 220])
+            break'''
 
-old_models_req = '**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if provider=="routeway" else {})}, timeout= 12)'
-new_models_req = '**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if provider=="routeway" else {}), **(AGENTROUTER_HEADERS if provider=="agentrouter" else {})}, timeout= 12)'
-assert old_models_req in code, "Could not find /models request line"
-code = code.replace(old_models_req, new_models_req, 1)
-
-old_chat_req = '**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if p=="routeway" else {})}, json= payload, timeout= timeout_seconds)'
-new_chat_req = '**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if p=="routeway" else {}), **(AGENTROUTER_HEADERS if p=="agentrouter" else {})}, json= payload, timeout= timeout_seconds)'
-assert old_chat_req in code, "Could not find /chat/completions request line"
-code = code.replace(old_chat_req, new_chat_req, 1)
+# Normalize spacing check
+pattern = re.compile(
+    r'if r\.\s*status_code\s*>=\s*400:\s*\n\s*last_error\s*=\s*RuntimeError\(\s*p\s*\+\s*" "\s*\+\s*str\(\s*r\.\s*status_code\s*\)\s*\+\s*": "\s*\+\s*r\.\s*text\[:\s*220\]\s*\)\s*\n\s*break'
+)
+code, count = pattern.subn(new_block, code, count=1)
+assert count == 1, "Could not locate HTTP error block in _raw_once"
 
 target.write_text(code, encoding="utf-8")
-print("SUCCESS! AgentRouter patched.")
+print("SUCCESS! Added /v1/responses support for AgentRouter.")
