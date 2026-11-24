@@ -20,6 +20,8 @@ class ApprovalPolicyTests(unittest.TestCase):
         for question in (
             "Should I publish this video now?",
             "Should I send this email to the customer?",
+            "Should I message my friend about the demo?",
+            "Should I send a DM to the user?",
             "May I purchase this subscription?",
             "Should I delete the live account?",
             "Can I deploy to production?",
