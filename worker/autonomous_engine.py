@@ -532,7 +532,7 @@ def raw(p,sys,ask,role):
    max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
  except Exception:max_attempts={"gemini":3,"nvidia":4,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}.get(p,3)
- if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway") and len(candidates)>max_attempts:
+ if p in ("gemini","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
   # reach every eligible model instead of always truncating to the same prefix.
