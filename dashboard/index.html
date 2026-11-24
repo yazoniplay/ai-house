@@ -322,6 +322,38 @@ body:not(.full-dashboard) .hero{min-height:0;padding:18px 20px}
 body:not(.full-dashboard) .hero h1{font-size:clamp(25px,3.4vw,36px)}
 body:not(.full-dashboard) .panel{padding:14px}
 
+
+/* Real minimal mode: focus on mission + activity; reveal controls on demand. */
+body:not(.full-dashboard) .ask-leader-panel{display:none!important}
+body:not(.full-dashboard).ask-open .ask-leader-panel{display:block!important}
+body:not(.full-dashboard) .live-now-panel,
+body:not(.full-dashboard) .hero,
+body:not(.full-dashboard) .departments-panel,
+body:not(.full-dashboard) .provider-panel,
+body:not(.full-dashboard) .usage-panel,
+body:not(.full-dashboard) .station-panel,
+body:not(.full-dashboard) #dailySummaryPanel,
+body:not(.full-dashboard) #outboxPanel,
+body:not(.full-dashboard) #ledgerPanel,
+body:not(.full-dashboard) details.dev{display:none!important}
+body:not(.full-dashboard) .content{grid-template-columns:minmax(0,1fr);gap:10px}
+body:not(.full-dashboard) .content>.stack:last-child{display:none!important}
+body:not(.full-dashboard) .content>.stack:first-child>.panel:nth-child(3){display:none!important}
+body:not(.full-dashboard) .content>.stack:first-child{gap:10px}
+body:not(.full-dashboard) .content>.stack:first-child>.panel{padding:13px 15px}
+body:not(.full-dashboard) .content .activity{max-height:220px}
+body:not(.full-dashboard) .stats{margin:0;gap:8px}
+body:not(.full-dashboard) .stat{padding:10px 12px}
+body:not(.full-dashboard) .stat strong{font-size:20px}
+body:not(.full-dashboard) header a[href="/studio"],
+body:not(.full-dashboard) header a[href="/coding-room"],
+body:not(.full-dashboard) header a[href="/computer-room"]{display:none!important}
+body:not(.full-dashboard) header{gap:8px;padding:9px 14px}
+body:not(.full-dashboard) main{gap:10px;padding:12px 14px 24px}
+body:not(.full-dashboard) #askLeaderToggle{display:inline-flex}
+body.full-dashboard #askLeaderToggle{display:none}
+body:not(.full-dashboard) .schedule-status{font-size:10px;max-width:155px}
+@media(max-width:650px){body:not(.full-dashboard) .stats{grid-template-columns:repeat(2,minmax(0,1fr))}body:not(.full-dashboard) header .brand small{display:none}body:not(.full-dashboard) .schedule-status{display:none}}
 </style>
 </head>
 <body>
@@ -329,7 +361,7 @@ body:not(.full-dashboard) .panel{padding:14px}
   <div class="brand">AI <b>HOUSE</b><small>LOCAL AUTONOMY CONTROL ROOM</small></div>
   <div class="header-spacer"></div>
   <select id="roomSelect" class="room-select" aria-label="Choose room"><option>Loading rooms…</option></select>
-  <a href="/studio" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Studio</a><a href="/mcp" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:11px;font-weight:700">MCP</a><button id="dashboardMode" type="button" title="Show or hide advanced panels">Full dashboard</button>
+  <a href="/studio" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Studio</a><a href="/mcp" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:11px;font-weight:700">MCP</a><button id="askLeaderToggle" type="button" title="Open Ask the Leader">Ask Leader</button><button id="dashboardMode" type="button" title="Show or hide advanced panels">Full dashboard</button>
   <a href="/coding-room" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Coding Room</a>
   <a href="/computer-room" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Computer Room</a>
   <div class="pill"><i id="headerDot" class="dot"></i><span id="headerStatus">Connecting</span></div>
@@ -508,6 +540,8 @@ body:not(.full-dashboard) .panel{padding:14px}
 (()=>{const b=document.getElementById("dashboardMode");if(!b)return;const set=full=>{document.body.classList.toggle("full-dashboard",full);b.textContent=full?"Minimal dashboard":"Full dashboard";try{localStorage.setItem("ai-house-dashboard-full",full?"1":"0")}catch(e){}};let full=false;try{full=localStorage.getItem("ai-house-dashboard-full")==="1"}catch(e){}set(full);b.addEventListener("click",()=>set(!document.body.classList.contains("full-dashboard")));})();
 
 const $=id=>document.getElementById(id);
+(()=>{const t=document.getElementById("askLeaderToggle"),p=document.querySelector(".ask-leader-panel"),i=document.getElementById("leaderQuestion");if(!t||!p)return;t.addEventListener("click",()=>{const open=document.body.classList.toggle("ask-open");if(open){p.style.display="block";p.scrollIntoView({behavior:"smooth",block:"start"});if(i)i.focus()}else p.style.display=""})})();
+
 
 // Ask the leader: built-in browser speech only, no external services.
 const leaderForm=$("askLeaderForm");
