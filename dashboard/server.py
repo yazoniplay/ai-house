@@ -351,7 +351,7 @@ def collect_artifacts(selected_business_dir=None):
 def index():
     return send_from_directory(HERE, "index.html")
 
-@app.get("/mcp")
+@app.route("/mcp", methods=["GET"], provide_automatic_options=False)
 def mcp_page():
     return send_from_directory(HERE, "mcp.html")
 
