@@ -207,7 +207,8 @@ def in_window(window,now=None):
  a,b=_hm(start),_hm(end)
  return a<=minute<b if a<b else (minute>=a or minute<b)
 def active_now():
- return in_window(ACTIVE_HOURS)
+ # AI House autonomy is continuous; active hours no longer pause work.
+ return True
 def house_running():
  try:return bool(json.loads(CONTROL_FILE.read_text(encoding="utf-8")).get("running",True))
  except Exception:return True
