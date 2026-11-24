@@ -523,6 +523,9 @@ def model_candidates(provider,role):
    # Requesty has a free tier; keep this provider pinned to audited zero-priced models only.
    requesty_free={"nvidia/muse-glimmer-30b","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-nano-30b-a3b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-3-ultra-550b-a55b"}
    candidates=[x for x in filter_model_pool(candidates,catalog) if x in requesty_free]
+  elif provider=="fastrouter":
+   # FastRouter free slugs are explicitly marked :free; never route its paid models.
+   candidates=[x for x in filter_model_pool(candidates,catalog) if x.endswith(":free")]
   elif provider in ("nvidia","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter"):
    # OrcaRouter exposes its adaptive alias as a first-class route even if its catalog omits it.
    allow_aliases={"orcarouter/auto"} if provider=="orcarouter" else ({"auto:free"} if provider=="bazaarlink" else set())
@@ -546,7 +549,7 @@ def raw(p,sys,ask,role):
    # retries against one provider during a single agent request.
    max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
- except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":5,"routeway":2,"requesty":2}.get(p,3)
+ except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":5,"routeway":2,"requesty":2,"fastrouter":2}.get(p,3)
  if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","requesty","fastrouter") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
