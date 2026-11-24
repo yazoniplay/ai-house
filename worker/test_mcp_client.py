@@ -8,19 +8,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import mcp_client
 
 
-FAKE_SERVER = (
-    "import json,sys\n"
-    "for line in sys.stdin:\n"
-    " try: m=json.loads(line)\n"
-    " except Exception: continue\n"
-    " if m.get('method')=='notifications/initialized': continue\n"
-    " method=m.get('method'); rid=m.get('id')\n"
-    " if method=='initialize': result={'protocolVersion':'2024-11-05','capabilities':{'tools':{}},'serverInfo':{'name':'fake','version':'1'}}\n"
-    " elif method=='tools/list': result={'tools':[{'name':'echo','description':'Echo arguments','inputSchema':{'type':'object'}}]}\n"
-    " elif method=='tools/call': result={'content':[{'type':'text','text':json.dumps(m.get('params',{}).get('arguments',{}))}]}\n"
-    " else: result={}\n"
-    " print(json.dumps({'jsonrpc':'2.0','id':rid,'result':result}),flush=True)\n"
-)
+FAKE_SERVER = """import json,sys
+for line in sys.stdin:
+ try: m=json.loads(line)
+ except Exception: continue
+ if m.get('method')=='notifications/initialized': continue
+ method=m.get('method'); rid=m.get('id')
+ if method=='initialize': result={'protocolVersion':'2024-11-05','capabilities':{'tools':{}},'serverInfo':{'name':'fake','version':'1'}}
+ elif method=='tools/list': result={'tools':[{'name':'echo','description':'Echo arguments','inputSchema':{'type':'object'}}]}
+ elif method=='tools/call': result={'content':[{'type':'text','text':json.dumps(m.get('params',{}).get('arguments',{}))}]}
+ else: result={}
+ print(json.dumps({'jsonrpc':'2.0','id':rid,'result':result}),flush=True)
+"""
 
 
 class MCPClientTests(unittest.TestCase):
