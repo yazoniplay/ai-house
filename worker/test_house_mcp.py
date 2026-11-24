@@ -50,6 +50,12 @@ class HouseMCPTests(unittest.TestCase):
         self.assertFalse(result["isError"])
         self.assertIn("Demo business", result["content"][0]["text"])
 
+    def test_secret_values_inside_activity_text_are_redacted(self):
+        cleaned = house_mcp._clean("api_key=abc123 Authorization: Bearer token-value")
+        self.assertNotIn("abc123", cleaned)
+        self.assertNotIn("token-value", cleaned)
+        self.assertIn("[REDACTED]", cleaned)
+
     def test_unknown_tool_rejected(self):
         with self.assertRaises(KeyError):
             house_mcp.call_tool("not_a_tool", {}, self.workspace)
