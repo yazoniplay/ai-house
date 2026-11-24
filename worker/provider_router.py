@@ -95,7 +95,7 @@ def cooldown_seconds(error, quota=900, billing=86400, config=3600, timeout=60, s
         return int(billing)
     if any(token in message for token in ("401","403","unauthorized","invalid api key","authentication failed","permission denied")):
         return int(config)
-    if any(token in message for token in ("429","quota","rate limit","resource_exhausted","usage limit","daily limit","monthly limit","capacity exhausted")):
+    if any(token in message for token in ("daily free allocation", "neurons", "429","quota","rate limit","resource_exhausted","usage limit","daily limit","monthly limit","capacity exhausted")):
         return int(quota)
     if any(token in message for token in ("model_not_found","model not found","unknown model","invalid model","model does not exist","404 not found")):
         return int(config)
