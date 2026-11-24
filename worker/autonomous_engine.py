@@ -847,7 +847,16 @@ def opportunity():
     if fresh_url and fresh_url not in seen:seen.add(fresh_url);results.append(fresh_item)
   source_urls={x.get("url") for x in results};by_url={x.get("url"):x for x in results}
   try:
-   fresh_extracted=obj(ask("researcher",'Re-extract viable hypotheses from these accumulated search results. Each must include a complete customer/problem/solution, exact source URLs, and claims supported by the source text. Do not invent numeric demand. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","evidence":[{"url":"exact URL","claim":"..."}],"risks":[],"mvp":"..."}]}\\n'+json.dumps(results,ensure_ascii=False)[:24000]))
+   fresh_extracted={"candidates":[]}
+   retry_batches=[results[i:i+4] for i in range(0,len(results),4)]
+   for retry_batch_index,retry_batch in enumerate(retry_batches,1):
+    retry_prompt=('Re-extract up to 2 viable business-model hypotheses from ONLY these search results. Each needs complete customer/problem/solution, exact URLs from this batch, evidence claims supported by text, and no invented numeric demand. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","evidence":[{"url":"exact URL","claim":"..."}],"risks":[],"mvp":"..."}]}\\n'+json.dumps(retry_batch,ensure_ascii=False)[:6000])
+    try:
+     retry_extracted=obj(ask("researcher",retry_prompt))
+     fresh_extracted["candidates"].extend([x for x in retry_extracted.get("candidates",[]) if isinstance(x,dict)])
+     log("discovery_retry_batch_ok",batch=retry_batch_index,total=len(retry_batches),candidates=len(retry_extracted.get("candidates",[])))
+    except Exception as retry_batch_error:
+     log("discovery_retry_batch_failed",batch=retry_batch_index,total=len(retry_batches),error=str(retry_batch_error)[:160])
    for candidate in fresh_extracted.get("candidates",[]):
     if not isinstance(candidate,dict):continue
     raw_evidence=[e for e in candidate.get("evidence",[]) if isinstance(e,dict) and e.get("url") in source_urls]
