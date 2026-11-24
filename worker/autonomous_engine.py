@@ -535,14 +535,14 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  defaults={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2,"requesty":2}
+  defaults={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":5,"routeway":2,"requesty":2}
   env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS","orcarouter":"AI_HOUSE_ORCAROUTER_MAX_MODEL_ATTEMPTS","bazaarlink":"AI_HOUSE_BAZAARLINK_MAX_MODEL_ATTEMPTS","cloudflare":"AI_HOUSE_CLOUDFLARE_MAX_MODEL_ATTEMPTS","agentrouter":"AI_HOUSE_AGENTROUTER_MAX_MODEL_ATTEMPTS","routeway":"AI_HOUSE_ROUTEWAY_MAX_MODEL_ATTEMPTS","requesty":"AI_HOUSE_REQUESTY_MAX_MODEL_ATTEMPTS"}
   if p in defaults:
    # Environment values may lower the budget, but cannot re-enable dozens of
    # retries against one provider during a single agent request.
    max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
- except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2,"requesty":2}.get(p,3)
+ except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":5,"routeway":2,"requesty":2}.get(p,3)
  if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","requesty") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
