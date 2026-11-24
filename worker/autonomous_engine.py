@@ -479,7 +479,7 @@ def model_candidates(provider,role):
    "cloudflare":["@cf/zai-org/glm-4.7-flash","@cf/google/gemma-4-26b-a4b-it","@cf/nvidia/nemotron-3-120b-a12b"],
   "agentrouter":["deepseek-v4-flash","deepseek-v4.1-flash","deepseek-v4.1-flash-1017","qwen3.8-27b","qwen3.8-max","gemma-4-26b-a4b-it","gemma-4-31b-it","glm-4.7-flash","glm-5.3-flash","minimax-m3.1-flash","muse-glimmer-30b","nvidia/nemotron-3.5-lightning-30b-a3b","openai/gpt-oss-120b","openai/gpt-oss-20b","gpt-6.1-sol","gpt-6-astra"],
   "routeway":["minimax-m3.1-flash:free","muse-glimmer-30b:free","gemma-4-26b-a4b-it-chimerax:free","gemma-4-26b-a4b-it-darksoul:free","gemma-4-26b-a4b-it-luminous:free","gemma-4-26b-a4b-it-meromero:free","gemma-4-26b-a4b-it-moonlight:free","gemma-4-26b-a4b-it-musica:free"],
-  "requesty":["nvidia/muse-glimmer-30b","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-nano-30b-a3b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5"],
+  "requesty":["nvidia/muse-glimmer-30b","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-3-ultra-550b-a55b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5"],
   "fastrouter":["google/gemma4-26b:free","nvidia/nemotron-3-nano-30b:free","nvidia/nemotron-3-super:free","openai/gpt-oss-120b:free","openai/gpt-oss-20b:free","sarvam/sarvam-105b:free"]
  }
  if provider=="gemini":
@@ -521,7 +521,7 @@ def model_candidates(provider,role):
    candidates=[x for x in filter_model_pool(candidates,catalog) if x.endswith(":free")]
   elif provider=="requesty":
    # Requesty has a free tier; keep this provider pinned to audited zero-priced models only.
-   requesty_free={"nvidia/muse-glimmer-30b","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-nano-30b-a3b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-3-ultra-550b-a55b"}
+   requesty_free={"nvidia/muse-glimmer-30b","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-3-ultra-550b-a55b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5"}
    candidates=[x for x in filter_model_pool(candidates,catalog) if x in requesty_free]
   elif provider=="fastrouter":
    # FastRouter free slugs are explicitly marked :free; never route its paid models.
