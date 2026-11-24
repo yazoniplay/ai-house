@@ -96,8 +96,8 @@ def configured():
 
 
 def house_settings():
-    defaults = {"active_hours": "24/7", "summary_time": "22:00", "max_new_businesses_per_day": "2"}
-    env_names = {"active_hours": "AI_HOUSE_ACTIVE_HOURS", "summary_time": "AI_HOUSE_SUMMARY_TIME", "max_new_businesses_per_day": "AI_HOUSE_MAX_NEW_BUSINESSES_PER_DAY"}
+    defaults = {"summary_time": "22:00", "max_new_businesses_per_day": "2"}
+    env_names = {"summary_time": "AI_HOUSE_SUMMARY_TIME", "max_new_businesses_per_day": "AI_HOUSE_MAX_NEW_BUSINESSES_PER_DAY"}
     values = {}
     for key, default in defaults.items():
         env_name = env_names[key]
