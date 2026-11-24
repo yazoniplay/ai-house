@@ -57,8 +57,9 @@ The HTTP endpoint refuses requests until the token is configured. Do not expose 
 ## Client compatibility notes
 
 - Claude Desktop and MCP-capable IDE/CLI hosts can use the local stdio configuration.
-- ChatGPT remote MCP connections require a reachable HTTPS endpoint and a client/account configuration that supports custom MCP servers and bearer authentication.
-- Gemini can use this server from a Gemini MCP-capable host (such as a compatible CLI/IDE integration). The consumer Gemini chat website may not expose a direct custom-MCP connection setting; do not assume the stdio config can be pasted into it.
+- Gemini CLI supports MCP servers and can use the local stdio configuration. The consumer Gemini chat website may not expose a direct custom-MCP connection setting; do not assume the stdio config can be pasted into it.
+- ChatGPT custom MCP app connections are plan/workspace-gated. OpenAI currently documents custom MCP app connections for supported Business and Enterprise/Edu workspaces, with Pro read/fetch access in developer mode; **ChatGPT Free may not offer custom MCP connections**. Check the current ChatGPT Plugins/Apps UI before setting this up. See [OpenAI's current custom MCP server instructions](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
+- ChatGPT's custom app authentication commonly uses OAuth. This AI House endpoint currently supports a private static bearer token, so it works with MCP hosts that let you configure a bearer header; it is **not yet a full OAuth authorization server** for every ChatGPT custom-app setup. For OpenAI API integrations, the Responses API supports remote MCP and Secure MCP Tunnel separately, with API usage billed under your API account.
 
 The HTTP endpoint is stateless and responds with JSON to MCP POST requests. The dashboard’s existing `/mcp` GET page remains the MCP integrations UI.
 
