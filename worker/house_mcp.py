@@ -68,9 +68,18 @@ def house_status(workspace=None):
     except OSError:
         pass
     business = state.get("business") if isinstance(state.get("business"), dict) else {}
+    engine_running = bool(state.get("running", False)) or bool(state.get("engine_running", False))
+    try:
+        pid = int((root / "engine.pid").read_text(encoding="utf-8").strip())
+        os.kill(pid, 0)
+        engine_running = True
+    except PermissionError:
+        engine_running = True
+    except (OSError, ValueError, TypeError):
+        pass
     return _clean({
         "house": "AI House",
-        "engine_running": bool(state.get("running", False)) or bool(state.get("engine_running", False)),
+        "engine_running": engine_running,
         "autonomy_enabled": bool(autonomy.get("enabled", True)),
         "house_enabled": bool(control.get("running", True)),
         "cycle": state.get("cycle", 0),
