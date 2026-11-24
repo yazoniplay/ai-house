@@ -76,9 +76,10 @@ RQK=os.getenv("REQUESTY_API_KEY","");RQM=os.getenv("REQUESTY_MODEL","nvidia/muse
 FRK=os.getenv("FASTROUTER_API_KEY","");FRM=os.getenv("FASTROUTER_MODEL","openai/gpt-oss-120b:free");FRB=os.getenv("FASTROUTER_BASE_URL","https://api.fastrouter.ai/api/v1").rstrip("/")
 OCZ=os.getenv("OPENCODE_ZEN_API_KEY","");OCZM=os.getenv("OPENCODE_ZEN_MODEL","nemotron-3.5-lightning-free");OCZB=os.getenv("OPENCODE_ZEN_BASE_URL","https://opencode.ai/zen/v1").rstrip("/")
 L7K=os.getenv("LLM7_API_KEY","");L7M=os.getenv("LLM7_MODEL","codestral-latest");L7B=os.getenv("LLM7_BASE_URL","https://api.llm7.io/v1").rstrip("/")
+AHK=os.getenv("AIHORDE_API_KEY","0000000000");AHM=os.getenv("AIHORDE_MODEL","koboldcpp/Qwen_Qwen3-0.6B-IQ4_XS");AHB=os.getenv("AIHORDE_BASE_URL","https://oai.aihorde.net/v1").rstrip("/")
 CFK=os.getenv("CLOUDFLARE_API_TOKEN","");CF_ACCOUNT_ID=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip();CFM=os.getenv("CLOUDFLARE_WORKERS_AI_MODEL","@cf/zai-org/glm-4.7-flash");CFB=os.getenv("CLOUDFLARE_BASE_URL",("https://api.cloudflare.com/client/v4/accounts/"+CF_ACCOUNT_ID+"/ai/v1") if CF_ACCOUNT_ID else "").rstrip("/")
 EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"; SEARCH_PROVIDER_STATE=SD/"search-provider-state.json"
-PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0,"vercel":0.0,"zai":0.0,"siliconflow":0.0,"orcarouter":0.0,"bazaarlink":0.0,"agentrouter":0.0,"routeway":0.0,"requesty":0.0,"fastrouter":0.0,"opencodezen":0.0,"llm7":0.0}
+PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0,"vercel":0.0,"zai":0.0,"siliconflow":0.0,"orcarouter":0.0,"bazaarlink":0.0,"agentrouter":0.0,"routeway":0.0,"requesty":0.0,"fastrouter":0.0,"opencodezen":0.0,"llm7":0.0,"aihorde":0.0}
 PAID_PROVIDERS=set(x.strip() for x in os.getenv("AI_HOUSE_PAID_PROVIDERS","").split(",") if x.strip())
 SPENDBF=SD/"search-budget.json"
 def estimate_cost(provider,usage):
@@ -251,10 +252,10 @@ def ollama_chat(sys,ask):
  except Exception as e:raise RuntimeError("ollama response could not be decoded: "+str(e)[:120])
 PROVIDER_ROTATION={"orchestrator":0,"worker":0}
 def provider_order(role):
- has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK),"vercel":bool(VG),"zai":bool(ZK),"siliconflow":bool(SFK),"orcarouter":bool(ORK),"bazaarlink":bool(BLK),"cloudflare":bool(CFK and CF_ACCOUNT_ID),"agentrouter":bool(ARK),"routeway":bool(RWK),"requesty":bool(RQK),"fastrouter":bool(FRK),"opencodezen":bool(OCZ),"llm7":True}
+ has={"gemini":bool(M),"nvidia":bool(N),"groq":bool(G),"hf":bool(H),"tokenharbor":bool(TK),"ollama":bool(OK and OM),"openrouter":bool(OR),"sambanova":bool(SK),"vercel":bool(VG),"zai":bool(ZK),"siliconflow":bool(SFK),"orcarouter":bool(ORK),"bazaarlink":bool(BLK),"cloudflare":bool(CFK and CF_ACCOUNT_ID),"agentrouter":bool(ARK),"routeway":bool(RWK),"requesty":bool(RQK),"fastrouter":bool(FRK),"opencodezen":bool(OCZ),"llm7":True,"aihorde":True}
  # Keep Gemini as the preferred primary, but rotate the backup order per role
  # so NVIDIA and the other configured providers are genuinely exercised on failures.
- base=["gemini","groq","nvidia","tokenharbor","hf","sambanova","openrouter","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","requesty","fastrouter","opencodezen","llm7","ollama"]
+ base=["gemini","groq","nvidia","tokenharbor","hf","sambanova","openrouter","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","requesty","fastrouter","opencodezen","llm7","aihorde","ollama"]
  available=[p for p in base if has[p]]
  primary=["gemini"] if "gemini" in available else []
  backups=[p for p in available if p not in primary]
@@ -307,7 +308,7 @@ def provider_model_catalog(provider):
    OPENROUTER_FREE_MODELS[:]=openrouter_free_model_ids(rows)
    ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
   elif provider in ("vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter","routeway","requesty","fastrouter","opencodezen","llm7"):
-   key,base={"vercel":(VG,VGB),"zai":(ZK,ZB),"siliconflow":(SFK,SFB),"orcarouter":(ORK,ORB),"bazaarlink":(BLK,BLB),"agentrouter":(ARK,ARB),"routeway":(RWK,RWB),"requesty":(RQK,RQB),"fastrouter":(FRK,FRB),"opencodezen":(OCZ,OCZB),"llm7":(L7K,L7B)}[provider]
+   key,base={"vercel":(VG,VGB),"zai":(ZK,ZB),"siliconflow":(SFK,SFB),"orcarouter":(ORK,ORB),"bazaarlink":(BLK,BLB),"agentrouter":(ARK,ARB),"routeway":(RWK,RWB),"requesty":(RQK,RQB),"fastrouter":(FRK,FRB),"opencodezen":(OCZ,OCZB),"llm7":(L7K,L7B),"aihorde":(AHK,AHB)}[provider]
    if not key and provider!="llm7":return None
    response=HTTP.get(base+"/models",headers={**({"Authorization":"Bearer "+key} if key else {}),"Content-Type":"application/json",**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if provider=="routeway" else {})},timeout=12)
    if response.status_code>=400:raise RuntimeError(provider+" model catalog HTTP "+str(response.status_code))
@@ -393,6 +394,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  elif p=="fastrouter":key,url,model=FRK,FRB+"/chat/completions",model_override or configured_model_pool("fastrouter",FRM,"AI_HOUSE_FASTROUTER_MODELS")[0]
  elif p=="opencodezen":key,url,model=OCZ,OCZB+"/chat/completions",model_override or configured_model_pool("opencodezen",OCZM,"AI_HOUSE_OPENCODE_ZEN_MODELS")[0]
  elif p=="llm7":key,url,model=L7K,L7B+"/chat/completions",model_override or configured_model_pool("llm7",L7M,"AI_HOUSE_LLM7_MODELS")[0]
+ elif p=="aihorde":key,url,model=AHK,AHB+"/chat/completions",model_override or configured_model_pool("aihorde",AHM,"AI_HOUSE_AIHORDE_MODELS")[0]
  else:
   if not M:raise RuntimeError("Gemini key missing")
   leader_model=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite")
@@ -415,7 +417,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  if p=="groq":
   # Both GPT-OSS models support JSON mode; all Groq completions in this worker expect structured JSON.
   payload["response_format"]={"type":"json_object"}
- timeout_seconds=9 if p=="nvidia" else (18 if p=="groq" else 25)
+ timeout_seconds=9 if p=="nvidia" else (18 if p in ("groq","aihorde") else 25)
  candidates=[model]
  if p=="groq" and role!="fast" and model!=GFM:
   # If a user's main model is unavailable, try the already configured fast model before leaving Groq.
@@ -464,6 +466,7 @@ def model_candidates(provider,role):
  elif provider=="fastrouter":primary=FRM;env_name="AI_HOUSE_FASTROUTER_MODELS"
  elif provider=="opencodezen":primary=OCZM;env_name="AI_HOUSE_OPENCODE_ZEN_MODELS"
  elif provider=="llm7":primary=L7M;env_name="AI_HOUSE_LLM7_MODELS"
+ elif provider=="aihorde":primary=AHM;env_name="AI_HOUSE_AIHORDE_MODELS"
  elif provider=="ollama":primary=OM;env_name="AI_HOUSE_OLLAMA_MODELS"
  else:return []
  configured=route_model_pool(primary,NVIDIA_MODELS if provider=="nvidia" else os.getenv(env_name,""))
@@ -488,7 +491,8 @@ def model_candidates(provider,role):
   "requesty":["nvidia/muse-glimmer-30b","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-3-ultra-550b-a55b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5"],
   "fastrouter":["google/gemma4-26b:free","nvidia/nemotron-3-nano-30b:free","nvidia/nemotron-3-super:free","openai/gpt-oss-120b:free","openai/gpt-oss-20b:free","sarvam/sarvam-105b:free"],
    "opencodezen":["minimax-m2.5-free","hy3-preview-free","nemotron-3-super-free","nemotron-3-ultra-free","nemotron-3.5-lightning-free","mimo-v2.5-free","ling-3.0-flash-fin-free"],
-   "llm7":["codestral-latest","deepseek-v4-flash","glm-5.3-flash","minimax-m2.7","mistral-Nemo-Instruct-2407","gpt-oss:20b"]
+   "llm7":["codestral-latest","deepseek-v4-flash","glm-5.3-flash","minimax-m2.7","mistral-Nemo-Instruct-2407","gpt-oss:20b"],
+   "aihorde":["koboldcpp/Qwen_Qwen3-0.6B-IQ4_XS","koboldcpp/Llama-3.2-3B-Instruct","koboldcpp/Qwen3.5-0.8B"]
  }
  if provider=="gemini":
   # Keep an explicitly custom model first, but migrate the old default worker model
@@ -545,6 +549,9 @@ def model_candidates(provider,role):
    # LLM7 free routes are allowlisted; ignore paid models from its live catalog.
    llm7_free=set(defaults.get(provider,[]))
    candidates=[x for x in filter_model_pool(candidates,catalog) if x in llm7_free]
+  elif provider=="aihorde":
+   # AI Horde is a volunteer-run free pool; discover current text chat models live.
+   candidates=provider_chat_model_pool(provider,catalog,candidates)
   elif provider in ("nvidia","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter"):
    # OrcaRouter exposes its adaptive alias as a first-class route even if its catalog omits it.
    allow_aliases={"orcarouter/auto"} if provider=="orcarouter" else ({"auto:free"} if provider=="bazaarlink" else set())
@@ -562,14 +569,14 @@ def raw(p,sys,ask,role):
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
   defaults={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":5,"routeway":2,"requesty":2,"fastrouter":2,"opencodezen":2,"llm7":2}
-  env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS","orcarouter":"AI_HOUSE_ORCAROUTER_MAX_MODEL_ATTEMPTS","bazaarlink":"AI_HOUSE_BAZAARLINK_MAX_MODEL_ATTEMPTS","cloudflare":"AI_HOUSE_CLOUDFLARE_MAX_MODEL_ATTEMPTS","agentrouter":"AI_HOUSE_AGENTROUTER_MAX_MODEL_ATTEMPTS","routeway":"AI_HOUSE_ROUTEWAY_MAX_MODEL_ATTEMPTS","requesty":"AI_HOUSE_REQUESTY_MAX_MODEL_ATTEMPTS","fastrouter":"AI_HOUSE_FASTROUTER_MAX_MODEL_ATTEMPTS","opencodezen":"AI_HOUSE_OPENCODE_ZEN_MAX_MODEL_ATTEMPTS","llm7":"AI_HOUSE_LLM7_MAX_MODEL_ATTEMPTS"}
+  env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS","orcarouter":"AI_HOUSE_ORCAROUTER_MAX_MODEL_ATTEMPTS","bazaarlink":"AI_HOUSE_BAZAARLINK_MAX_MODEL_ATTEMPTS","cloudflare":"AI_HOUSE_CLOUDFLARE_MAX_MODEL_ATTEMPTS","agentrouter":"AI_HOUSE_AGENTROUTER_MAX_MODEL_ATTEMPTS","routeway":"AI_HOUSE_ROUTEWAY_MAX_MODEL_ATTEMPTS","requesty":"AI_HOUSE_REQUESTY_MAX_MODEL_ATTEMPTS","fastrouter":"AI_HOUSE_FASTROUTER_MAX_MODEL_ATTEMPTS","opencodezen":"AI_HOUSE_OPENCODE_ZEN_MAX_MODEL_ATTEMPTS","llm7":"AI_HOUSE_LLM7_MAX_MODEL_ATTEMPTS","aihorde":"AI_HOUSE_AIHORDE_MAX_MODEL_ATTEMPTS"}
   if p in defaults:
    # Environment values may lower the budget, but cannot re-enable dozens of
    # retries against one provider during a single agent request.
    max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
- except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":5,"routeway":2,"requesty":2,"fastrouter":2,"opencodezen":2,"llm7":2}.get(p,3)
- if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","requesty","fastrouter","opencodezen","llm7") and len(candidates)>max_attempts:
+ except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":5,"routeway":2,"requesty":2,"fastrouter":2,"opencodezen":2,"llm7":2,"aihorde":2}.get(p,3)
+ if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","requesty","fastrouter","opencodezen","llm7","aihorde") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
   # reach every eligible model instead of always truncating to the same prefix.
