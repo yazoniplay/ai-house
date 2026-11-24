@@ -66,7 +66,7 @@ OK=os.getenv("OLLAMA_API_KEY","");OM=os.getenv("OLLAMA_MODEL","")
 OR=os.getenv("OPENROUTER_API_KEY","");ORM=os.getenv("OPENROUTER_MODEL","openrouter/free")
 SK=os.getenv("SAMBANOVA_API_KEY","");SNM=os.getenv("SAMBANOVA_MODEL","deepseek-ai/DeepSeek-V3.2")
 VG=os.getenv("AI_GATEWAY_API_KEY","");VGM=os.getenv("AI_GATEWAY_MODEL","openai/gpt-oss-120b");VGB=os.getenv("AI_GATEWAY_BASE_URL","https://ai-gateway.vercel.sh/v1").rstrip("/")
-ZK=os.getenv("ZAI_API_KEY","");ZM=os.getenv("ZAI_MODEL","glm-5.3-flash");ZB=os.getenv("ZAI_BASE_URL","https://api.z.ai/api/paas/v4").rstrip("/")
+ZK=os.getenv("ZAI_API_KEY","");ZM=os.getenv("ZAI_MODEL","glm-4.7-flash");ZB=os.getenv("ZAI_BASE_URL","https://api.z.ai/api/paas/v4").rstrip("/")
 SFK=os.getenv("SILICONFLOW_API_KEY","");SFM=os.getenv("SILICONFLOW_MODEL","Qwen/Qwen3-30B-A3B-Instruct-2507");SFB=os.getenv("SILICONFLOW_BASE_URL","https://api.siliconflow.com/v1").rstrip("/")
 ORK=os.getenv("ORCAROUTER_API_KEY","");ORMODEL=os.getenv("ORCAROUTER_MODEL","orcarouter/auto");ORB=os.getenv("ORCAROUTER_BASE_URL","https://api.orcarouter.ai/v1").rstrip("/")
 BLK=os.getenv("BAZAARLINK_API_KEY","");BLMODEL=os.getenv("BAZAARLINK_MODEL","auto:free");BLB=os.getenv("BAZAARLINK_BASE_URL","https://api.bazaarlink.ai/v1").rstrip("/")
@@ -466,7 +466,7 @@ def model_candidates(provider,role):
   # catalog-verified model IDs so the router can still fail over if the free pool is down.
   "openrouter":["openrouter/free","openrouter/auto","google/gemini-3.5-flash-lite","google/gemini-3.1-flash-lite","google/gemma-4-31b-it"],
   "vercel":["openai/gpt-oss-120b","google/gemini-3.5-flash-lite","openai/gpt-oss-20b"],
-  "zai":["glm-5.3-flash","glm-5.3","glm-5.2","glm-5.1","glm-4.7","glm-4.6"],
+  "zai":["glm-4.7-flash","glm-4.5-flash","glm-4.6v-flash"],
   "siliconflow":["Qwen/Qwen3-30B-A3B-Instruct-2507","deepseek-ai/DeepSeek-V3.2","Qwen/Qwen3-32B","Qwen/Qwen2.5-72B-Instruct"],
   "orcarouter":["orcarouter/auto","google/gemini-3-flash-preview","openai/gpt-6.1-sol","anthropic/claude-sonnet-4.6"],
   "bazaarlink":["auto:free","openai/gpt-4o-mini","google/gemini-2.5-flash"],
