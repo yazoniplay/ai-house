@@ -457,6 +457,21 @@ from skills import list_skills
 from studio import StudioError, create_project, list_projects, list_approvals, update_project, move_stage, decide_approval, leader_review_approval
 SCHEDULES_FILE = STATE_DIR / "schedules.json"
 
+@app.get("/api/owner/approvals")
+def owner_approvals_get_api():
+    return jsonify(approvals=list_owner_approvals(WORKSPACE, pending_only=True))
+
+@app.post("/api/owner/approvals/<approval_id>")
+def owner_approvals_answer_api(approval_id):
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or "choice" not in body:
+        return jsonify(error="JSON body must contain choice."), 400
+    try:
+        item = answer_owner_approval(WORKSPACE, approval_id, body["choice"])
+        return jsonify(approval=item)
+    except (ValueError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
+
 @app.get("/api/briefs")
 def briefs_api():
     return jsonify(briefs=[{key: item.get(key) for key in ("id", "room", "question", "options", "context")} for item in list_briefs(WORKSPACE, True)])
