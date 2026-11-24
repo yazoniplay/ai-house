@@ -6,7 +6,8 @@ import re
 OWNER_GATE_PATTERNS = (
     r"\bpublish(?:\s+(?:this|that|the|it|to|on|publicly))?\b",
     r"\bpost\s+(?:this|that|it|to|on)\b",
-    r"\bsend\s+(?:this|that|it|an?\s+(?:email|message|request|invite))\b",
+    r"\bsend\s+(?:this|that|it|an?\s+(?:email|message|request|invite|dm|outreach))\b",
+    r"\b(?:contact|reach out to|message|email|interview)\s+(?:my|your|the|a|an|friend|customer|user|person|people)\b",
     r"\b(?:email|message|contact|reach out to|interview)\s+(?:a person|people|customers?|users?|the customer|the user)\b",
     r"\b(?:purchase|buy|pay for|spend money|subscribe to)\b",
     r"\b(?:delete|erase|destroy|overwrite)\b",
