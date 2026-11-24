@@ -474,7 +474,7 @@ def model_candidates(provider,role):
   "siliconflow":["Qwen/Qwen3-30B-A3B-Instruct-2507","deepseek-ai/DeepSeek-V3.2","Qwen/Qwen3-32B","Qwen/Qwen2.5-72B-Instruct"],
   "orcarouter":["orcarouter/auto","google/gemini-3-flash-preview","openai/gpt-6.1-sol","anthropic/claude-sonnet-4.6"],
   "bazaarlink":["auto:free","openai/gpt-4o-mini","google/gemini-2.5-flash"],
-   "cloudflare":["@cf/meta/llama-3.3-70b-instruct-fp8-fast","@cf/meta/llama-3.1-8b-instruct"],
+   "cloudflare":["@cf/google/gemma-4-26b-a4b-it","@cf/qwen/qwen3.8-27b","@cf/meta/llama-3.3-70b-instruct-fp8-fast","@cf/meta/llama-4-scout-17b-16e-instruct","@cf/deepseek-ai/deepseek-v4.1-flash-1017"],
   "agentrouter":["deepseek-v4-flash","gpt-6.1-sol","gpt-6-astra"],
   "routeway":["deepseek-v4-flash:free","deepseek-v4-flash","qwen3.8-27b"]
  }
