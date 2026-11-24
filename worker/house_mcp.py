@@ -40,8 +40,8 @@ def _clean(value, depth=0):
     if isinstance(value, list):
         return [_clean(item, depth + 1) for item in value[-100:]]
     if isinstance(value, str):
-        text = _SECRET_VALUE.sub(lambda match: match.group(1) + "=[REDACTED]", value)
-        text = _BEARER_VALUE.sub("Bearer [REDACTED]", text)
+        text = _BEARER_VALUE.sub("Bearer [REDACTED]", value)
+        text = _SECRET_VALUE.sub(lambda match: match.group(1) + "=[REDACTED]", text)
         return text[:1200]
     if value is None or isinstance(value, (bool, int, float)):
         return value
