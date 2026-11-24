@@ -365,7 +365,6 @@ body:not(.full-dashboard) .schedule-status{font-size:10px;max-width:155px}
   <a href="/coding-room" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Coding Room</a>
   <a href="/computer-room" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Computer Room</a>
   <div class="pill"><i id="headerDot" class="dot"></i><span id="headerStatus">Connecting</span></div>
-  <span id="scheduleStatus" class="schedule-status">Schedule loading…</span>
   <button id="houseToggle" class="stop">Stop house</button>
   <button id="resume" class="resume hidden">Resume autonomy</button>
   <button id="stop" class="stop hidden">Stop autonomy</button>
@@ -664,10 +663,9 @@ async function refreshControl(){
     $("houseToggle").textContent=controlState.running?"Stop house":"Start house";
     $("houseToggle").className=controlState.running?"stop":"resume";
     $("houseToggle").setAttribute("aria-pressed",String(!controlState.running));
-    $("scheduleStatus").textContent=controlState.active_hours+(controlState.active_now?"":" · paused for schedule");
-    $("headerStatus").textContent=!controlState.running?"HOUSE STOPPED":(!controlState.active_now?"PAUSED FOR SCHEDULE":"HOUSE RUNNING");
-    $("headerDot").className="dot"+(controlState.running&&controlState.active_now?" on":"");
-  }catch(error){$("scheduleStatus").textContent="Schedule unavailable";}
+    $("headerStatus").textContent=!controlState.running?"HOUSE STOPPED":"HOUSE RUNNING";
+    $("headerDot").className="dot"+(controlState.running?" on":"");
+  }catch(error){$("headerStatus").textContent="STATUS UNAVAILABLE";}
 }
 async function toggleHouse(){
   if(!controlState)return;
@@ -738,7 +736,7 @@ async function refreshSummary(){
 function stationStatus(activity,control){
   const stage=String(activity?.stage||"").toLowerCase();
   if(!control?.running||stage==="stopped")return "stopped";
-  if(!control.active_now||stage==="scheduled_pause")return "paused for schedule";
+  if(stage==="scheduled_pause")return "working";
   if(stage==="discovery_wait"||!activity?.role)return "waiting";
   return "working";
 }
