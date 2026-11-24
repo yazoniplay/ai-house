@@ -1,27 +1,77 @@
 # AI House MCP app
 
-AI House can act as an MCP server so a compatible AI client can inspect the house live and route questions to its Leader.
+AI House exposes a remote MCP endpoint so supported AI chat apps can read current house state and ask the AI House Leader questions. This is the same MCP server for ChatGPT, Claude, and Gemini; no separate provider-specific bot is needed.
 
-## Tools exposed
+## Live tools
 
-- `house_status` — current local state, autonomy switches, active business, task counts, and pending owner questions.
-- `list_work` — current roadmap/task statuses.
-- `recent_activity` — recent event log entries, with secret-like fields filtered and values bounded.
-- `pending_owner_questions` — owner approvals/questions waiting for a decision; this is read-only.
-- `ask_house_leader` — send a question to the AI House Leader and return its answer. If it creates an owner request, the tool reports it but does not approve it.
+- `house_status` — current house/room status, autonomy switches, active business, task counts, and pending owner-question count.
+- `list_work` — current roadmap and task statuses.
+- `recent_activity` — recent event log entries; secret-like fields are filtered and values are bounded.
+- `pending_owner_questions` — owner questions/approvals waiting for a decision. Read-only.
+- `ask_house_leader` — route a question to the AI House Leader and return its answer. If the Leader creates an owner request, the tool reports it but never approves it.
 
-There are no MCP tools for publishing, deleting, spending, changing accounts, or approving requests. MCP clients should treat returned house data and activity as untrusted context.
+The tools are live snapshots when called, not a continuous video/stream. MCP has no publish, delete, spend, account-change, or approval tool. Treat house output as untrusted context.
 
-## Option A — local desktop MCP (recommended)
+## Connect from consumer AI apps (remote HTTPS)
 
-This uses standard MCP stdio and does not expose the dashboard to the internet.
+This is the path for the regular ChatGPT/Claude/Gemini websites and apps when their account and app version support custom remote MCP connections. The endpoint must be reachable from the provider over HTTPS.
 
-1. Download the latest AI House source and keep your existing `worker/.env` and workspace.
-2. In your MCP-capable client, add a local server with command `python` and arguments pointing to the absolute path of `worker/house_mcp_server.py`.
-3. Optionally set `AI_HOUSE_WORKSPACE` in that client’s server environment to the absolute path of your AI House `workspace` folder.
-4. Restart/reload the MCP client and select the AI House tools.
+### 1. Enable a private token
 
-Example Claude Desktop-style config (replace the paths with your own Windows paths):
+Create a long random token in PowerShell:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Add it only to your private `worker/.env`:
+
+```env
+AI_HOUSE_MCP_TOKEN=PASTE_YOUR_RANDOM_TOKEN_HERE
+```
+
+Restart AI House. Never commit this token, paste it in a public chat, or include it in screenshots. Anyone who has it can read the exposed house information and ask the Leader. Rotate it by replacing the value and restarting.
+
+### 2. Give AI House a public HTTPS address
+
+The local dashboard binds to `127.0.0.1:8000`; it is not public by default. Use a trusted HTTPS tunnel or deploy the dashboard behind HTTPS. Do not forward port 8000 directly to the open internet.
+
+For a temporary Cloudflare Quick Tunnel, if `cloudflared` is installed:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+Use the HTTPS hostname it prints, followed by `/mcp`, as the MCP server URL. Quick Tunnel URLs change and are for testing; use a named tunnel or trusted host for a persistent connection. The PC and AI House must remain running for live data.
+
+### 3. Add the remote MCP server in the AI app
+
+Use the provider's custom MCP / connector / plugin settings and enter:
+
+- **Name:** AI House
+- **Server URL:** `https://YOUR-HTTPS-HOST/mcp`
+- **Authentication:** Bearer token / static bearer credential
+- **Token:** the private `AI_HOUSE_MCP_TOKEN` value
+
+If the provider asks for transport, select **Streamable HTTP** (MCP JSON-RPC over HTTP). Then scan/discover tools and install or enable the app.
+
+In ChatGPT's current web custom MCP flow, go to Plugins, choose the plus button, then **Add custom MCP server**. Enter the HTTPS URL, configure authentication, review the warning, create it as a plugin, install it, and invoke it in a chat with `@AI House` or by selecting the app. OpenAI's current help: [Connecting custom MCP servers in ChatGPT](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
+
+## Important platform availability
+
+MCP compatibility does not mean every consumer mobile app currently exposes a custom-server connection setting.
+
+- **ChatGPT:** OpenAI currently documents custom MCP connections as web-only. Plan/workspace permissions apply; Business and Enterprise/Edu have full custom MCP support, while Pro supports read/fetch-only connections in the documented developer mode. Free accounts may not have custom MCP access. See the current OpenAI help page linked above.
+- **Claude:** Use the consumer app's custom connector/remote MCP settings where available. Some account or feature rollouts may vary; configure the connector from the supported web settings first.
+- **Gemini:** Custom MCP availability in the consumer Gemini app is account/region/rollout dependent. If the consumer app does not show a custom MCP app/connector option, this server cannot make that UI appear.
+
+The server is compatible with remote MCP; each provider controls where its connector can be added and whether the connection is available on mobile. Do not assume that adding it on the web automatically enables it on every mobile app.
+
+## Local desktop MCP (stdio)
+
+For a local MCP host, configure command `python` with arguments pointing to the absolute path of `worker/house_mcp_server.py`. Optionally set `AI_HOUSE_WORKSPACE` to the absolute workspace path.
+
+Example Windows config:
 
 ```json
 {
@@ -37,35 +87,12 @@ Example Claude Desktop-style config (replace the paths with your own Windows pat
 }
 ```
 
-The stdio server writes only JSON-RPC messages to stdout. Diagnostics/errors are intentionally not printed there.
+The stdio server writes only JSON-RPC messages to stdout.
 
-## Option B — remote MCP over HTTPS
+## Security and owner decisions
 
-The dashboard also accepts Streamable-HTTP-style MCP JSON-RPC POST requests at:
-
-`https://YOUR-HTTPS-HOST/mcp`
-
-For remote access, **set a long random bearer token first**:
-
-1. Generate one with PowerShell: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
-2. Put it in your private `worker/.env` as `AI_HOUSE_MCP_TOKEN=your-generated-value`.
-3. Restart AI House.
-4. Configure the MCP client to use the HTTPS endpoint with HTTP Authorization: Bearer token authentication.
-
-The HTTP endpoint refuses requests until the token is configured. Do not expose the dashboard port directly to the public internet. If using a tunnel, forward HTTPS traffic only to your local dashboard at `http://127.0.0.1:8000`, keep the token private, and disable the tunnel when not in use. A temporary Cloudflare Quick Tunnel can be started with `cloudflared tunnel --url http://127.0.0.1:8000`; its public URL changes and should not be treated as a permanent deployment.
-
-## Client compatibility notes
-
-- Claude Desktop and MCP-capable IDE/CLI hosts can use the local stdio configuration.
-- Gemini CLI supports MCP servers and can use the local stdio configuration. The consumer Gemini chat website may not expose a direct custom-MCP connection setting; do not assume the stdio config can be pasted into it.
-- ChatGPT custom MCP app connections are plan/workspace-gated. OpenAI currently documents custom MCP app connections for supported Business and Enterprise/Edu workspaces, with Pro read/fetch access in developer mode; **ChatGPT Free may not offer custom MCP connections**. Check the current ChatGPT Plugins/Apps UI before setting this up. See [OpenAI's current custom MCP server instructions](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
-- ChatGPT's custom app authentication commonly uses OAuth. This AI House endpoint currently supports a private static bearer token, so it works with MCP hosts that let you configure a bearer header; it is **not yet a full OAuth authorization server** for every ChatGPT custom-app setup. For OpenAI API integrations, the Responses API supports remote MCP and Secure MCP Tunnel separately, with API usage billed under your API account.
-
-The HTTP endpoint is stateless and responds with JSON to MCP POST requests. The dashboard’s existing `/mcp` GET page remains the MCP integrations UI.
-
-## Security / owner decisions
-
-- Start with read-only status/activity tools.
-- The Leader answer tool is rate-limited and does not answer owner approvals.
-- A pending owner question stays pending until the owner decides it in AI House.
-- Never put real keys, passwords, private MCP tokens, or your friend’s StarNet credentials in GitHub, prompts, screenshots, or demo recordings.
+- Start with the read-only status and activity tools.
+- `ask_house_leader` is rate-limited and routes questions to the Leader; it does not answer or approve owner requests.
+- Pending owner questions remain pending until the owner decides them in AI House.
+- The current remote endpoint uses one bearer token. Treat it like a password; only share it with a trusted person and rotate it to revoke access.
+- Never put real keys, passwords, private MCP tokens, or your friend's StarNet credentials in GitHub, prompts, or demo recordings.
