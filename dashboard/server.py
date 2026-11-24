@@ -518,7 +518,8 @@ def schedules_post_api():
 @app.get("/api/control")
 def house_control_get():
     settings = house_settings()
-    return jsonify(running=house_control_running(), active_hours=settings["active_hours"], summary_time=settings["summary_time"], max_new_businesses_per_day=int(settings["max_new_businesses_per_day"]), active_now=local_active_now(settings["active_hours"]))
+    # Work-hours scheduling was removed; expose only supported control settings.
+    return jsonify(running=house_control_running(), summary_time=settings["summary_time"], max_new_businesses_per_day=int(settings["max_new_businesses_per_day"]), active_now=True)
 
 
 @app.post("/api/control")
