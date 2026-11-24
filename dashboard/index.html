@@ -275,6 +275,26 @@ button:not(:disabled):active{transform:translateY(0)}
 @media(max-width:900px){main{gap:12px}.content{grid-template-columns:1fr}.hero{grid-template-columns:1fr}.nf-insights{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){header{position:relative;padding:12px;gap:8px}.brand{width:100%}.header-spacer{display:none}.room-select{flex:1;min-width:120px}header a{font-size:10px!important;padding:7px 8px!important}.pill{font-size:9px}.schedule-status{font-size:9px}main{padding:14px 10px 40px}.hero{padding:20px 17px}.hero h1{font-size:31px}.live-card{min-height:0}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:22px}.nf-insights{grid-template-columns:1fr}.nf-list{max-height:260px}.panel{padding:14px;border-radius:16px}}
 
+
+/* Minimal control-room refresh: graphite + cool teal, compact spacing, optional advanced panels. */
+:root{--bg:#0b1014;--panel:#12191e;--panel2:#182127;--line:#27353b;--text:#e8f0f2;--muted:#91a3a9;--accent:#54d6c5;--cyan:#9ae6dc;--green:#83e0b4;--yellow:#e8c878;--red:#f28a94}
+body{background:var(--bg);background-image:radial-gradient(ellipse at 10% 0%,#14302d 0,transparent 28%);font-size:13px}
+header{height:60px;padding:0 18px;gap:10px;background:#0c1316f2}
+.brand{font-size:15px;letter-spacing:.045em}.brand small{font-size:8px;letter-spacing:.14em}
+main{max-width:1440px;padding:18px 18px 34px}
+.panel{background:var(--panel);border-radius:13px;padding:15px;border-color:#26363b}
+.panel-head{margin-bottom:10px}h2{letter-spacing:.09em;font-size:11px}
+.hero{border-radius:15px;padding:20px 22px;background:linear-gradient(115deg,#142a2b,#121d22 70%,#172328);box-shadow:none;border-color:#2b4646}
+.hero:after{background:#54d6c51a}.eyebrow{color:#8ce4d8}
+.stats{gap:9px;margin:12px 0 14px}.stat{padding:11px 13px;border-radius:11px;background:#121b20}.stat strong{font-size:22px}
+.content{gap:12px}.stack{gap:12px}.task{padding:10px 11px;border-radius:10px}.task-list{gap:7px}
+button,.room-select,.pill{border-radius:9px}button{padding:8px 12px;background:#1b2a2d}
+button.resume{background:#17352c}button.stop{background:#332026}
+.live-block,.live-card{border-radius:11px}
+body:not(.full-dashboard) .provider-panel,body:not(.full-dashboard) .usage-panel,body:not(.full-dashboard) .station-panel,body:not(.full-dashboard) .departments-panel,body:not(.full-dashboard) #dailySummaryPanel,body:not(.full-dashboard) #outboxPanel,body:not(.full-dashboard) #ledgerPanel,body:not(.full-dashboard) .memory-grid,body:not(.full-dashboard) .nf-insights,body:not(.full-dashboard) .decision-audit-head,body:not(.full-dashboard) #decisionAudit,body:not(.full-dashboard) #memoryUpdated,body:not(.full-dashboard) .nf-insight,body:not(.full-dashboard) .note{display:none!important}
+body:not(.full-dashboard) .panel:has(.memory-grid){padding:12px 15px}
+#dashboardMode{white-space:nowrap;font-size:11px;padding:7px 10px}
+@media(max-width:900px){header{height:auto;min-height:58px;flex-wrap:wrap;padding:10px 12px}.header-spacer{display:none}.room-select{min-width:120px;flex:1}main{padding:12px}.hero{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -282,7 +302,7 @@ button:not(:disabled):active{transform:translateY(0)}
   <div class="brand">AI <b>HOUSE</b><small>LOCAL AUTONOMY CONTROL ROOM</small></div>
   <div class="header-spacer"></div>
   <select id="roomSelect" class="room-select" aria-label="Choose room"><option>Loading rooms…</option></select>
-  <a href="/studio" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Studio</a>
+  <a href="/studio" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Studio</a><a href="/mcp" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:11px;font-weight:700">MCP</a><button id="dashboardMode" type="button" title="Show or hide advanced panels">Full dashboard</button>
   <a href="/coding-room" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Coding Room</a>
   <a href="/computer-room" style="color:var(--text);text-decoration:none;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:12px;font-weight:700">Computer Room</a>
   <div class="pill"><i id="headerDot" class="dot"></i><span id="headerStatus">Connecting</span></div>
@@ -453,6 +473,8 @@ button:not(:disabled):active{transform:translateY(0)}
 </main>
 
 <script>
+(()=>{const b=document.getElementById("dashboardMode");if(!b)return;const set=full=>{document.body.classList.toggle("full-dashboard",full);b.textContent=full?"Minimal dashboard":"Full dashboard";try{localStorage.setItem("ai-house-dashboard-full",full?"1":"0")}catch(e){}};let full=false;try{full=localStorage.getItem("ai-house-dashboard-full")==="1"}catch(e){}set(full);b.addEventListener("click",()=>set(!document.body.classList.contains("full-dashboard")));})();
+
 const $=id=>document.getElementById(id);
 
 // Ask the leader: built-in browser speech only, no external services.
