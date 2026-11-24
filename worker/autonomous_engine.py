@@ -519,6 +519,10 @@ def model_candidates(provider,role):
   elif provider=="routeway":
    # Routeway has both paid and free models; only its explicitly free :free slugs are eligible.
    candidates=[x for x in filter_model_pool(candidates,catalog) if x.endswith(":free")]
+  elif provider=="zai":
+   # Critical: the Z.ai live catalog includes paid GLM models. Keep only verified zero-priced Flash IDs.
+   free_zai={"glm-4.7-flash","glm-4.5-flash","glm-4.6v-flash"}
+   candidates=[x for x in filter_model_pool(candidates,catalog) if x in free_zai]
   elif provider=="requesty":
    # Requesty has a free tier; keep this provider pinned to audited zero-priced models only.
    requesty_free={"nvidia/muse-glimmer-30b","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-3-ultra-550b-a55b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5"}
