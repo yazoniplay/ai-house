@@ -484,6 +484,10 @@ def model_candidates(provider,role):
  elif provider=="nvidia":
   # Prefer known current endpoints (Gemma first); user-configured IDs remain fallbacks.
   candidates=list(dict.fromkeys(defaults.get(provider,[])+configured))
+ elif provider=="zai":
+  # Z.ai free API tier only: never send paid GLM-5/GLM-4.x model IDs from local overrides.
+  free_zai=defaults.get("zai",[])
+  candidates=list(dict.fromkeys(free_zai+[x for x in configured if x in free_zai]))
  elif provider=="openrouter":
   # Try no-cost catalog models before paid concrete slugs.
   aliases=[x for x in configured if x in ("openrouter/free","openrouter/auto")]
