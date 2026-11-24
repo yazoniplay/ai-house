@@ -44,16 +44,26 @@ def _clean(value, depth=0):
     return str(value)[:300]
 
 
-def _state(workspace):
+def _state(workspace, room_id=None):
     root = workspace_path(workspace) / ".ai-house"
-    state = _read_json(root / "state.json", {})
+    registry = _read_json(root / "rooms.json", {})
+    rooms = registry.get("rooms") if isinstance(registry, dict) else None
+    rooms = [room for room in rooms if isinstance(room, dict)] if isinstance(rooms, list) else []
+    room = next((item for item in rooms if str(item.get("id")) == str(room_id)), None) if room_id else (rooms[0] if rooms else None)
+    if room and room.get("state_file"):
+        path = Path(str(room["state_file"]))
+        if not path.is_absolute():
+            path = ROOT / path
+    else:
+        path = root / "state.json"
+    state = _read_json(path, {})
     if not isinstance(state, dict):
         state = {}
-    return root, state
+    return root, state, room
 
 
 def house_status(workspace=None):
-    root, state = _state(workspace)
+    root, state, selected_room = _state(workspace)
     control = _read_json(root / "control.json", {"running": True})
     autonomy = _read_json(root / "autonomy_control.json", {"enabled": True})
     roadmap = state.get("roadmap") if isinstance(state.get("roadmap"), dict) else {}
@@ -186,7 +196,7 @@ def ask_house_leader(question, workspace=None):
 
 TOOLS = [
     {"name": "house_status", "description": "Read the current AI House status, autonomy state, active business, task counts, and pending owner-question count. Read-only.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-    {"name": "list_work", "description": "Read the current roadmap and recent task statuses for the house. Read-only.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 30}}, "additionalProperties": False}},
+    {"name": "list_work", "description": "Read the current roadmap and recent task statuses for the house. Read-only.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 30}, "room_id": {"type": "string", "description": "Optional room ID from house_status"}}, "additionalProperties": False}},
     {"name": "recent_activity", "description": "Read recent AI House event records. Secret-like fields are filtered and text is bounded. Read-only.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 25}}, "additionalProperties": False}},
     {"name": "pending_owner_questions", "description": "List questions/approvals that are waiting for the owner. This tool does not answer or approve them.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "ask_house_leader", "description": "Send an owner question to the AI House Leader and return its answer. If the Leader creates an approval request, it is reported but not automatically approved.", "inputSchema": {"type": "object", "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 1200}}, "required": ["question"], "additionalProperties": False}},
@@ -200,7 +210,7 @@ def call_tool(name, arguments=None, workspace=None):
     if name == "house_status":
         result = house_status(workspace)
     elif name == "list_work":
-        result = list_work(workspace, arguments.get("limit", 30))
+        result = list_work(workspace, arguments.get("limit", 30), arguments.get("room_id"))
     elif name == "recent_activity":
         result = recent_activity(workspace, arguments.get("limit", 25))
     elif name == "pending_owner_questions":
