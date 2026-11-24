@@ -35,6 +35,12 @@ class ProviderRouterTests(unittest.TestCase):
         self.assertTrue(is_unavailable_model_error("HTTP 404 page not found"))
         self.assertFalse(is_unavailable_model_error("503 temporarily unavailable"))
 
+    def test_cloudflare_daily_neuron_allocation_is_provider_wide(self):
+        error="cloudflare 429: you have used up your daily free allocation of 10,000 neurons"
+        self.assertTrue(is_provider_wide_error("cloudflare",error))
+        self.assertFalse(should_try_next_model(error))
+        self.assertEqual(cooldown_seconds(error),900)
+
     def test_quota_and_billing_errors_trigger_provider_cooldown(self):
         self.assertEqual(cooldown_seconds("429 resource_exhausted"),900)
         self.assertEqual(cooldown_seconds("402 insufficient credits"),86400)
