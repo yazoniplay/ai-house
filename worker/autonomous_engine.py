@@ -34,7 +34,6 @@ MAX_ROOMS=int(os.getenv("AI_HOUSE_MAX_ROOMS","3"))
 ROOMS_FILE=SD/"rooms.json"
 ROOMS_DIR=SD/"rooms"
 ROOM_ID="room-001"
-ACTIVE_HOURS=os.getenv("AI_HOUSE_ACTIVE_HOURS","09:00-23:00")
 SUMMARY_TIME=os.getenv("AI_HOUSE_SUMMARY_TIME","22:00")
 MAX_NEW_BUSINESSES_PER_DAY=int(os.getenv("AI_HOUSE_MAX_NEW_BUSINESSES_PER_DAY","2"))
 CONTROL_FILE=SD/"control.json"
@@ -73,7 +72,7 @@ ORK=os.getenv("ORCAROUTER_API_KEY","");ORMODEL=os.getenv("ORCAROUTER_MODEL","orc
 BLK=os.getenv("BAZAARLINK_API_KEY","");BLMODEL=os.getenv("BAZAARLINK_MODEL","auto:free");BLB=os.getenv("BAZAARLINK_BASE_URL","https://api.bazaarlink.ai/v1").rstrip("/")
 ARK=os.getenv("AGENTROUTER_API_KEY","");ARM=os.getenv("AGENTROUTER_MODEL","deepseek-v4-flash");ARB=os.getenv("AGENTROUTER_BASE_URL","https://agentrouter.org/v1").rstrip("/")
 RWK=os.getenv("ROUTEWAY_API_KEY","");RWM=os.getenv("ROUTEWAY_MODEL","deepseek-v4-flash:free");RWB=os.getenv("ROUTEWAY_BASE_URL","https://api.routeway.ai/v1").rstrip("/")
-CFK=os.getenv("CLOUDFLARE_API_TOKEN","");CF_ACCOUNT_ID=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip();CFM=os.getenv("CLOUDFLARE_WORKERS_AI_MODEL","@cf/meta/llama-3.3-70b-instruct-fp8-fast");CFB=os.getenv("CLOUDFLARE_BASE_URL",("https://api.cloudflare.com/client/v4/accounts/"+CF_ACCOUNT_ID+"/ai/v1") if CF_ACCOUNT_ID else "").rstrip("/")
+CFK=os.getenv("CLOUDFLARE_API_TOKEN","");CF_ACCOUNT_ID=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip();CFM=os.getenv("CLOUDFLARE_WORKERS_AI_MODEL","@cf/deepseek-ai/deepseek-v4.1-flash-1017");CFB=os.getenv("CLOUDFLARE_BASE_URL",("https://api.cloudflare.com/client/v4/accounts/"+CF_ACCOUNT_ID+"/ai/v1") if CF_ACCOUNT_ID else "").rstrip("/")
 EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"; SEARCH_PROVIDER_STATE=SD/"search-provider-state.json"
 PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0,"vercel":0.0,"zai":0.0,"siliconflow":0.0,"orcarouter":0.0,"bazaarlink":0.0,"agentrouter":0.0,"routeway":0.0}
 PAID_PROVIDERS=set(x.strip() for x in os.getenv("AI_HOUSE_PAID_PROVIDERS","").split(",") if x.strip())
@@ -206,9 +205,6 @@ def in_window(window,now=None):
  minute=now.hour*60+now.minute
  a,b=_hm(start),_hm(end)
  return a<=minute<b if a<b else (minute>=a or minute<b)
-def active_now():
- # AI House autonomy is continuous; active hours no longer pause work.
- return True
 def house_running():
  try:return bool(json.loads(CONTROL_FILE.read_text(encoding="utf-8")).get("running",True))
  except Exception:return True
@@ -474,7 +470,7 @@ def model_candidates(provider,role):
   "siliconflow":["Qwen/Qwen3-30B-A3B-Instruct-2507","deepseek-ai/DeepSeek-V3.2","Qwen/Qwen3-32B","Qwen/Qwen2.5-72B-Instruct"],
   "orcarouter":["orcarouter/auto","google/gemini-3-flash-preview","openai/gpt-6.1-sol","anthropic/claude-sonnet-4.6"],
   "bazaarlink":["auto:free","openai/gpt-4o-mini","google/gemini-2.5-flash"],
-   "cloudflare":["@cf/google/gemma-4-26b-a4b-it","@cf/qwen/qwen3.8-27b","@cf/meta/llama-3.3-70b-instruct-fp8-fast","@cf/meta/llama-4-scout-17b-16e-instruct","@cf/deepseek-ai/deepseek-v4.1-flash-1017"],
+   "cloudflare":["@cf/deepseek-ai/deepseek-v4.1-flash-1017","@cf/zai-org/glm-5.3","@cf/google/gemma-4-26b-a4b-it","@cf/qwen/qwen3.8-27b","@cf/meta/llama-3.3-70b-instruct-fp8-fast"],
   "agentrouter":["deepseek-v4-flash","gpt-6.1-sol","gpt-6-astra"],
   "routeway":["deepseek-v4-flash:free","deepseek-v4-flash","qwen3.8-27b"]
  }
@@ -524,15 +520,15 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  defaults={"gemini":3,"nvidia":2,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}
+  defaults={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}
   env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS","orcarouter":"AI_HOUSE_ORCAROUTER_MAX_MODEL_ATTEMPTS","bazaarlink":"AI_HOUSE_BAZAARLINK_MAX_MODEL_ATTEMPTS","cloudflare":"AI_HOUSE_CLOUDFLARE_MAX_MODEL_ATTEMPTS","agentrouter":"AI_HOUSE_AGENTROUTER_MAX_MODEL_ATTEMPTS","routeway":"AI_HOUSE_ROUTEWAY_MAX_MODEL_ATTEMPTS"}
   if p in defaults:
    # Environment values may lower the budget, but cannot re-enable dozens of
    # retries against one provider during a single agent request.
    max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
- except Exception:max_attempts={"gemini":3,"nvidia":4,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}.get(p,3)
- if p in ("gemini","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway") and len(candidates)>max_attempts:
+ except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}.get(p,3)
+ if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
   # reach every eligible model instead of always truncating to the same prefix.
@@ -2007,7 +2003,7 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument("--loop",action="store_true");ap.add_argument("--once",action="store_true");a=ap.parse_args()
  if not any((G,H,M,N,TK,OK,OR,SK,VG,ZK,SFK,CFK and CF_ACCOUNT_ID)):print("Add at least one AI provider key to worker/.env (for example GEMINI_API_KEY, CLOUDFLARE_API_TOKEN with CLOUDFLARE_ACCOUNT_ID, AI_GATEWAY_API_KEY, ZAI_API_KEY or SILICONFLOW_API_KEY)");return 2
  if not T:print("TAVILY_API_KEY missing: current web research will be unavailable during provider fallback.")
- log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,vercel_enabled=bool(VG),zai_enabled=bool(ZK),siliconflow_enabled=bool(SFK),cloudflare_workers_ai_enabled=bool(CFK and CF_ACCOUNT_ID),exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS,active_hours=ACTIVE_HOURS,summary_time=SUMMARY_TIME,max_new_businesses_per_day=MAX_NEW_BUSINESSES_PER_DAY,business_budget_usd=BUSINESS_BUDGET_USD,business_budget_max_usd=BUSINESS_BUDGET_MAX_USD)
+ log("provider_model_config",gemini_leader=os.getenv("GEMINI_LEADER_MODEL","gemini-3.5-flash-lite"),gemini_worker=os.getenv("GEMINI_WORKER_MODEL","gemini-3.1-flash-lite"),groq_primary=GM,groq_fast=GFM,nvidia=NM,huggingface_enabled=bool(H),tavily_enabled=bool(T),sambanova=SNM,vercel_enabled=bool(VG),zai_enabled=bool(ZK),siliconflow_enabled=bool(SFK),cloudflare_workers_ai_enabled=bool(CFK and CF_ACCOUNT_ID),exa_enabled=bool(EX),daily_spend_cap=spend_daily_cap(),monthly_spend_cap=spend_monthly_cap(),max_rooms=MAX_ROOMS,summary_time=SUMMARY_TIME,max_new_businesses_per_day=MAX_NEW_BUSINESSES_PER_DAY,business_budget_usd=BUSINESS_BUDGET_USD,business_budget_max_usd=BUSINESS_BUDGET_MAX_USD)
  print("Workspace:",WORK)
  registry=load_rooms()
  if not isinstance(registry.get("rooms"),list) or not registry["rooms"]:registry["rooms"]=[{"id":"room-001","name":"Room 1","state_file":str(SF),"status":"active","created_at":datetime.now(timezone.utc).isoformat()}]
@@ -2030,10 +2026,6 @@ def main():
    set_activity("stopped","The house is stopped from the dashboard.")
    if a.once:return 0
    time.sleep(int(os.getenv("AI_HOUSE_POLL_SECONDS","10")));continue
-  if not active_now():
-   set_activity("scheduled_pause","Outside active hours ("+ACTIVE_HOURS+"); work is saved and will resume automatically.")
-   if a.once:return 0
-   time.sleep(int(os.getenv("AI_HOUSE_POLL_SECONDS","10")));continue
   try:
    published=run_publisher(WORK,HTTP);log("publish_pass",published=published)
   except Exception as publish_error:log("publish_pass",published=0,error=str(publish_error)[:500])
@@ -2044,9 +2036,7 @@ def main():
    if _hm(datetime.now().strftime("%H:%M"))>=_hm(SUMMARY_TIME):write_daily_summary(registry)
   except Exception as summary_error:log("daily_summary_error",error=str(summary_error)[:400])
   if not any(item.get("status","active")=="active" for item in registry["rooms"]):
-   if active_now():
-    created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],reason="no_active_rooms")
-   else:log("room_creation_deferred",reason="no_active_rooms_outside_active_hours")
+   created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],reason="no_active_rooms")
   active=[room for room in registry["rooms"] if room.get("status","active")=="active"]
   if active:
    index=int(registry.get("cursor",0))%len(active);room=active[index];registry["cursor"]=int(registry.get("cursor",0))+1;save_rooms(registry)
@@ -2074,9 +2064,7 @@ def main():
     save_rooms(registry)
     active_rooms_now=[item for item in registry["rooms"] if item.get("status","active")=="active"]
     if len(active_rooms_now)<MAX_ROOMS and ready_to_spawn_room(registry):
-     if active_now():
-      created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],active_rooms=len(active_rooms_now)+1,reason="all_active_rooms_have_locked_businesses")
-     else:log("room_creation_deferred",reason="businesses_locked_but_outside_active_hours")
+     created=new_room(registry);save_rooms(registry);log("room_created",id=created["id"],active_rooms=len(active_rooms_now)+1,reason="all_active_rooms_have_locked_businesses")
     else:
      save_rooms(registry)
      if len(active_rooms_now)<MAX_ROOMS:log("room_creation_waiting",active_rooms=len(active_rooms_now),locked=sum(1 for item in active_rooms_now if room_business_locked(item)),reason="each_active_room_must_lock_in_a_business_first")
