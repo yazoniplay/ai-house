@@ -411,7 +411,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  if p=="groq":
   # Both GPT-OSS models support JSON mode; all Groq completions in this worker expect structured JSON.
   payload["response_format"]={"type":"json_object"}
- timeout_seconds=12 if p=="nvidia" else (18 if p=="groq" else 25)
+ timeout_seconds=9 if p=="nvidia" else (18 if p=="groq" else 25)
  candidates=[model]
  if p=="groq" and role!="fast" and model!=GFM:
   # If a user's main model is unavailable, try the already configured fast model before leaving Groq.
@@ -462,7 +462,7 @@ def model_candidates(provider,role):
  defaults={
   # Current, documented NVIDIA chat endpoints only. The live /v1/models catalog below
   # removes anything NVIDIA has actually retired or disabled for this API key.
-  "nvidia":["meta/llama-3.3-70b-instruct","meta/llama-3.1-8b-instruct","meta/llama-4-scout-17b-16e-instruct","meta/llama-4-maverick-17b-128e-instruct","nvidia/nemotron-3.5-bolt-e4b","nvidia/nemotron-3.5-lightning-30b-a3b","google/gemma-4-31b-it","nvidia/nemotron-3-ultra-550b-a55b","z-ai/glm-5.3-flash","moonshotai/kimi-k3.1-pro","nvidia/nemotron-3.5-super-vl-120b-a12b","meta/muse-glimmer-30b"],
+  "nvidia":["meta/llama-3.1-8b-instruct","nvidia/nemotron-3.5-bolt-e4b","google/gemma-4-31b-it","meta/llama-3.3-70b-instruct","nvidia/nemotron-3.5-lightning-30b-a3b","meta/llama-4-scout-17b-16e-instruct","z-ai/glm-5.3-flash","moonshotai/kimi-k3.1-pro","meta/llama-4-maverick-17b-128e-instruct","nvidia/nemotron-3-ultra-550b-a55b","nvidia/nemotron-3.5-super-vl-120b-a12b","meta/muse-glimmer-30b"],
   # Flash Lite first for both CEO and workers; preserve a custom configured model after it.
   "gemini":["gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3.5-flash","gemini-2.5-flash","gemini-2.0-flash"],
   "groq":["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3-32b","meta-llama/llama-4-scout-17b-16e-instruct"],
@@ -524,7 +524,7 @@ def raw(p,sys,ask,role):
  candidates=model_candidates(p,role)
  if not candidates:raise RuntimeError(p+" has no configured model")
  try:
-  defaults={"gemini":3,"nvidia":4,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}
+  defaults={"gemini":3,"nvidia":2,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}
   env_names={"gemini":"AI_HOUSE_GEMINI_MAX_MODEL_ATTEMPTS","nvidia":"AI_HOUSE_NVIDIA_MAX_MODEL_ATTEMPTS","openrouter":"AI_HOUSE_OPENROUTER_MAX_MODEL_ATTEMPTS","groq":"AI_HOUSE_GROQ_MAX_MODEL_ATTEMPTS","vercel":"AI_HOUSE_VERCEL_MAX_MODEL_ATTEMPTS","zai":"AI_HOUSE_ZAI_MAX_MODEL_ATTEMPTS","siliconflow":"AI_HOUSE_SILICONFLOW_MAX_MODEL_ATTEMPTS","orcarouter":"AI_HOUSE_ORCAROUTER_MAX_MODEL_ATTEMPTS","bazaarlink":"AI_HOUSE_BAZAARLINK_MAX_MODEL_ATTEMPTS","cloudflare":"AI_HOUSE_CLOUDFLARE_MAX_MODEL_ATTEMPTS","agentrouter":"AI_HOUSE_AGENTROUTER_MAX_MODEL_ATTEMPTS","routeway":"AI_HOUSE_ROUTEWAY_MAX_MODEL_ATTEMPTS"}
   if p in defaults:
    # Environment values may lower the budget, but cannot re-enable dozens of
