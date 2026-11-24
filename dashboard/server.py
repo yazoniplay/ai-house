@@ -1318,7 +1318,10 @@ def house_mcp_http():
             result = {"content": [{"type": "text", "text": "AI House tool failed: " + type(exc).__name__}], "isError": True}
     else:
         return _mcp_http_response({"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Method not found: " + str(method)}})
-    return _mcp_http_response({"jsonrpc": "2.0", "id": request_id, "result": result})
+    response = _mcp_http_response({"jsonrpc": "2.0", "id": request_id, "result": result})
+    if method == "initialize":
+        response.headers["MCP-Protocol-Version"] = result.get("protocolVersion", "2024-11-05")
+    return response
 
 if __name__ == "__main__":
     if autonomy_enabled():
