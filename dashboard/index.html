@@ -295,6 +295,8 @@ body:not(.full-dashboard) .provider-panel,body:not(.full-dashboard) .usage-panel
 body:not(.full-dashboard) .panel:has(.memory-grid){padding:12px 15px}
 #dashboardMode{white-space:nowrap;font-size:11px;padding:7px 10px}
 @media(max-width:900px){header{height:auto;min-height:58px;flex-wrap:wrap;padding:10px 12px}.header-spacer{display:none}.room-select{min-width:120px;flex:1}main{padding:12px}.hero{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.decision-queue{display:grid;gap:9px}.decision-card{padding:12px;border:1px solid var(--line);background:#0d171b;border-radius:10px}.decision-card strong{display:block;font-size:12px}.decision-card p{margin:6px 0;color:#b6c8ca;font-size:12px;white-space:pre-wrap}.decision-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.decision-actions button{font-size:11px;padding:7px 10px}.decision-card .decision-meta{color:var(--muted);font-size:10px}
 </style>
 </head>
 <body>
@@ -328,6 +330,11 @@ body:not(.full-dashboard) .panel:has(.memory-grid){padding:12px 15px}
     <pre id="leaderReply" aria-live="polite">Your last reply will appear here.</pre>
   </section>
 
+  <section class="panel" id="decisionQueuePanel" hidden>
+    <div class="panel-head"><div><h2>Pending decisions</h2><div class="subtle">Answer safely from this PC — no phone or Discord required</div></div><button id="decisionQueueRefresh" type="button">Refresh</button></div>
+    <div id="decisionQueue" class="decision-queue"><div class="empty">No pending decisions.</div></div>
+    <div id="decisionQueueStatus" class="subtle" role="status"></div>
+  </section>
 
   <section class="panel live-now-panel" aria-live="polite">
     <div class="panel-head"><h2>What the house is doing right now</h2><span class="subtle" id="liveUpdated">Connecting…</span></div>
@@ -571,6 +578,26 @@ async function api(path,method="GET",body=null,timeoutMs=20000){
     clearTimeout(timeout);
   }
 }
+async function refreshDecisionQueue(){
+ const panel=$("decisionQueuePanel"),list=$("decisionQueue"),status=$("decisionQueueStatus");
+ try{
+  const [approvalData,briefData]=await Promise.all([api("/api/owner/approvals"),api("/api/briefs")]);
+  const approvals=approvalData.approvals||[],briefs=briefData.briefs||[];list.innerHTML="";
+  const addCard=(title,question,summary,options,submit)=>{
+   const card=document.createElement("article");card.className="decision-card";
+   const head=document.createElement("strong");head.textContent=title;
+   const q=document.createElement("p");q.textContent=question||"Decision required";
+   const meta=document.createElement("div");meta.className="decision-meta";meta.textContent=summary||"";
+   const actions=document.createElement("div");actions.className="decision-actions";
+   (options||[]).forEach(choice=>{const button=document.createElement("button");button.type="button";button.textContent=String(choice);button.onclick=async()=>{actions.querySelectorAll("button").forEach(b=>b.disabled=true);status.textContent="Saving decision…";try{await submit(choice);status.textContent="Decision saved.";await refreshDecisionQueue()}catch(e){status.textContent=e.message;actions.querySelectorAll("button").forEach(b=>b.disabled=false)}};actions.append(button)});
+   card.append(head,q,meta,actions);list.append(card);
+  };
+  approvals.forEach(a=>addCard((a.room||"Room")+" · "+(a.kind||"approval"),a.question,a.summary,a.options||["yes","no"],choice=>api("/api/owner/approvals/"+encodeURIComponent(a.id),"POST",JSON.stringify({choice}))));
+  briefs.forEach(b=>addCard((b.room||"Room")+" · decision brief",b.question,b.context,b.options||[],choice=>api("/api/briefs/"+encodeURIComponent(b.id),"POST",JSON.stringify({choice}))));
+  panel.hidden=!(approvals.length||briefs.length);status.textContent=approvals.length+briefs.length?"Choose an option to resume the waiting task.":"No pending decisions.";
+ }catch(e){status.textContent="Decision queue unavailable: "+e.message;panel.hidden=false}
+}
+$("decisionQueueRefresh").addEventListener("click",refreshDecisionQueue);
 let controlState=null;
 async function refreshControl(){
   try{
@@ -1144,7 +1171,7 @@ $("resume").addEventListener("click",async()=>{
   catch(error){alert(error.message);$("resume").disabled=false;}
 });
 refreshRooms().then(()=>{render();refreshLive();refreshStation();});
-refreshControl();refreshSummary();refreshLedger();refreshOutbox();
+refreshControl();refreshSummary();refreshLedger();refreshOutbox();refreshDecisionQueue();
 setInterval(render,2500);
 setInterval(refreshLive,3000);
 setInterval(refreshRooms,10000);
@@ -1152,6 +1179,7 @@ setInterval(refreshControl,4000);
 setInterval(refreshSummary,15000);
 setInterval(refreshLedger,10000);
 setInterval(refreshOutbox,10000);
+setInterval(refreshDecisionQueue,6000);
 setInterval(refreshStation,5000);
 setInterval(()=>{if(document.querySelector("details.dev").open)refreshLog();},4000);
 document.querySelector("details.dev").addEventListener("toggle",e=>{if(e.target.open)refreshLog();});
