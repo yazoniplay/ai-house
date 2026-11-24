@@ -39,7 +39,7 @@ class ProviderRouterTests(unittest.TestCase):
         error="cloudflare 429: you have used up your daily free allocation of 10,000 neurons"
         self.assertTrue(is_provider_wide_error("cloudflare",error))
         self.assertFalse(should_try_next_model(error))
-        self.assertEqual(cooldown_seconds(error),900)
+        self.assertEqual(cooldown_seconds(error),21600)
 
     def test_quota_and_billing_errors_trigger_provider_cooldown(self):
         self.assertEqual(cooldown_seconds("429 resource_exhausted"),900)
