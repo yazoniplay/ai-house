@@ -172,10 +172,10 @@ class DiscoverySearchTests(unittest.TestCase):
         with patch.object(engine,"get_answer",return_value=None), patch.object(engine,"get_brief_answer",return_value=None):
             self.assertFalse(engine.task_ready(task,tasks))
 
-    def test_nvidia_llama_models_are_tried_before_slow_large_models(self):
+    def test_nvidia_fast_models_are_tried_before_slow_large_models(self):
         with patch.object(engine,"NVIDIA_MODELS",[]), patch.object(engine,"provider_model_catalog",return_value=None), patch.object(engine,"log"):
             models=engine.model_candidates("nvidia","orchestrator")
-        self.assertEqual(models[0],"meta/llama-3.3-70b-instruct")
-        self.assertEqual(models[1],"meta/llama-3.1-8b-instruct")
+        self.assertEqual(models[0],"meta/llama-3.1-8b-instruct")
+        self.assertEqual(models[1],"nvidia/nemotron-3.5-bolt-e4b")
 if __name__=="__main__":
     unittest.main()
