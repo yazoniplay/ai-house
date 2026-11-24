@@ -200,7 +200,7 @@ MCP configuration is stored locally at `workspace/.ai-house/mcp_servers.json`. T
 
 For a StarNet demo, only connect after your friend agrees. Start with read-only tools and inspect the tool descriptions before running anything. The current MCP page is an explicit, manual tool explorer; MCP tools are not yet automatically exposed to autonomous agent reasoning.
 
-The main control room has a **Minimal dashboard / Full dashboard** toggle. The minimal view hides secondary telemetry and audit panels without deleting their data; switch to Full dashboard to reveal them.
+The main control room has a **Minimal dashboard / Full dashboard** toggle. The minimal view hides secondary telemetry and audit panels without deleting their data; switch to Full dashboard to reveal them. Pending owner approvals and decision briefs also appear in the control room queue, so you can answer them from your PC without Discord or a phone.
 
 ## 🛡️ Safety and control
 
