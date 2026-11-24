@@ -38,6 +38,7 @@ from approvals import list_requests as list_owner_approvals, answer as answer_ow
 from desktop_agent import DesktopAgentError, create_task as create_desktop_task, run_task as run_desktop_task, resume_task as resume_desktop_task, list_tasks as list_desktop_tasks
 from coding_room import CodingRoomError, create_project as create_coding_project, list_projects as list_coding_projects, cancel_project as cancel_coding_project
 from mcp_client import MCPError, list_servers as mcp_list_servers, save_servers as mcp_save_servers, list_tools as mcp_list_tools, call_tool as mcp_call_tool
+from house_mcp import TOOLS as HOUSE_MCP_TOOLS, call_tool as house_mcp_call_tool
 
 app = Flask(__name__)
 lock = threading.RLock()
@@ -1234,6 +1235,90 @@ def computer_room_page():
 @app.get("/studio")
 def studio_page():
     return send_from_directory(HERE, "studio.html")
+
+
+# AI House as an MCP server: live read-only status plus an owner-question bridge.
+def _mcp_http_token():
+    token = os.getenv("AI_HOUSE_MCP_TOKEN", "").strip()
+    if token:
+        return token
+    for env_path in (WORKER_DIR / ".env", ROOT / ".env"):
+        try:
+            for raw in env_path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    if key.strip() == "AI_HOUSE_MCP_TOKEN":
+                        return value.strip().strip('"').strip("'")
+        except OSError:
+            continue
+    return ""
+
+
+def _mcp_http_response(payload, status=200):
+    response = jsonify(payload) if payload is not None else app.response_class("", status=status)
+    if payload is not None:
+        response.status_code = status
+    origin = request.headers.get("Origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, MCP-Protocol-Version, X-AI-House-Token"
+        response.headers["Access-Control-Max-Age"] = "600"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/mcp", methods=["POST", "OPTIONS"])
+def house_mcp_http():
+    if request.method == "OPTIONS":
+        return _mcp_http_response(None, 204)
+    token = _mcp_http_token()
+    if not token:
+        return _mcp_http_response({"error": "MCP HTTP is locked. Set AI_HOUSE_MCP_TOKEN in worker/.env and restart AI House."}, 503)
+    supplied = request.headers.get("X-AI-House-Token", "")
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        supplied = auth[7:].strip()
+    import hmac
+    if not supplied or not hmac.compare_digest(supplied, token):
+        return _mcp_http_response({"error": "Unauthorized MCP client."}, 401)
+    if not request.is_json:
+        return _mcp_http_response({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Expected application/json."}}, 400)
+    message = request.get_json(silent=True)
+    if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
+        return _mcp_http_response({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Invalid JSON-RPC request."}}, 400)
+    method = message.get("method")
+    request_id = message.get("id")
+    params = message.get("params") if isinstance(message.get("params"), dict) else {}
+    if request_id is None and isinstance(method, str) and method.startswith("notifications/"):
+        return _mcp_http_response(None, 202)
+    if method == "initialize":
+        requested = params.get("protocolVersion", "2024-11-05")
+        supported = {"2024-11-05", "2025-03-26", "2025-06-18"}
+        result = {
+            "protocolVersion": requested if requested in supported else "2024-11-05",
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "ai-house", "version": "1.0.0"},
+            "instructions": "AI House status and activity tools are read-only. ask_house_leader routes owner questions to the Leader; it never approves pending owner requests."
+        }
+    elif method == "ping":
+        result = {}
+    elif method == "tools/list":
+        result = {"tools": HOUSE_MCP_TOOLS}
+    elif method == "tools/call":
+        try:
+            result = house_mcp_call_tool(params.get("name"), params.get("arguments") or {}, WORKSPACE)
+        except KeyError as exc:
+            return _mcp_http_response({"jsonrpc": "2.0", "id": request_id, "error": {"code": -32602, "message": str(exc)}})
+        except (ValueError, RuntimeError) as exc:
+            result = {"content": [{"type": "text", "text": str(exc)}], "isError": True}
+        except Exception as exc:
+            result = {"content": [{"type": "text", "text": "AI House tool failed: " + type(exc).__name__}], "isError": True}
+    else:
+        return _mcp_http_response({"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Method not found: " + str(method)}})
+    return _mcp_http_response({"jsonrpc": "2.0", "id": request_id, "result": result})
 
 if __name__ == "__main__":
     if autonomy_enabled():
