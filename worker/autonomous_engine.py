@@ -462,8 +462,8 @@ def model_candidates(provider,role):
  elif provider=="routeway":primary=RWM;env_name="AI_HOUSE_ROUTEWAY_MODELS"
  elif provider=="requesty":primary=RQM;env_name="AI_HOUSE_REQUESTY_MODELS"
  elif provider=="fastrouter":primary=FRM;env_name="AI_HOUSE_FASTROUTER_MODELS"
-  elif provider=="opencodezen":primary=OCZM;env_name="AI_HOUSE_OPENCODE_ZEN_MODELS"
-  elif provider=="llm7":primary=L7M;env_name="AI_HOUSE_LLM7_MODELS"
+ elif provider=="opencodezen":primary=OCZM;env_name="AI_HOUSE_OPENCODE_ZEN_MODELS"
+ elif provider=="llm7":primary=L7M;env_name="AI_HOUSE_LLM7_MODELS"
  elif provider=="ollama":primary=OM;env_name="AI_HOUSE_OLLAMA_MODELS"
  else:return []
  configured=route_model_pool(primary,NVIDIA_MODELS if provider=="nvidia" else os.getenv(env_name,""))
