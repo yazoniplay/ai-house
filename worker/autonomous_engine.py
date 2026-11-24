@@ -798,9 +798,22 @@ def opportunity():
   log("discovery_search_retry_complete",query_count=len(retry_queries),source_count=len(seen))
  if not seen:return None
  set_activity("opportunity_extraction","Researcher is extracting candidate business models only from retrieved sources.","researcher")
- prompt=('Extract business models ONLY from these retrieved search results. Do not use model memory or introduce outside ideas. Each candidate must cite one or more exact URLs present in these results. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","score":0,"evidence":[{"url":"exact source URL","claim":"..."}],"risks":[],"mvp":"..."}]}\n'+json.dumps(results,ensure_ascii=False)[:20000])
- try:extracted=obj(ask("researcher",prompt))
- except Exception as e:log("discovery_extraction_error",error=str(e)[:180]);return None
+ # Keep extraction calls small: sending the full 20k+ evidence blob caused provider read timeouts.
+ # Extract in bounded batches, retaining exact source URLs for deterministic evidence validation.
+ extracted_candidates=[]
+ extraction_batches=[results[i:i+4] for i in range(0,len(results),4)]
+ for batch_index,batch in enumerate(extraction_batches,1):
+  batch_prompt=('Extract up to 2 distinct business-model hypotheses ONLY from these search results. Do not use model memory or introduce outside ideas. Every candidate needs customer, problem, solution, MVP and exact evidence URLs from this batch. No unsupported numeric demand claims. Return JSON {"candidates":[{"name":"...","customer":"...","problem":"...","solution":"...","revenue_model":"...","validation":"...","score":0,"evidence":[{"url":"exact source URL","claim":"..."}],"risks":[],"mvp":"..."}]}\\n'+json.dumps(batch,ensure_ascii=False)[:6000])
+  try:
+   batch_extracted=obj(ask("researcher",batch_prompt))
+   extracted_candidates.extend([x for x in batch_extracted.get("candidates",[]) if isinstance(x,dict)])
+   log("discovery_extraction_batch_ok",batch=batch_index,total=len(extraction_batches),sources=len(batch),candidates=len(batch_extracted.get("candidates",[])))
+  except Exception as batch_error:
+   log("discovery_extraction_batch_failed",batch=batch_index,total=len(extraction_batches),sources=len(batch),error=str(batch_error)[:180])
+ extracted={"candidates":extracted_candidates}
+ if not extracted_candidates:
+  log("discovery_extraction_error",error="all bounded evidence batches failed")
+  return None
  valid=[];source_urls={x.get("url") for x in results}
  by_url={x.get("url"):x for x in results}
  for c in extracted.get("candidates",[]):
