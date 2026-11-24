@@ -84,7 +84,7 @@ class _Session:
 
     def send(self, payload):
         try:
-            self.proc.stdin.write(json.dumps(payload, ensure_ascii=False) + "\\n")
+            self.proc.stdin.write(json.dumps(payload, ensure_ascii=False) + chr(10))
             self.proc.stdin.flush()
         except (OSError, BrokenPipeError) as exc:
             raise MCPError("MCP server closed its input stream.") from exc
