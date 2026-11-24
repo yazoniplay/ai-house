@@ -1216,12 +1216,20 @@ def run_roadmap_task(s,t):
   validations=result.get("validation");candidates=validations if isinstance(validations,list) else [validations]
   for candidate in candidates:
    if isinstance(candidate,dict) and isinstance(candidate.get("needs_owner_decision"),dict):decision_field=candidate["needs_owner_decision"];break
- if isinstance(decision_field,dict) and str(decision_field.get("question","")).strip() and isinstance(decision_field.get("options"),list):
-  brief_id=create_brief(WORK,ROOM_ID,str(decision_field["question"]),decision_field["options"],context=str(t.get("title","")))
-  t["status"]="waiting_approval";t["brief_id"]=brief_id;save(s)
-  log("brief_created",task=t.get("id"),brief_id=brief_id)
-  notify("brief:"+str(brief_id),str(t.get("title",""))+"\n"+str(decision_field.get("question",""))+"\n!brief "+str(brief_id))
-  set_activity("waiting_approval","This task needs an owner choice before it can continue.",role,t.get("id"));return
+ if isinstance(decision_field,dict) and str(decision_field.get("question","")).strip() and isinstance(decision_field.get("options"),list) and decision_field.get("options"):
+  # Agents may surface a decision, but routine choices belong to the AI House Leader.
+  options=[str(x)[:240] for x in decision_field["options"] if str(x).strip()][:12]
+  if options:
+   try:
+    decision=leader_json("Resolve this routine task decision autonomously. Do not ask the owner. Choose the safest useful option based on the task, objective, acceptance criteria and business strategy. Return JSON only: {\"choice\": one exact option string, \"reason\": concise rationale}. Question: "+str(decision_field["question"])[:1000]+"\nOptions: "+json.dumps(options,ensure_ascii=False)+"\nTask: "+json.dumps(t,ensure_ascii=False)[:5000])
+    choice=str(decision.get("choice","")).strip()
+    if choice not in options:choice=options[0]
+    reason=str(decision.get("reason","Leader-selected routine decision"))[:500]
+   except Exception as decision_error:
+    choice=options[0];reason="Deterministic safe fallback after leader decision error: "+type(decision_error).__name__
+   t["owner_decision"]=choice;t["owner_decision_reason"]=reason;save(s)
+   log("routine_decision_resolved_by_leader",task=t.get("id"),choice=choice,reason=reason)
+   set_activity("leader_decision","The Leader resolved a routine choice; execution continues.",role,t.get("id"))
  agent_files=result.get("files",[])
  allowed_folders=LOADOUTS.get(role,{}).get("write_folders",["reports"])
  if isinstance(agent_files,list):
