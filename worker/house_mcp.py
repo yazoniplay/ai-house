@@ -11,7 +11,7 @@ _ask_lock = threading.Lock()
 _last_ask = 0.0
 _SECRET_KEY = re.compile(r"(api.?key|token|secret|password|credential|authorization|service.?key|private.?key)", re.I)
 _SECRET_VALUE = re.compile(r"(?i)(api[_ -]?key|access[_ -]?token|secret|password|authorization)\s*[:=]\s*([^\s,;]+)")
-_BEARER_VALUE = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+)
+_BEARER_VALUE = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+")
 
 
 def workspace_path(workspace=None):
