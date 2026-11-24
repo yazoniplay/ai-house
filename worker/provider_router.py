@@ -171,5 +171,5 @@ def should_try_next_model(error):
         "free-models-per-day", "free models per day", "daily quota",
         "account quota", "monthly quota", "daily limit", "shared quota exhausted",
         "1113", "insufficient balance", "no resource package", "please recharge",
-        "requires a valid credit card", "credit card on file",
+        "requires a valid credit card", "credit card on file", "daily free allocation", "neurons",
     ))
