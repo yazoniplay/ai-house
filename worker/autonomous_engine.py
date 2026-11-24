@@ -73,7 +73,7 @@ BLK=os.getenv("BAZAARLINK_API_KEY","");BLMODEL=os.getenv("BAZAARLINK_MODEL","aut
 ARK=os.getenv("AGENTROUTER_API_KEY","");ARM=os.getenv("AGENTROUTER_MODEL","deepseek-v4-flash");ARB=os.getenv("AGENTROUTER_BASE_URL","https://agentrouter.org/v1").rstrip("/")
 RWK=os.getenv("ROUTEWAY_API_KEY","");RWM=os.getenv("ROUTEWAY_MODEL","minimax-m3.1-flash:free");RWB=os.getenv("ROUTEWAY_BASE_URL","https://api.routeway.ai/v1").rstrip("/")
 RQK=os.getenv("REQUESTY_API_KEY","");RQM=os.getenv("REQUESTY_MODEL","nvidia/muse-glimmer-30b");RQB=os.getenv("REQUESTY_BASE_URL","https://router.requesty.ai/v1").rstrip("/")
-CFK=os.getenv("CLOUDFLARE_API_TOKEN","");CF_ACCOUNT_ID=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip();CFM=os.getenv("CLOUDFLARE_WORKERS_AI_MODEL","@cf/deepseek-ai/deepseek-v4.1-flash-1017");CFB=os.getenv("CLOUDFLARE_BASE_URL",("https://api.cloudflare.com/client/v4/accounts/"+CF_ACCOUNT_ID+"/ai/v1") if CF_ACCOUNT_ID else "").rstrip("/")
+CFK=os.getenv("CLOUDFLARE_API_TOKEN","");CF_ACCOUNT_ID=os.getenv("CLOUDFLARE_ACCOUNT_ID","").strip();CFM=os.getenv("CLOUDFLARE_WORKERS_AI_MODEL","@cf/zai-org/glm-4.7-flash");CFB=os.getenv("CLOUDFLARE_BASE_URL",("https://api.cloudflare.com/client/v4/accounts/"+CF_ACCOUNT_ID+"/ai/v1") if CF_ACCOUNT_ID else "").rstrip("/")
 EX=os.getenv("EXA_API_KEY","");EBF=SD/"exa-budget.json"; SEARCH_PROVIDER_STATE=SD/"search-provider-state.json"
 PRICE_PER_MILLION_TOKENS={"gemini":0.0,"groq":0.0,"nvidia":0.0,"hf":0.0,"tokenharbor":0.0,"openrouter":0.0,"sambanova":0.0,"ollama":0.0,"vercel":0.0,"zai":0.0,"siliconflow":0.0,"orcarouter":0.0,"bazaarlink":0.0,"agentrouter":0.0,"routeway":0.0,"requesty":0.0}
 PAID_PROVIDERS=set(x.strip() for x in os.getenv("AI_HOUSE_PAID_PROVIDERS","").split(",") if x.strip())
@@ -473,7 +473,7 @@ def model_candidates(provider,role):
   "siliconflow":["Qwen/Qwen3-30B-A3B-Instruct-2507","deepseek-ai/DeepSeek-V3.2","Qwen/Qwen3-32B","Qwen/Qwen2.5-72B-Instruct"],
   "orcarouter":["orcarouter/auto","google/gemini-3-flash-preview","openai/gpt-6.1-sol","anthropic/claude-sonnet-4.6"],
   "bazaarlink":["auto:free","openai/gpt-4o-mini","google/gemini-2.5-flash"],
-   "cloudflare":["@cf/deepseek-ai/deepseek-v4.1-flash-1017","@cf/zai-org/glm-5.3","@cf/google/gemma-4-26b-a4b-it","@cf/qwen/qwen3.8-27b"],
+   "cloudflare":["@cf/zai-org/glm-4.7-flash","@cf/google/gemma-4-26b-a4b-it","@cf/nvidia/nemotron-3-120b-a12b"],
   "agentrouter":["deepseek-v4-flash","deepseek-v4.1-flash","deepseek-v4.1-flash-1017","qwen3.8-27b","qwen3.8-max","gemma-4-26b-a4b-it","gemma-4-31b-it","glm-4.7-flash","glm-5.3-flash","minimax-m3.1-flash","muse-glimmer-30b","nvidia/nemotron-3.5-lightning-30b-a3b","openai/gpt-oss-120b","openai/gpt-oss-20b","gpt-6.1-sol","gpt-6-astra"],
   "routeway":["minimax-m3.1-flash:free","muse-glimmer-30b:free","gemma-4-26b-a4b-it-chimerax:free","gemma-4-26b-a4b-it-darksoul:free","gemma-4-26b-a4b-it-luminous:free","gemma-4-26b-a4b-it-meromero:free","gemma-4-26b-a4b-it-moonlight:free","gemma-4-26b-a4b-it-musica:free"],
   "requesty":["nvidia/muse-glimmer-30b","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-nano-30b-a3b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5"]
@@ -512,7 +512,14 @@ def model_candidates(provider,role):
    # configured or paid catalog models. Paid slugs remain available as fallbacks.
    aliases={"openrouter/free","openrouter/auto"}
    candidates=[x for x in candidates if x in aliases]+provider_chat_model_pool(provider,catalog,candidates,OPENROUTER_FREE_MODELS)
-  elif provider in ("nvidia","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter","routeway"):
+  elif provider=="routeway":
+   # Routeway has both paid and free models; only its explicitly free :free slugs are eligible.
+   candidates=[x for x in filter_model_pool(candidates,catalog) if x.endswith(":free")]
+  elif provider=="requesty":
+   # Requesty has a free tier; keep this provider pinned to audited zero-priced models only.
+   requesty_free={"nvidia/muse-glimmer-30b","nvidia/nemotron-3.5-lightning-30b-a3b","nvidia/nemotron-3-nano-30b-a3b","google/gemma-4-31b-it","novita/ling-3.1-flash","mistral/leanstral-1-5","nvidia/nemotron-3-nano-omni-30b-a3b-reasoning","nvidia/nemotron-3-ultra-550b-a55b"}
+   candidates=[x for x in filter_model_pool(candidates,catalog) if x in requesty_free]
+  elif provider in ("nvidia","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter"):
    # OrcaRouter exposes its adaptive alias as a first-class route even if its catalog omits it.
    allow_aliases={"orcarouter/auto"} if provider=="orcarouter" else ({"auto:free"} if provider=="bazaarlink" else set())
    candidates=filter_model_pool(candidates,catalog,allow_unlisted=allow_aliases)+provider_chat_model_pool(provider,catalog,candidates)
@@ -535,7 +542,7 @@ def raw(p,sys,ask,role):
    # retries against one provider during a single agent request.
    max_attempts=max(1,min(defaults[p],int(os.getenv(env_names[p],str(defaults[p])))))
   else:max_attempts=max(1,min(3,int(os.getenv("AI_HOUSE_MAX_MODEL_ATTEMPTS","3"))))
- except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2}.get(p,3)
+ except Exception:max_attempts={"gemini":3,"nvidia":5,"openrouter":2,"groq":2,"vercel":2,"zai":1,"siliconflow":2,"orcarouter":2,"bazaarlink":2,"cloudflare":2,"agentrouter":2,"routeway":2,"requesty":2}.get(p,3)
  if p in ("gemini","nvidia","openrouter","groq","vercel","zai","siliconflow","orcarouter","bazaarlink","cloudflare","agentrouter","routeway","requesty") and len(candidates)>max_attempts:
   # Walk a rotating window across the complete live catalog. The preferred
   # models stay at the front of the ordering, but repeated calls eventually
