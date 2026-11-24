@@ -96,7 +96,7 @@ def configured():
 
 
 def house_settings():
-    defaults = {"active_hours": "09:00-23:00", "summary_time": "22:00", "max_new_businesses_per_day": "2"}
+    defaults = {"active_hours": "24/7", "summary_time": "22:00", "max_new_businesses_per_day": "2"}
     env_names = {"active_hours": "AI_HOUSE_ACTIVE_HOURS", "summary_time": "AI_HOUSE_SUMMARY_TIME", "max_new_businesses_per_day": "AI_HOUSE_MAX_NEW_BUSINESSES_PER_DAY"}
     values = {}
     for key, default in defaults.items():
@@ -124,18 +124,9 @@ def house_control_running():
     return bool(read_json(HOUSE_CONTROL_FILE, {"running": True}).get("running", True))
 
 
-def local_active_now(window):
-    try:
-        start, end = window.split("-", 1)
-        def minute(value):
-            hour, mins = value.strip().split(":")
-            return int(hour) * 60 + int(mins)
-        local = time.localtime()
-        current = local.tm_hour * 60 + local.tm_min
-        a, b = minute(start), minute(end)
-        return a <= current < b if a < b else (current >= a or current < b)
-    except Exception:
-        return False
+def local_active_now(window=None):
+    # AI House runs continuously; no active-hours pause.
+    return True
 
 
 def read_jsonl_tail(path, limit=150, max_bytes=8 * 1024 * 1024):
