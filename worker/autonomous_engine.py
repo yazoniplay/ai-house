@@ -306,10 +306,10 @@ def provider_model_catalog(provider):
    rows=response.json().get("data",[])
    OPENROUTER_FREE_MODELS[:]=openrouter_free_model_ids(rows)
    ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
-  elif provider in ("vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter","routeway","requesty","fastrouter","opencodezen"):
-   key,base={"vercel":(VG,VGB),"zai":(ZK,ZB),"siliconflow":(SFK,SFB),"orcarouter":(ORK,ORB),"bazaarlink":(BLK,BLB),"agentrouter":(ARK,ARB),"routeway":(RWK,RWB),"requesty":(RQK,RQB),"fastrouter":(FRK,FRB),"opencodezen":(OCZ,OCZB)}[provider]
-   if not key:return None
-   response=HTTP.get(base+"/models",headers={"Authorization":"Bearer "+key,"Content-Type":"application/json",**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if provider=="routeway" else {})},timeout=12)
+  elif provider in ("vercel","zai","siliconflow","orcarouter","bazaarlink","agentrouter","routeway","requesty","fastrouter","opencodezen","llm7"):
+   key,base={"vercel":(VG,VGB),"zai":(ZK,ZB),"siliconflow":(SFK,SFB),"orcarouter":(ORK,ORB),"bazaarlink":(BLK,BLB),"agentrouter":(ARK,ARB),"routeway":(RWK,RWB),"requesty":(RQK,RQB),"fastrouter":(FRK,FRB),"opencodezen":(OCZ,OCZB),"llm7":(L7K,L7B)}[provider]
+   if not key and provider!="llm7":return None
+   response=HTTP.get(base+"/models",headers={**({"Authorization":"Bearer "+key} if key else {}),"Content-Type":"application/json",**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if provider=="routeway" else {})},timeout=12)
    if response.status_code>=400:raise RuntimeError(provider+" model catalog HTTP "+str(response.status_code))
    rows=response.json().get("data",[])
    ids={str(item.get("id","")).strip() for item in rows if isinstance(item,dict) and item.get("id") and item.get("active",True) is not False}
@@ -410,7 +410,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
    if isinstance(e,RuntimeError) and str(e)==p+" empty reply":raise
    raise RuntimeError("Gemini response could not be decoded: "+str(e)[:120])
  model=model_override or model
- if not key:raise RuntimeError(p+" key missing")
+ if not key and p!="llm7":raise RuntimeError(p+" key missing")
  payload={"model":model,"messages":[{"role":"system","content":sys},{"role":"user","content":ask}],"temperature":0.25,"max_tokens":8192}
  if p=="groq":
   # Both GPT-OSS models support JSON mode; all Groq completions in this worker expect structured JSON.
@@ -423,7 +423,7 @@ def _raw_once(p,sys,ask,role,model_override=None):
  last_error=None
  for candidate in candidates:
   payload["model"]=candidate
-  r=HTTP.post(url,headers={"Authorization":"Bearer "+key,"Content-Type":"application/json",**({"X-OrcaRouter-Include-Cost":"true"} if p=="orcarouter" else {}),**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if p=="routeway" else {})},json=payload,timeout=timeout_seconds)
+  r=HTTP.post(url,headers={**({"Authorization":"Bearer "+key} if key else {}),"Content-Type":"application/json",**({"X-OrcaRouter-Include-Cost":"true"} if p=="orcarouter" else {}),**({"User-Agent":"Mozilla/5.0 AIHouse/1.0"} if p=="routeway" else {})},json=payload,timeout=timeout_seconds)
   if r.status_code in (400,404) and candidate!=candidates[-1] and is_model_specific_error(r.text):
    log("groq_model_auto_fallback",unavailable_model=candidate,next_model=candidates[candidates.index(candidate)+1],status=r.status_code)
    continue
