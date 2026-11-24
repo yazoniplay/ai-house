@@ -37,6 +37,7 @@ from computer_use import ComputerUseError, execute as computer_execute, status a
 from approvals import list_requests as list_owner_approvals, answer as answer_owner_approval
 from desktop_agent import DesktopAgentError, create_task as create_desktop_task, run_task as run_desktop_task, resume_task as resume_desktop_task, list_tasks as list_desktop_tasks
 from coding_room import CodingRoomError, create_project as create_coding_project, list_projects as list_coding_projects, cancel_project as cancel_coding_project
+from mcp_client import MCPError, list_servers as mcp_list_servers, save_servers as mcp_save_servers, list_tools as mcp_list_tools, call_tool as mcp_call_tool
 
 app = Flask(__name__)
 lock = threading.RLock()
@@ -348,6 +349,44 @@ def collect_artifacts(selected_business_dir=None):
 @app.get("/")
 def index():
     return send_from_directory(HERE, "index.html")
+
+@app.get("/mcp")
+def mcp_page():
+    return send_from_directory(HERE, "mcp.html")
+
+@app.get("/api/mcp/servers")
+def mcp_servers_get():
+    return jsonify(servers=[{"name": x.get("name"), "command": x.get("command"), "args": x.get("args", []), "enabled": x.get("enabled", True)} for x in mcp_list_servers(WORKSPACE)])
+
+@app.post("/api/mcp/servers")
+def mcp_servers_post():
+    body = request.get_json(silent=True) or {}
+    servers = body.get("servers") if isinstance(body, dict) else None
+    if not isinstance(servers, list):
+        return jsonify(error="JSON body must contain servers: []."), 400
+    try:
+        saved = mcp_save_servers(WORKSPACE, servers)
+        return jsonify(servers=saved)
+    except (MCPError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
+
+@app.post("/api/mcp/servers/<name>/tools")
+def mcp_server_tools(name):
+    try:
+        return jsonify(server=name, tools=mcp_list_tools(WORKSPACE, name))
+    except (MCPError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
+
+@app.post("/api/mcp/servers/<name>/call")
+def mcp_server_call(name):
+    body = request.get_json(silent=True) or {}
+    tool = body.get("tool") if isinstance(body, dict) else None
+    arguments = body.get("arguments", {}) if isinstance(body, dict) else {}
+    try:
+        result = mcp_call_tool(WORKSPACE, name, tool, arguments)
+        return jsonify(result=result)
+    except (MCPError, OSError) as exc:
+        return jsonify(error=str(exc)), 400
 
 
 @app.post("/api/ask")
