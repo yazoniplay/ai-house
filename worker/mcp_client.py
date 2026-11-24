@@ -7,6 +7,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -64,8 +65,14 @@ class _Session:
         self.timeout = timeout
         command = str(server["command"])
         args = [str(x) for x in server.get("args", [])]
+        executable = shutil.which(command) or command
+        launch = [executable, *args]
+        # Windows MCP packages commonly expose npx.cmd / package .cmd launchers.
+        # Use a safely quoted cmd.exe argument string only for those wrappers.
+        if os.name == "nt" and Path(executable).suffix.lower() in (".cmd", ".bat"):
+            launch = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", subprocess.list2cmdline(launch)]
         try:
-            self.proc = subprocess.Popen([command, *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            self.proc = subprocess.Popen(launch, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
                                         errors="replace", bufsize=1, shell=False)
         except OSError as exc:
