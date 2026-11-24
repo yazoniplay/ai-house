@@ -192,6 +192,16 @@ See [`worker/.env.example`](worker/.env.example) for the complete list and optio
 
 **Never commit API keys, OAuth tokens, cookies, or your private `.env` file.** Do not paste secrets into issues, Discord, screenshots, or logs.
 
+## 🔗 MCP integrations
+
+Open **MCP** from the local dashboard to configure a Model Context Protocol server. AI House supports the MCP stdio transport for local server commands: enter the executable and its JSON-array arguments, save it, then connect to discover tools and run a selected tool manually. Server processes are started only when you request tool discovery or execution; they are not auto-connected on startup.
+
+MCP configuration is stored locally at `workspace/.ai-house/mcp_servers.json`. The configured command inherits the dashboard process environment, so keep credentials in your local `.env` and refer to environment variables in your server's own configuration. Do not paste secrets into the dashboard command or commit the configuration.
+
+For a StarNet demo, only connect after your friend agrees. Start with read-only tools and inspect the tool descriptions before running anything. The current MCP page is an explicit, manual tool explorer; MCP tools are not yet automatically exposed to autonomous agent reasoning.
+
+The main control room has a **Minimal dashboard / Full dashboard** toggle. The minimal view hides secondary telemetry and audit panels without deleting their data; switch to Full dashboard to reveal them.
+
 ## 🛡️ Safety and control
 
 AI House is designed to keep the owner in control of consequential actions.
