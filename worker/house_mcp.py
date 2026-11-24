@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 _ask_lock = threading.Lock()
 _last_ask = 0.0
 _SECRET_KEY = re.compile(r"(api.?key|token|secret|password|credential|authorization|service.?key|private.?key)", re.I)
+_SECRET_VALUE = re.compile(r"(?i)(api[_ -]?key|access[_ -]?token|secret|password|authorization)\\s*[:=]\\s*([^\\s,;]+)")
+_BEARER_VALUE = re.compile(r"(?i)bearer\\s+[A-Za-z0-9._~+/=-]+")
 
 
 def workspace_path(workspace=None):
@@ -38,7 +40,9 @@ def _clean(value, depth=0):
     if isinstance(value, list):
         return [_clean(item, depth + 1) for item in value[-100:]]
     if isinstance(value, str):
-        return value[:1200]
+        text = _SECRET_VALUE.sub(lambda match: match.group(1) + "=[REDACTED]", value)
+        text = _BEARER_VALUE.sub("Bearer [REDACTED]", text)
+        return text[:1200]
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)[:300]
