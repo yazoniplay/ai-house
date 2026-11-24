@@ -62,10 +62,11 @@ In ChatGPT's current web custom MCP flow, go to Plugins, choose the plus button,
 MCP compatibility does not mean every consumer mobile app currently exposes a custom-server connection setting.
 
 - **ChatGPT:** OpenAI currently documents custom MCP connections as web-only. Plan/workspace permissions apply; Business and Enterprise/Edu have full custom MCP support, while Pro supports read/fetch-only connections in the documented developer mode. Free accounts may not have custom MCP access. See the current OpenAI help page linked above.
-- **Claude:** Use the consumer app's custom connector/remote MCP settings where available. Some account or feature rollouts may vary; configure the connector from the supported web settings first.
-- **Gemini:** Custom MCP availability in the consumer Gemini app is account/region/rollout dependent. If the consumer app does not show a custom MCP app/connector option, this server cannot make that UI appear.
+- **Claude:** Custom remote MCP connectors are available on Claude web and mobile for supported accounts. In connector setup, choose fixed request headers and send `Authorization: Bearer YOUR_TOKEN` if using the house's static bearer token. Claude's remote connector reaches your server from Anthropic's cloud, so it needs a public HTTPS URL on port 443.
+- **Gemini:** Add the custom app from Gemini web's Settings > Connected Apps; Google says it then appears in Gemini web and mobile. Current eligibility is restricted to personal Google accounts, users 18+, and the US, with English and activity-history requirements. If the Connected Apps/custom app option is absent, the account/region is not eligible yet. For static token auth, use the Advanced features/credentials field if offered.
+- **ChatGPT:** Custom MCP connections are currently web-only, not in the ChatGPT mobile app. Availability is plan/workspace-gated: Business and Enterprise/Edu have full custom MCP support; Pro supports read/fetch-only custom MCP in the documented developer mode; Free may not offer it. On ChatGPT web, use Plugins > plus > Add custom MCP server, enter the HTTPS URL and bearer credential, create/install the plugin, then invoke it from chat.
 
-The server is compatible with remote MCP; each provider controls where its connector can be added and whether the connection is available on mobile. Do not assume that adding it on the web automatically enables it on every mobile app.
+The server is compatible with remote MCP, but each provider controls account eligibility and where its connector can be used. Claude remote connectors work from mobile once configured; Gemini connected apps are configured on web and then available on mobile; ChatGPT's custom MCP connector remains web-only according to current OpenAI documentation.
 
 ## Local desktop MCP (stdio)
 
