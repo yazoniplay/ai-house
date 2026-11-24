@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI House · MCP Integrations</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1014;--panel:#12191e;--line:#27353b;--text:#e8f0f2;--muted:#91a3a9;--accent:#54d6c5}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% 0%,#14302d 0,transparent 28%),var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{height:60px;display:flex;align-items:center;padding:0 22px;border-bottom:1px solid var(--line);gap:18px}a{color:var(--accent);text-decoration:none;font-weight:700}.brand{font-weight:900;letter-spacing:.04em}.brand span{color:var(--accent)}main{max-width:900px;margin:26px auto;padding:0 16px}.lead{color:var(--muted);max-width:700px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:block;color:var(--muted);font-size:12px;font-weight:700;margin-bottom:6px}input,textarea,select{width:100%;border:1px solid var(--line);border-radius:9px;background:#0c1418;color:var(--text);padding:10px;font:inherit}textarea{min-height:90px;resize:vertical}button{border:1px solid #2d5553;border-radius:9px;background:#1b302f;color:var(--text);padding:9px 13px;font:inherit;font-weight:750;cursor:pointer}button.secondary{background:#172126;border-color:var(--line)}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}.note{border-left:3px solid var(--accent);padding:10px 12px;background:#142321;color:#c5d7d7;border-radius:6px;font-size:12px}.server,.tool{border:1px solid var(--line);background:#0d1519;border-radius:10px;padding:12px;margin-top:10px}.tool strong{display:block}.tool p{color:var(--muted);font-size:12px}.tool button{margin-top:8px}.status{color:var(--muted);font-size:12px;white-space:pre-wrap}.hidden{display:none}@media(max-width:650px){.grid{grid-template-columns:1fr}header{padding:0 14px}}
+</style>
+</head>
+<body>
+<header><div class="brand">AI <span>HOUSE</span> · MCP</div><a href="/">← Control room</a></header>
+<main>
+<h1>Model Context Protocol</h1>
+<p class="lead">Connect an MCP server to let AI House discover its tools. This first connector is opt-in and local: it starts the configured server only when you list tools or run a tool. No StarNet connection is made until you configure it.</p>
+<div class="panel">
+<div class="note">Only add an MCP server you trust. Its tools may read data or perform actions in the connected service. Get your friend's permission before connecting StarNet, and start with read-only tools for the demo. Commands run locally on this PC.</div>
+<h2>Configure a server</h2>
+<div class="grid">
+<div><label for="name">Display name</label><input id="name" placeholder="StarNet demo"></div>
+<div><label for="command">Executable / command</label><input id="command" placeholder="node, python, npx…"></div>
+</div>
+<label for="args">Arguments (JSON array)</label><textarea id="args" placeholder='["path/to/mcp-server.js"]'>[]</textarea>
+<div class="row"><label style="display:flex;align-items:center;gap:8px;margin:0"><input type="checkbox" id="enabled" checked style="width:auto"> Enabled</label><button id="save">Save configuration</button><button id="connect" class="secondary">Connect & list tools</button></div>
+<div id="configStatus" class="status" role="status"></div>
+</div>
+<div class="panel">
+<h2>Configured servers</h2><div id="servers" class="status">Loading…</div>
+</div>
+<div class="panel">
+<h2>Available tools</h2><p class="lead">Select a discovered tool to inspect its input schema. Tool calls are manual from this page for now.</p>
+<div id="tools" class="status">Connect to a server to discover tools.</div>
+<div id="toolRunner" class="hidden">
+<label for="toolArgs">Tool arguments (JSON object)</label><textarea id="toolArgs">{}</textarea>
+<div class="row"><button id="runTool">Run selected tool</button></div>
+<div id="toolResult" class="status"></div>
+</div>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);let servers=[];let activeServer="";let selectedTool="";
+async function api(url,options={}){const r=await fetch(url,{headers:{"Content-Type":"application/json"},...options});const d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");return d}
+async function load(){try{const d=await api("/api/mcp/servers");servers=d.servers||[];renderServers()}catch(e){$("servers").textContent=e.message}}
+function renderServers(){$("servers").innerHTML="";if(!servers.length){$("servers").textContent="No MCP servers configured.";return}servers.forEach(s=>{const div=document.createElement("div");div.className="server";const title=document.createElement("strong");title.textContent=s.name+" · "+(s.enabled?"enabled":"disabled");const cmd=document.createElement("div");cmd.className="status";cmd.textContent=s.command+" "+(s.args||[]).join(" ");const btn=document.createElement("button");btn.textContent="Load into form";btn.className="secondary";btn.onclick=()=>{ $("name").value=s.name;$("command").value=s.command;$("args").value=JSON.stringify(s.args||[],null,2);$("enabled").checked=!!s.enabled;activeServer=s.name};div.append(title,cmd,btn);$("servers").append(div)})}
+function formServer(){const name=$("name").value.trim(),command=$("command").value.trim();let args;try{args=JSON.parse($("args").value)}catch(e){throw new Error("Arguments must be valid JSON.")}if(!name||!command||!Array.isArray(args)||args.some(x=>typeof x!=="string"))throw new Error("Enter a name, command, and JSON array of string arguments.");return {name,command,args,enabled:$("enabled").checked}}
+async function save(){const s=formServer();const next=servers.filter(x=>x.name!==s.name);next.push(s);const d=await api("/api/mcp/servers",{method:"POST",body:JSON.stringify({servers:next})});servers=d.servers;activeServer=s.name;renderServers();$("configStatus").textContent="Saved locally. The server has not been started yet."}
+async function connect(){if(!servers.some(x=>x.name===activeServer))await save();const s=formServer();activeServer=s.name;$("configStatus").textContent="Starting MCP server and requesting tools…";const d=await api("/api/mcp/servers/"+encodeURIComponent(activeServer)+"/tools",{method:"POST",body:"{}"});renderTools(d.tools||[]);$("configStatus").textContent="Connected for this request; server process was closed after listing tools."}
+function renderTools(tools){$("tools").innerHTML="";if(!tools.length){$("tools").textContent="Server exposed no tools.";return}tools.forEach(t=>{const div=document.createElement("div");div.className="tool";const title=document.createElement("strong");title.textContent=t.name;const desc=document.createElement("p");desc.textContent=t.description||"No description";const schema=document.createElement("pre");schema.className="status";schema.textContent=JSON.stringify(t.inputSchema||{},null,2);const btn=document.createElement("button");btn.textContent="Select";btn.onclick=()=>{selectedTool=t.name;$("toolRunner").classList.remove("hidden");$("toolArgs").value=JSON.stringify((t.inputSchema&&t.inputSchema.properties)?{}:{},null,2);$("toolResult").textContent="Selected: "+t.name};div.append(title,desc,schema,btn);$("tools").append(div)})}
+$("save").onclick=()=>{try{save().catch(e=>$("configStatus").textContent=e.message)}catch(e){$("configStatus").textContent=e.message}};
+$("connect").onclick=()=>{try{connect().catch(e=>$("configStatus").textContent="MCP connection failed: "+e.message)}catch(e){$("configStatus").textContent=e.message}};
+$("runTool").onclick=async()=>{try{const args=JSON.parse($("toolArgs").value);if(!selectedTool)throw new Error("Select a tool first.");$("toolResult").textContent="Calling tool…";const d=await api("/api/mcp/servers/"+encodeURIComponent(activeServer)+"/call",{method:"POST",body:JSON.stringify({tool:selectedTool,arguments:args})});$("toolResult").textContent=JSON.stringify(d.result,null,2)}catch(e){$("toolResult").textContent="Tool call failed: "+e.message}};
+load();
+</script>
+</body>
+</html>
